@@ -1,0 +1,270 @@
+function L = iekfLiveViewer(transport, target, baud, logDir)
+%IEKFLIVEVIEWER  3D triad following, in real time, the attitude estimated by the firmware.
+%
+%   iekfLiveViewer("serial", "COM6")                 % USB (ST-LINK VCP), 921600 baud
+%   iekfLiveViewer("serial", "/dev/ttyACM0", 460800)
+%   iekfLiveViewer("ble", "IEKF-IMU")                % BLE (skeleton, phase 2)
+%
+%   World frame NWU (x = magnetic north, y = west, z = up), defined by the
+%   firmware through the static calibration: keep the board STILL ~2 s after reset.
+%   Start the viewer BEFORE resetting the board if you want the complete log.
+%   Close the figure to stop (with Ctrl+C the last autosave remains, at most
+%   10 s old). With APP_TLM_REPLAY = 1 use tlmCapture.m instead: the viewer
+%   cannot keep up with ~44 kB/s.
+%
+%   LOG: the full file path is printed at start-up. The file is saved every 10 s
+%   (autosave) and on close; on close the log is also returned as output and
+%   copied into the base workspace as variable iekfLog:
+%       L = iekfLiveViewer("serial","COM6");
+%   logDir (optional) selects the folder, default the current folder.
+%
+%   serialport: R2019b+.
+%   BLE: Bluetooth Low Energy support (R2019b+), NOT tested with the hardware.
+
+if nargin < 1, transport = "serial"; end
+if nargin < 2, target    = "COM6";   end
+if nargin < 3, baud      = 921600;   end
+if nargin < 4 || isempty(logDir), logDir = pwd; end
+
+SVC_UUID = "7E4A0001-2C6B-4F8E-9A5D-3B1C0E1D2F30";   % = BLE service UUID (phase 2)
+CHR_UUID = "7E4A0002-2C6B-4F8E-9A5D-3B1C0E1D2F30";
+
+% ------------------------------------------------------------------ state
+dev = []; bleDev = []; bleChr = [];
+L = newLog(6000); nLog = 0;
+lastSeq = NaN; seqOffset = 0; nLost = 0; nFrames = 0; nStatus = 0;
+lastUptime = -1; nResets = 0; finished = false;
+logFile = fullfile(logDir, sprintf('iekf_log_%s.mat', datestr(now, 'yyyymmdd_HHMMSS'))); %#ok<TNOW1,DATST>
+tSave = tic;
+binFile = strrep(logFile, '.mat', '.bin');           % raw capture (for compareEmbeddedVsMatlab)
+binFid  = fopen(binFile, 'w');
+nReplay = 0;
+fprintf('Log: %s\nRaw capture: %s\n', logFile, binFile);
+latestQ = [1 0 0 0]; latestS = []; latestStatus = []; tStart = tic;
+lagRef = [];                                       % [t_pc t_fw] of the first STATE
+
+[fig, hT, hTxt] = buildFigure();
+
+% Ctrl+C cannot be intercepted: in that case the last autosave remains (<= 10 s).
+% Any other error goes through the catch, which saves before rethrowing.
+try
+    switch lower(string(transport))
+        case "serial"
+            dev = serialport(target, baud, "Timeout", 1);
+            flush(dev);
+            buf = uint8([]);
+            while ishghandle(fig)
+                nb = dev.NumBytesAvailable;
+                if nb > 0
+                    chunk = uint8(read(dev, nb, "uint8"));
+                    if binFid > 0, fwrite(binFid, chunk, 'uint8'); end
+                    buf = [buf, chunk]; %#ok<AGROW>
+                    [frames, buf] = parseTelemetry(buf, 4);   % REPLAY: only in the .bin
+                    for k = 1:numel(frames)
+                        switch frames(k).type
+                            case 1, handleState(decodeState(frames(k).payload));
+                            case 2, L.init = decodeInit(frames(k).payload);
+                            case 3, handleStatus(decodeStatus(frames(k).payload));
+                            case 4, nReplay = nReplay + 1;     % only in the .bin capture
+                        end
+                    end
+                    refresh();
+                    if toc(tSave) > 10, saveLog(); tSave = tic; end
+                else
+                    pause(0.005);
+                end
+            end
+
+        case "ble"
+            bleDev = ble(target);
+            bleChr = characteristic(bleDev, SVC_UUID, CHR_UUID);
+            bleChr.DataAvailableFcn = @onBle;
+            subscribe(bleChr);
+            while ishghandle(fig)
+                refresh();
+                pause(0.02);
+            end
+
+        otherwise
+            error('transport must be "serial" or "ble"');
+    end
+catch err
+    finish();
+    rethrow(err);
+end
+finish();          % normal close: save and prepare the output
+
+% ================================================================== nested
+    function handleState(s)
+        if ~isnan(lastSeq)
+            d = mod(s.seq - lastSeq, 65536);
+            if d == 0, return; end                 % duplicate
+            if d > 1, nLost = nLost + d - 1; end
+            if s.seq < lastSeq, seqOffset = seqOffset + 65536; end   % wrap-around
+        end
+        lastSeq = s.seq;
+        nFrames = nFrames + 1;
+
+        if nLog == numel(L.seq), L = growLog(L); end
+        nLog = nLog + 1;
+        L.seq(nLog) = s.seq + seqOffset;  L.t_us(nLog) = s.t_us;  L.q(:,nLog) = s.q(:);
+        L.bias(:,nLog) = s.bias(:); L.acc(:,nLog) = s.acc(:);
+        L.gyro(:,nLog) = s.gyro(:); L.mag(:,nLog) = s.mag(:); L.flags(nLog) = s.flags;
+        L.t_pc(nLog) = toc(tStart);
+        if isempty(lagRef) || s.t_us*1e-6 < lagRef(2), lagRef = [L.t_pc(nLog), s.t_us*1e-6]; end
+        latestQ = s.q; latestS = s;
+    end
+
+    function handleStatus(st)
+        latestStatus = st;
+        nStatus = nStatus + 1;
+        if lastUptime >= 0 && st.uptime_s < lastUptime   % the board rebooted
+            nResets = nResets + 1;
+            L.resetAt(end+1) = nLog + 1;
+            fprintf(2, 'WARNING: board reboot detected (sample %d)\n', nLog + 1);
+            lastSeq = NaN;
+        end
+        lastUptime = st.uptime_s;
+        if isempty(L.status), L.status = st; else, L.status(end+1) = st; end
+    end
+
+    function onBle(src, ~)
+        p = uint8(read(src, 'oldest'));
+        if numel(p) < 17, return; end
+        s.seq   = double(typecast(p(1:2), 'uint16'));
+        s.t_us  = NaN;
+        s.q     = double(typecast(p(3:10), 'int16')) / 32767;
+        s.bias  = deg2rad(double(typecast(p(11:16), 'int16')) * 1e-3);
+        s.acc   = nan(1,3); s.gyro = nan(1,3); s.mag = nan(1,3);
+        s.flags = double(p(17));
+        handleState(s);
+    end
+
+    function refresh()
+        if ~ishghandle(fig), return; end
+        R = quat2rotmLocal(latestQ);
+        hT.Matrix = [R, zeros(3,1); 0 0 0 1];
+        eul = rad2deg([atan2(R(2,1), R(1,1)); asin(max(-1,min(1,-R(3,1)))); atan2(R(3,2), R(3,3))]);
+        rate = nFrames / max(toc(tStart), 1e-3);
+        txt = sprintf(['roll %7.1f   pitch %7.1f   yaw %7.1f  [deg]\n' ...
+                       'packets %d  (%.0f Hz)   lost %d   log %d samples'], ...
+                       eul(3), eul(2), eul(1), nFrames, rate, nLost, nLog);
+        if ~isempty(latestS)
+            % display lag: elapsed PC time - elapsed firmware time
+            lag = (toc(tStart) - lagRef(1)) - (latestS.t_us*1e-6 - lagRef(2));
+            txt = [txt, sprintf('   lag %.2f s', lag)];
+            if lag > 0.5
+                txt = [txt, '  <-- VIEWER CANNOT KEEP UP'];
+            end
+            txt = [txt, sprintf('\nbias [deg/s]  %6.3f %6.3f %6.3f', rad2deg(latestS.bias))];
+            fl = {};
+            if bitand(latestS.flags, 4),  fl{end+1} = 'ACC de-weighted'; end %#ok<AGROW>
+            if bitand(latestS.flags, 8),  fl{end+1} = 'MAG de-weighted'; end %#ok<AGROW>
+            if bitand(latestS.flags, 16), fl{end+1} = 'OVERRUN';       end %#ok<AGROW>
+            if bitand(latestS.flags, 32), fl{end+1} = 'STILL';        end %#ok<AGROW>
+            if ~isempty(fl), txt = [txt, newline, strjoin(fl, '  |  ')]; end
+        end
+        if ~isempty(L.init)
+            txt = [txt, sprintf('\ncalib: sigmaAcc %.4f  sigmaMag %.4f  dip %.1f deg', ...
+                   L.init.sigmaAcc, L.init.sigmaMag, -asind(L.init.mRef(3)))];
+        end
+        if isempty(latestS) && ~isempty(latestStatus)
+            txt = sprintf('STATUS (no attitude data yet)\n%s', statusDiagnosis(latestStatus));
+        end
+        hTxt.String = txt;
+        drawnow limitrate;
+    end
+
+    function saveLog()
+        if nLog == 0 && nStatus == 0, return; end
+        try
+            S.L = trimLog(L, nLog);
+            save(logFile, '-struct', 'S');
+        catch err
+            fprintf(2, 'ERROR while saving %s:\n  %s\n', logFile, err.message);
+            fprintf(2, 'Use a writable folder: iekfLiveViewer("serial","COMx",921600,"C:\\path")\n');
+        end
+    end
+
+    function finish()
+        if finished, return; end
+        finished = true;
+        try
+            if ~isempty(bleChr), unsubscribe(bleChr); end
+        catch
+        end
+        dev = []; bleChr = []; bleDev = []; %#ok<SETNU>
+        if binFid > 0, fclose(binFid); binFid = -1; end
+        saveLog();
+        L = trimLog(L, nLog);
+        assignin('base', 'iekfLog', L);
+        fprintf('Log: %s\n  %d STATE samples, %d STATUS, %d lost, %d reboots.\n', ...
+                logFile, nLog, nStatus, nLost, nResets);
+        fprintf('  Also in the workspace as variable iekfLog.\n');
+        if nReplay > 0
+            fprintf('  %d REPLAY packets: compareEmbeddedVsMatlab(''%s'')\n', nReplay, binFile);
+        end
+    end
+end
+
+% ================================================================== local functions
+function L = newLog(cap)
+L = struct('seq', zeros(1,cap), 't_us', zeros(1,cap), 'q', zeros(4,cap), ...
+           'bias', zeros(3,cap), 'acc', zeros(3,cap), 'gyro', zeros(3,cap), ...
+           'mag', zeros(3,cap), 'flags', zeros(1,cap), 't_pc', zeros(1,cap));
+L.init    = [];
+L.status  = [];              % STATUS packets (10 Hz), struct array
+L.resetAt = [];              % sample indices after a board reboot
+end
+
+function L = growLog(L)
+fn = {'seq','t_us','q','bias','acc','gyro','mag','flags','t_pc'};
+for i = 1:numel(fn)
+    L.(fn{i}) = [L.(fn{i}), zeros(size(L.(fn{i})))];
+end
+end
+
+function L = trimLog(L, n)
+fn = {'seq','t_us','q','bias','acc','gyro','mag','flags','t_pc'};
+for i = 1:numel(fn)
+    L.(fn{i}) = L.(fn{i})(:, 1:n);
+end
+end
+
+function [fig, hT, hTxt] = buildFigure()
+fig = figure('Name', 'IEKF live - STM32', 'Color', 'w', 'NumberTitle', 'off');
+ax  = axes(fig, 'Position', [0.05 0.22 0.9 0.75]);
+hold(ax, 'on'); grid(ax, 'on'); axis(ax, 'equal');
+lim = 1.6; axis(ax, [-lim lim -lim lim -lim lim]);
+xlabel(ax, 'x  (N)'); ylabel(ax, 'y  (W)'); zlabel(ax, 'z  (Up)');
+view(ax, 135, 25);
+
+% world frame, grey
+plot3(ax, [0 1.4], [0 0], [0 0], ':', 'Color', [.5 .5 .5], 'LineWidth', 1);
+plot3(ax, [0 0], [0 1.4], [0 0], ':', 'Color', [.5 .5 .5], 'LineWidth', 1);
+plot3(ax, [0 0], [0 0], [0 1.4], ':', 'Color', [.5 .5 .5], 'LineWidth', 1);
+text(ax, 1.5, 0, 0, 'N', 'Color', [.5 .5 .5]);
+text(ax, 0, 1.5, 0, 'W', 'Color', [.5 .5 .5]);
+text(ax, 0, 0, 1.5, 'Up', 'Color', [.5 .5 .5]);
+
+% body: board + triad, inside an hgtransform
+hT = hgtransform('Parent', ax);
+a = 0.9; b = 0.55; c = 0.05;
+V = [-a -b -c; a -b -c; a b -c; -a b -c; -a -b c; a -b c; a b c; -a b c];
+F = [1 2 3 4; 5 6 7 8; 1 2 6 5; 2 3 7 6; 3 4 8 7; 4 1 5 8];
+patch('Parent', hT, 'Vertices', V, 'Faces', F, 'FaceColor', [0.2 0.45 0.3], ...
+      'FaceAlpha', 0.35, 'EdgeColor', [0.1 0.25 0.15]);
+cols = [0.85 0.1 0.1; 0.1 0.6 0.1; 0.1 0.2 0.85];
+lbl  = {'x_b', 'y_b', 'z_b'};
+for i = 1:3
+    e = zeros(1,3); e(i) = 1.25;
+    line('Parent', hT, 'XData', [0 e(1)], 'YData', [0 e(2)], 'ZData', [0 e(3)], ...
+         'Color', cols(i,:), 'LineWidth', 3);
+    text('Parent', hT, 'Position', 1.1*e, 'String', lbl{i}, 'Color', cols(i,:), 'FontWeight', 'bold');
+end
+
+hTxt = uicontrol(fig, 'Style', 'text', 'Units', 'normalized', ...
+                 'Position', [0.02 0.01 0.96 0.19], 'HorizontalAlignment', 'left', ...
+                 'FontName', 'FixedWidth', 'FontSize', 10, 'BackgroundColor', 'w', ...
+                 'String', 'waiting for data... (keep the board still after reset)');
+end

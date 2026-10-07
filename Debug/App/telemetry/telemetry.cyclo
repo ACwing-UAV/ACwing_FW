@@ -1,0 +1,2 @@
+../App/telemetry/telemetry.c:7:10:tlm_crc16	4
+../App/telemetry/telemetry.c:18:8:tlm_encode	2

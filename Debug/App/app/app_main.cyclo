@@ -1,0 +1,12 @@
+../App/app/app_main.c:69:13:dwt_init	1
+../App/app/app_main.c:76:6:app_exti	3
+../App/app/app_main.c:84:6:app_i2c_rx_cplt	1
+../App/app/app_main.c:85:6:app_i2c_error	1
+../App/app/app_main.c:86:6:app_uart_tx_cplt	1
+../App/app/app_main.c:91:13:push_frame	3
+../App/app/app_main.c:98:13:on_state	2
+../App/app/app_main.c:114:13:on_init	1
+../App/app/app_main.c:125:13:ImuTask	12
+../App/app/app_main.c:238:13:send_status	2
+../App/app/app_main.c:258:13:TelemetryTask	6
+../App/app/app_main.c:287:6:app_start	1

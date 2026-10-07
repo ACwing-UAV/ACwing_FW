@@ -1,0 +1,12 @@
+../App/app/app_main.c:69:13:dwt_init	4	static
+../App/app/app_main.c:76:6:app_exti	16	static
+../App/app/app_main.c:84:6:app_i2c_rx_cplt	16	static
+../App/app/app_main.c:85:6:app_i2c_error	16	static
+../App/app/app_main.c:86:6:app_uart_tx_cplt	16	static
+../App/app/app_main.c:91:13:push_frame	16	static
+../App/app/app_main.c:98:13:on_state	24	static
+../App/app/app_main.c:114:13:on_init	16	static
+../App/app/app_main.c:125:13:ImuTask	304	static
+../App/app/app_main.c:238:13:send_status	88	static
+../App/app/app_main.c:258:13:TelemetryTask	160	static
+../App/app/app_main.c:287:6:app_start	8	static

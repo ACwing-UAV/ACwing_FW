@@ -1,0 +1,3 @@
+../App/control/control_hooks.c:7:28:ctrl_init	4	static
+../App/control/control_hooks.c:8:28:ctrl_rate_step	16	static
+../App/control/control_hooks.c:9:28:ctrl_attitude_step	16	static

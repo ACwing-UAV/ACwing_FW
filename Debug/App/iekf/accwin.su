@@ -1,0 +1,4 @@
+../App/iekf/accwin.c:8:6:accwin_reset	16	static
+../App/iekf/accwin.c:14:6:accwin_add	32	static
+../App/iekf/accwin.c:22:6:accwin_rotate	56	static
+../App/iekf/accwin.c:29:5:accwin_mean	32	static

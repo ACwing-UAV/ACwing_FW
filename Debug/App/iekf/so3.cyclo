@@ -1,0 +1,12 @@
+../App/iekf/so3.c:15:6:so3_skew	1
+../App/iekf/so3.c:22:6:so3_exp	2
+../App/iekf/so3.c:46:7:vec3_dot	1
+../App/iekf/so3.c:47:7:vec3_norm	1
+../App/iekf/so3.c:49:6:vec3_cross	1
+../App/iekf/so3.c:56:5:vec3_normalize	2
+../App/iekf/so3.c:65:6:so3_orthonormalize	3
+../App/iekf/so3.c:80:6:so3_to_quat	6
+../App/iekf/so3.c:106:6:mat3_mul	3
+../App/iekf/so3.c:113:6:mat3_vec	1
+../App/iekf/so3.c:120:6:mat3t_vec	1
+../App/iekf/so3.c:127:5:mat3_inv	2

@@ -1,0 +1,21 @@
+App/app/est_pipeline.o: ../App/app/est_pipeline.c \
+ ../App/app/est_pipeline.h \
+ C:/Users/acirillo/Documents/99\ -\ PersonalProjects/01\ -\ stm32_attitude_iekf/App/iekf/iekf.h \
+ C:/Users/acirillo/Documents/99\ -\ PersonalProjects/01\ -\ stm32_attitude_iekf/App/iekf/accwin.h \
+ C:/Users/acirillo/Documents/99\ -\ PersonalProjects/01\ -\ stm32_attitude_iekf/App/iekf/calib.h \
+ C:/Users/acirillo/Documents/99\ -\ PersonalProjects/01\ -\ stm32_attitude_iekf/App/iekf/iekf.h \
+ C:/Users/acirillo/Documents/99\ -\ PersonalProjects/01\ -\ stm32_attitude_iekf/App/drivers/imu_lsm6dsv16x/imu_lsm6dsv16x.h \
+ C:/Users/acirillo/Documents/99\ -\ PersonalProjects/01\ -\ stm32_attitude_iekf/App/drivers/common/sensor_bus.h \
+ C:/Users/acirillo/Documents/99\ -\ PersonalProjects/01\ -\ stm32_attitude_iekf/App/third_party/st_lsm6dsv16x/lsm6dsv16x_reg.h \
+ C:/Users/acirillo/Documents/99\ -\ PersonalProjects/01\ -\ stm32_attitude_iekf/App/control/control_hooks.h \
+ C:/Users/acirillo/Documents/99\ -\ PersonalProjects/01\ -\ stm32_attitude_iekf/App/iekf/so3.h
+../App/app/est_pipeline.h:
+C:/Users/acirillo/Documents/99\ -\ PersonalProjects/01\ -\ stm32_attitude_iekf/App/iekf/iekf.h:
+C:/Users/acirillo/Documents/99\ -\ PersonalProjects/01\ -\ stm32_attitude_iekf/App/iekf/accwin.h:
+C:/Users/acirillo/Documents/99\ -\ PersonalProjects/01\ -\ stm32_attitude_iekf/App/iekf/calib.h:
+C:/Users/acirillo/Documents/99\ -\ PersonalProjects/01\ -\ stm32_attitude_iekf/App/iekf/iekf.h:
+C:/Users/acirillo/Documents/99\ -\ PersonalProjects/01\ -\ stm32_attitude_iekf/App/drivers/imu_lsm6dsv16x/imu_lsm6dsv16x.h:
+C:/Users/acirillo/Documents/99\ -\ PersonalProjects/01\ -\ stm32_attitude_iekf/App/drivers/common/sensor_bus.h:
+C:/Users/acirillo/Documents/99\ -\ PersonalProjects/01\ -\ stm32_attitude_iekf/App/third_party/st_lsm6dsv16x/lsm6dsv16x_reg.h:
+C:/Users/acirillo/Documents/99\ -\ PersonalProjects/01\ -\ stm32_attitude_iekf/App/control/control_hooks.h:
+C:/Users/acirillo/Documents/99\ -\ PersonalProjects/01\ -\ stm32_attitude_iekf/App/iekf/so3.h:

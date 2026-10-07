@@ -1,0 +1,7 @@
+../App/platform/imu_i2c.c:14:16:wr	2
+../App/platform/imu_i2c.c:21:16:rd	2
+../App/platform/imu_i2c.c:28:13:dly	2
+../App/platform/imu_i2c.c:33:6:imu_i2c_make_bus	1
+../App/platform/imu_i2c.c:43:9:imu_i2c_read_dma	4
+../App/platform/imu_i2c.c:54:6:imu_i2c_rx_cplt_isr	3
+../App/platform/imu_i2c.c:59:6:imu_i2c_error_isr	3

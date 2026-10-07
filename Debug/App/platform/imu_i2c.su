@@ -1,0 +1,7 @@
+../App/platform/imu_i2c.c:14:16:wr	40	static
+../App/platform/imu_i2c.c:21:16:rd	40	static
+../App/platform/imu_i2c.c:28:13:dly	16	static
+../App/platform/imu_i2c.c:33:6:imu_i2c_make_bus	24	static
+../App/platform/imu_i2c.c:43:9:imu_i2c_read_dma	40	static
+../App/platform/imu_i2c.c:54:6:imu_i2c_rx_cplt_isr	16	static
+../App/platform/imu_i2c.c:59:6:imu_i2c_error_isr	16	static
