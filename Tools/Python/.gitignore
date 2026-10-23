@@ -1,0 +1,12 @@
+__pycache__/
+*.py[cod]
+.pytest_cache/
+*.egg-info/
+.venv/
+build/
+dist/
+# outputs of the tools
+iekf_log_*.mat
+iekf_log_*.bin
+iekf_cap_*.bin
+sim.bin
