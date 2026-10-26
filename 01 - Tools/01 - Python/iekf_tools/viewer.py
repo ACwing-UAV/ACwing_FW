@@ -86,6 +86,7 @@ class LiveViewer:
         self.lag_ref = None
         self.t_start = time.monotonic()
         self.finished = False
+        self.draw_ms = 0.0                                     # smoothed redraw time
 
     # ------------------------------------------------------------ reception
     def _reader(self):
@@ -163,6 +164,8 @@ class LiveViewer:
             txt += f"   lag {lag:.2f} s"
             if lag > 0.5:
                 txt += "  <-- VIEWER CANNOT KEEP UP"
+            if self.draw_ms > 0:
+                txt += f"   draw {self.draw_ms:.0f} ms"
             txt += "\nbias [deg/s]  {:6.3f} {:6.3f} {:6.3f}".format(*np.degrees(s.bias))
             fl = int(s.flags)
             tags = [n for b, n in ((F_ACC_GATED, "ACC de-weighted"), (F_MAG_GATED, "MAG de-weighted"),
@@ -235,7 +238,7 @@ class LiveViewer:
         self._fig.canvas.draw_idle()
 
     # ------------------------------------------------------------ main loop
-    def run(self, refresh_hz: float = 30.0) -> Struct:
+    def run(self, refresh_hz: float = 15.0) -> Struct:
         import matplotlib.pyplot as plt
 
         print(f"Log: {self.log_file}\nRaw capture: {self.bin_file}")
@@ -264,13 +267,19 @@ class LiveViewer:
                     got = True
                 now = time.monotonic()
                 if got and now - t_draw > 1.0 / refresh_hz:
+                    t0 = time.monotonic()
                     self._redraw()
+                    if self.show:
+                        self._fig.canvas.flush_events()       # draw now, to time it
+                    self.draw_ms = 0.8 * self.draw_ms + 0.2 * 1e3 * (time.monotonic() - t0)
                     t_draw = now
                 if now - t_save > 10:
                     self.save()
                     t_save = now
                 if self.show:
-                    plt.pause(0.005)
+                    # GUI events without plt.pause (which re-shows the window at
+                    # every call and makes it sluggish on Windows)
+                    self._fig.canvas.start_event_loop(0.01)
                 else:
                     time.sleep(0.005)
         except KeyboardInterrupt:

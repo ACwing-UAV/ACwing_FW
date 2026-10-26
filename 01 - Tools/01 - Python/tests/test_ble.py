@@ -95,3 +95,18 @@ def test_viewer_over_ble_worker_process(tmp_path):
     assert open(v.bin_file, "rb").read() == stream
     assert src.n_bytes == len(stream) and src.n_notifications == -(-len(stream) // 244)
     assert src._proc is None                                         # worker stopped by close()
+
+
+def test_ble_capture_headless(tmp_path, monkeypatch, capsys):
+    """capture --ble: rates printed, bytes written, worker stopped (fake radio)."""
+    import iekf_tools.ble_io as bio
+    from iekf_tools.capture import ble_capture
+    stream = synthetic_stream(duration=3.0, state_decim=4, ble=(3, 247, 0, 0))
+    real = bio.BleSource
+    monkeypatch.setattr(bio, "BleSource", lambda target, decim=4: real(
+        fake_stream=stream, fake_rate=5400, verbose=False))
+    path = ble_capture("", duration=8.0, decim=4, out_dir=str(tmp_path))
+    assert open(path, "rb").read() == stream
+    out = capsys.readouterr().out
+    assert "notif/s" in out and "STATE " in out and "lag" in out and "fw: streaming MTU 247 drop 0" in out
+    assert "Done:" in out and "expected 60" in out

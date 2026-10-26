@@ -61,6 +61,73 @@ def tlm_capture(port: str, duration: float = 60.0, baud: int = 921600, out_dir: 
     return path
 
 
+def ble_capture(target: str = "", duration: float = 30.0, decim: int | None = 4,
+                out_dir: str = ".") -> str:
+    """Records the BLE telemetry to ``iekf_ble_YYYYMMDD_HHMMSS.bin``, no graphics.
+
+    Every 2 s it prints what the PC actually receives:
+    - notifications/s and kB/s;
+    - STATE/s (expected 240/decim);
+    - the lag between PC time and firmware time (growing = data delivered late);
+    - the BLE fields of the last STATUS (state, MTU, firmware-side drops).
+
+    Use it to tell a slow link (low notifications/s, firmware drops) from a slow
+    viewer (rates here are fine but the viewer is late). Returns the file path.
+    """
+    from .ble_io import BleSource
+    from .telemetry import BLE_STATES, decode_state
+
+    path = os.path.join(out_dir, datetime.now().strftime("iekf_ble_%Y%m%d_%H%M%S.bin"))
+    src = BleSource(target, decim=decim)
+    print(f"Recording to {path} for {duration:.0f} s (Ctrl+C to stop).")
+    buf = b""
+    n_state = n_state_win = 0
+    notif_prev = bytes_prev = 0
+    first = None                     # (pc time, firmware time) of the first STATE
+    lag = float("nan")
+    st = None
+    t0 = time.monotonic()
+    t_next = 2.0
+    try:
+        with open(path, "wb") as fh:
+            while (el := time.monotonic() - t0) < duration and not src.eof:
+                chunk = src.read()
+                if chunk:
+                    fh.write(chunk)
+                    frames, buf = parse_telemetry(buf + chunk)
+                    for fr in frames:
+                        if fr.type == 1:
+                            s = decode_state(fr.payload)
+                            n_state += 1
+                            n_state_win += 1
+                            now = time.monotonic()
+                            if first is None or s.t_us * 1e-6 < first[1]:
+                                first = (now, s.t_us * 1e-6)
+                            lag = (now - first[0]) - (s.t_us * 1e-6 - first[1])
+                        elif fr.type == 3:
+                            st = decode_status(fr.payload)
+                if el > t_next:
+                    dn = src.n_notifications - notif_prev
+                    db = src.n_bytes - bytes_prev
+                    notif_prev, bytes_prev = src.n_notifications, src.n_bytes
+                    line = (f"  {el:4.0f} s: {dn / 2:5.0f} notif/s  {db / 2000:5.2f} kB/s  "
+                            f"STATE {n_state_win / 2:5.1f}/s  lag {lag:6.2f} s")
+                    if st is not None and st.ble_state > 0:
+                        line += (f"  | fw: {BLE_STATES[int(st.ble_state)] if st.ble_state < 4 else '?'}"
+                                 f" MTU {st.ble_mtu:.0f} drop {st.ble_drop:.0f}")
+                    print(line)
+                    n_state_win = 0
+                    t_next += 2.0
+    except KeyboardInterrupt:
+        pass
+    finally:
+        src.close()
+    el = time.monotonic() - t0
+    print(f"Done: {src.n_bytes} bytes, {src.n_notifications} notifications, {n_state} STATE in {el:.1f} s "
+          f"({n_state / max(el, 1e-3):.1f} STATE/s, expected {240 / max(1, decim or 4):.0f}).")
+    return path
+
+
 def tlm_sniffer(port: str, baud: int = 921600, duration: float = 3.0, data: bytes | None = None):
     """Byte-level telemetry debugging.
 

@@ -1355,6 +1355,7 @@ Linux/BlueZ):
 iekf-tools scan                            # boards advertising, marked "<-- IEKF board"
 iekf-tools viewer --ble                    # board found automatically, STATE 60 Hz
 iekf-tools viewer --ble IEKF --decim 8
+iekf-tools capture --ble --duration 30     # no graphics: received rates every 2 s
 ```
 
 How the tools behave:
@@ -1389,7 +1390,7 @@ How the tools behave:
 | HardFault / stack overflow at start-up | FreeRTOS heap too small |
 | `multiple definition of HAL_GPIO_EXTI_Callback` after a regeneration | keep a single definition, calling `app_exti(pin)` |
 | `ble_drop` grows | link slower than the data: decimation 8, larger MTU |
-| PC viewer over BLE: rate below 60 Hz, `lag` growing, `lost 0` and `drop 0` | the PC delivers the notifications late (nothing is lost on the link). The Python tools receive BLE in a separate process for this reason (since the BLE support was added); update them. The `BLE:` line shows the notifications/s actually received: ~60–100/s is expected at 60 Hz |
+| PC viewer over BLE: rate below 60 Hz, `lag` growing, `lost 0` and `drop 0` | the PC delivers the notifications late (nothing is lost on the link). The Python tools receive BLE in a separate process for this reason (since the BLE support was added); update them. The `BLE:` line shows the notifications/s actually received, `draw` the redraw time. `iekf-tools capture --ble` measures the link without graphics: if it shows 60 STATE/s and a stable lag, the limit is the viewer's redraw on that PC |
 | PC tools: board not found | it is connected to another central (phone): disconnect it. Python on Linux: `bluetoothd` running |
 
 ### 12.11 Towards a mobile app

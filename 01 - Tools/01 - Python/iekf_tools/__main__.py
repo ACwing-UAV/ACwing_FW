@@ -47,7 +47,17 @@ def _cmd_scan(a):
 
 
 def _cmd_capture(a):
-    from .capture import tlm_capture
+    from .capture import ble_capture, tlm_capture
+    if a.ble is not None:
+        try:
+            ble_capture(a.ble, a.duration, a.decim, a.out_dir)
+        except (RuntimeError, ImportError) as exc:
+            print(f"ERROR: {exc}", file=sys.stderr)
+            return 2
+        return 0
+    if not a.port:
+        print("capture: give a serial port or --ble [NAME]", file=sys.stderr)
+        return 2
     tlm_capture(a.port, a.duration, a.baud, a.out_dir)
 
 
@@ -143,8 +153,11 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--timeout", type=float, default=5.0, help="scan time [s] (default 5)")
     s.set_defaults(func=_cmd_scan)
 
-    s = sub.add_parser("capture", help="record raw telemetry to iekf_cap_*.bin")
-    s.add_argument("port")
+    s = sub.add_parser("capture", help="record raw telemetry to .bin, no graphics (USB or BLE)")
+    s.add_argument("port", nargs="?", help="serial port (omit with --ble)")
+    s.add_argument("--ble", nargs="?", const="", metavar="NAME_OR_ADDRESS",
+                   help="record the BLE link instead, printing the received rates every 2 s")
+    s.add_argument("--decim", type=int, default=4, help="BLE only: STATE every N acc updates")
     s.add_argument("--duration", type=float, default=60.0, help="seconds (default 60)")
     s.add_argument("--baud", type=int, default=921600)
     s.add_argument("--out-dir", default=".")

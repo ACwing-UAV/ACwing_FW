@@ -404,8 +404,17 @@ class BleSource:
 
     def close(self) -> None:
         if self._proc is not None:
+            # keep draining the pipe while the worker stops: a worker blocked in
+            # send() on a full pipe could not see stop_evt (BufferError on exit)
             self._stop_evt.set()
-            self._proc.join(timeout=8.0)
+            t_end = time.monotonic() + 8.0
+            while self._proc.is_alive() and time.monotonic() < t_end:
+                try:
+                    while self._conn.poll():
+                        self._conn.recv()
+                except (EOFError, OSError):
+                    pass
+                self._proc.join(0.05)
             if self._proc.is_alive():                              # pragma: no cover
                 self._proc.terminate()
             self._proc = None
