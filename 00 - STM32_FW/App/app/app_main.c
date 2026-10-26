@@ -53,6 +53,7 @@ static volatile uint32_t  s_irqCount, s_tlmDrop, s_busErr, s_fifoOvr;
 /* Bring-up diagnostics (Live Expressions in the debugger) */
 static volatile uint32_t  s_procCycMax, s_procCycLast;   /* CPU cycles of parse+est_process */
 static volatile uint32_t  s_wordsMax;
+static volatile uint32_t  s_drainReads;   /* immediate re-reads (INT1 edge recovery) */
 static volatile int8_t    s_imuInit = 1;          /* 1 = in progress, 0 = OK, <0 error */
 static imu_parse_stats_t  s_psTot;                /* cumulative FIFO counters        */
 
@@ -202,18 +203,35 @@ static void ImuTask(void *arg)
     uint32_t prevCyc = 0;
     uint8_t  first = 1;
 
+    /* INT1 is a LEVEL ("FIFO level >= watermark") while the EXTI fires on its
+     * RISING EDGE. If one read falls behind (start-up of the BLE stack, a bus
+     * retry, ...), the FIFO stays above the watermark after the read, INT1 never
+     * goes low again and no further edge arrives: the task would live on the
+     * 5 ms timeout, read big chunks, hit the DMA timeout and lose samples
+     * (seen with BLE: 0 IRQ/s, ~39 % of the gyro samples, ~50 bus errors/s).
+     * Hence: after a read that found much more than the watermark, or after a
+     * wake-up by timeout, read again at once; the FIFO drops below the
+     * watermark, INT1 goes low and the next sample produces an edge again. */
+    uint32_t wait_ms = 5u;
     for (;;) {
-        /* timeout = safety net in case an INT1 edge is missed */
-        (void)osThreadFlagsWait(FLAG_IMU_IRQ, osFlagsWaitAny, 5);
+        const uint32_t fl = osThreadFlagsWait(FLAG_IMU_IRQ, osFlagsWaitAny, wait_ms);
+        const int by_timeout = (fl & osFlagsError) != 0u;
         const uint32_t cyc = s_irqCyc;
 
         uint16_t words = 0;
-        if (imu_fifo_level(&s_imu, &words) != IMU_OK) { s_busErr++; continue; }
-        if (words == 0) continue;
+        if (imu_fifo_level(&s_imu, &words) != IMU_OK) { s_busErr++; wait_ms = 5u; continue; }
+        if (words == 0) { wait_ms = 5u; continue; }
         if (words > IMU_FIFO_MAX_WORDS) { words = IMU_FIFO_MAX_WORDS; s_fifoOvr++; }
 
+        /* timeout only for a stuck bus: 48 words = 336 bytes take ~8 ms at 400 kHz */
         if (imu_i2c_read_dma(IMU_FIFO_REG, s_fifo,
-                             (uint16_t)(words * IMU_FIFO_WORD_BYTES), 3) != 0) { s_busErr++; continue; }
+                             (uint16_t)(words * IMU_FIFO_WORD_BYTES), 12) != 0) { s_busErr++; wait_ms = 1u; continue; }
+        if (words >= 2u * APP_IMU_WATERMARK || (by_timeout && wait_ms != 0u)) {
+            wait_ms = 0u;                      /* drain now: let INT1 fall */
+            s_drainReads++;
+        } else {
+            wait_ms = 5u;
+        }
 
         imu_parse_stats_t ps = { 0 };
         const size_t n = imu_fifo_parse(&s_imu, s_fifo, words, s_ev, IMU_FIFO_MAX_WORDS, &ps);

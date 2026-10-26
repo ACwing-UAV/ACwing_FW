@@ -1428,6 +1428,7 @@ CMD is the place for future commands: arming, gains, logging.
 | Build errors with paths that no longer exist, after moving or re-cloning the project | stale makefiles in the local `Debug/` folder: delete it (or *Project → Clean*), re-import `00 - STM32_FW` and build again |
 | Comparison: "INIT of this boot was lost" | UART saturated during the capture; repeat |
 | Euler plots jump by 180° | gimbal lock (|pitch| ≈ 90°); use the quaternion figure |
+| `iekf-tools info`: IMU interrupts 0/s, gyro far below 960/s, tens of I²C errors/s; viewer below its rate with a growing `lag` and `lost 0` | INT1 stuck high: it is a *level* (FIFO ≥ watermark) and the EXTI is on the *rising edge*. One late read leaves the FIFO above the watermark, so no edge arrives any more and the task lives on its 5 ms timeout, with big reads, DMA timeouts and lost samples. Fixed in `ImuTask`: immediate re-read after a large read or a timeout wake-up, and a 12 ms DMA timeout. `s_drainReads` in *Live Expressions* counts the recoveries |
 | `undefined reference to arm_mat_*` | CMSIS-DSP GCC library not linked (§8) |
 
 ---
@@ -1445,6 +1446,11 @@ CMD is the place for future commands: arming, gains, logging.
   based on the innovation can lock the filter out of a true error; it needs a cap
   and an independent way to recognise a genuine error (here: world-frame
   persistence and stillness).
+- **A level interrupt on an edge-triggered EXTI needs a way out.** INT1 is high
+  while the FIFO is above the watermark. If a read ends with the FIFO still
+  above it, no new edge ever comes and the loop silently degrades to polling.
+  Phase 1 never hit it; enabling BLE, with a slower start-up, did. The reader
+  must drain the FIFO below the watermark.
 - **Process noise is a model-error budget.** The gyro σ that worked was 150×
   the datasheet noise density because it also covers scale and alignment errors.
 
