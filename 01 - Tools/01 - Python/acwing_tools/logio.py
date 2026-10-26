@@ -1,6 +1,6 @@
 """Viewer logs: the ``L`` struct saved as ``.mat``, shared with the MATLAB tools.
 
-The live viewers (MATLAB ``iekfLiveViewer.m`` and Python ``viewer.py``) save
+The live viewers (MATLAB ``acwingLiveViewer.m`` and Python ``viewer.py``) save
 the same structure, variable ``L`` in a ``.mat`` file:
 
 ==========  =======  ==================================================
@@ -87,7 +87,7 @@ def _matlab_value(v):
 
 
 def save_log(path, L) -> None:
-    """Saves a log Struct with the layout of ``iekfLiveViewer.m`` (variable ``L``)."""
+    """Saves a log Struct with the layout of ``acwingLiveViewer.m`` (variable ``L``)."""
     out = {k: np.atleast_2d(np.asarray(L[k], dtype=float)) for k in ARRAY_FIELDS}
     out["init"] = ({k: _matlab_value(v) for k, v in L.init.items()}
                    if L.get("init") else np.zeros((0, 0)))

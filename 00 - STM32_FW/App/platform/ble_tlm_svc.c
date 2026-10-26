@@ -1,6 +1,6 @@
 /**
  * @file  ble_tlm_svc.c
- * @brief "IEKF Telemetry" GATT service + TX thread on STM32_WPAN (see ble_tlm_svc.h).
+ * @brief "ACwing telemetry" GATT service + TX thread on STM32_WPAN (see ble_tlm_svc.h).
  *
  * Event flow
  *   HCI user-event thread (stack)  -> TlmSvc_EventHandler(): only flags and

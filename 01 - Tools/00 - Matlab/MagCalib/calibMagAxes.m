@@ -1,7 +1,7 @@
 function out = calibMagAxes(logFile, gapSec, mapFw, hardIronFw)
 %CALIBMAGAXES  Magnetometer orientation w.r.t. the gyroscope + hard-iron, from data.
 %
-%   out = calibMagAxes('iekf_log_....mat')
+%   out = calibMagAxes('acwing_log_....mat')
 %
 %   PRINCIPLE: a world-fixed vector (the magnetic field), seen from a rotating
 %   body, changes exactly as the gyroscope says:
@@ -14,7 +14,7 @@ function out = calibMagAxes(logFile, gapSec, mapFw, hardIronFw)
 %       (I - D') * M * h = M*m_j - D'*M*m_i
 %   The M with the smallest residual wins, and it must win by a clear margin.
 %
-%   ACQUISITION: iekfLiveViewer, board still for 2 s, then ~40 s of slow/moderate
+%   ACQUISITION: acwingLiveViewer, board still for 2 s, then ~40 s of slow/moderate
 %   rotations about ALL axes (tilts included), away from metal objects.
 %   The log holds the field AFTER the MAG_AXIS_MAP / MAG_HARD_IRON of the firmware
 %   that recorded it. Either

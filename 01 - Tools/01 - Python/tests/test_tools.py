@@ -1,13 +1,13 @@
 """Viewer (headless replay), log I/O, magnetometer calibration, sniffer, CLI."""
 import numpy as np
 
-from iekf_tools.__main__ import main
-from iekf_tools.capture import tlm_sniffer
-from iekf_tools.logio import load_log, save_log
-from iekf_tools.magcalib import calib_mag_axes, fit_hard_iron, signed_permutations
-from iekf_tools.serial_io import FileSource
-from iekf_tools.simulate import write_stream
-from iekf_tools.viewer import LiveViewer
+from acwing_tools.__main__ import main
+from acwing_tools.capture import tlm_sniffer
+from acwing_tools.logio import load_log, save_log
+from acwing_tools.magcalib import calib_mag_axes, fit_hard_iron, signed_permutations
+from acwing_tools.serial_io import FileSource
+from acwing_tools.simulate import write_stream
+from acwing_tools.viewer import LiveViewer
 
 
 def _replay_log(tmp_path, **kw):
@@ -70,7 +70,7 @@ def test_mag_check_detects_stale_hard_iron(tmp_path):
     """Log of a firmware whose MAG_HARD_IRON no longer matches: the residual offset
     must be found and the corrected value must be the absolute one. Same numbers as
     00 - Matlab/MagCalib/magCheck.m on the same log (checked in Octave)."""
-    from iekf_tools.magcalib import mag_check
+    from acwing_tools.magcalib import mag_check
     hi_true = np.array([30.0, -12.0, 55.0])
     _, L, _ = _replay_log(tmp_path, duration=40.0, axis_map=np.eye(3), hard_iron=tuple(hi_true))
     fw = np.array([5.0, 0.0, 0.0])                     # stale value in the firmware

@@ -5,10 +5,10 @@ import time
 
 import numpy as np
 
-from iekf_tools.ble_io import BleSource, is_board_name, pick_board
-from iekf_tools.simulate import ble_notifications, pack_status, synthetic_stream
-from iekf_tools.telemetry import decode_status, parse_telemetry
-from iekf_tools.viewer import LiveViewer
+from acwing_tools.ble_io import BleSource, is_board_name, pick_board
+from acwing_tools.simulate import ble_notifications, pack_status, synthetic_stream
+from acwing_tools.telemetry import decode_status, parse_telemetry
+from acwing_tools.viewer import LiveViewer
 
 
 def test_decode_status_both_lengths():
@@ -23,9 +23,11 @@ def test_decode_status_both_lengths():
 
 def test_board_discovery():
     devs = [("Phone", "AA:01", -40), ("STM32WB", "AA:02", -70), ("IEKF", "AA:03", -60),
-            ("", "AA:04", -30)]
-    assert is_board_name("IEKF") and is_board_name("STM32WB") and not is_board_name("Phone")
-    assert pick_board(devs)[1] == "AA:03"                            # strongest board name
+            ("", "AA:04", -30), ("ACwFC", "AA:05", -55)]
+    assert is_board_name("ACwFC") and is_board_name("IEKF") and is_board_name("STM32WB")
+    assert not is_board_name("Phone")
+    assert pick_board(devs)[1] == "AA:05"                            # strongest board name
+    assert pick_board(devs[:4])[1] == "AA:03"                         # board before the rename
     assert pick_board(devs, "STM32WB")[1] == "AA:02"                  # by name
     assert pick_board(devs, "aa:01")[0] == "Phone"                    # by address
     assert pick_board(devs, "nothing") is None
@@ -70,13 +72,13 @@ def test_viewer_counts_real_gaps_on_decimated_stream(tmp_path):
     """Drop one STATE of a 4x decimated stream: exactly 1 lost."""
     stream = synthetic_stream(duration=2.0, state_decim=4)
     frames, _ = parse_telemetry(stream)
-    from iekf_tools.telemetry import encode_frame
+    from acwing_tools.telemetry import encode_frame
     states = [i for i, f in enumerate(frames) if f.type == 1]
     drop = states[50]
     cut = b"".join(encode_frame(f.type, f.payload) for i, f in enumerate(frames) if i != drop)
     p = tmp_path / "gap.bin"
     p.write_bytes(cut)
-    from iekf_tools.serial_io import FileSource
+    from acwing_tools.serial_io import FileSource
     v = LiveViewer(FileSource(str(p), rate=None, chunk=300), log_dir=str(tmp_path),
                    stop_at_eof=True, show=False)
     v.run()
@@ -99,8 +101,8 @@ def test_viewer_over_ble_worker_process(tmp_path):
 
 def test_ble_capture_headless(tmp_path, monkeypatch, capsys):
     """capture --ble: rates printed, bytes written, worker stopped (fake radio)."""
-    import iekf_tools.ble_io as bio
-    from iekf_tools.capture import ble_capture
+    import acwing_tools.ble_io as bio
+    from acwing_tools.capture import ble_capture
     stream = synthetic_stream(duration=3.0, state_decim=4, ble=(3, 247, 0, 0))
     real = bio.BleSource
     monkeypatch.setattr(bio, "BleSource", lambda target, decim=4: real(

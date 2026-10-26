@@ -1,9 +1,9 @@
 function [offset, radius] = fitHardIron(logFile)
 %FITHARDIRON  Magnetometer hard-iron offset (least-squares sphere fit).
 %
-%   [offset, radius] = fitHardIron('iekf_log_....mat')
+%   [offset, radius] = fitHardIron('acwing_log_....mat')
 %
-%   Procedure: firmware with MAG_HARD_IRON = {0,0,0}, start iekfLiveViewer, then
+%   Procedure: firmware with MAG_HARD_IRON = {0,0,0}, start acwingLiveViewer, then
 %   slowly rotate the board in ALL directions for ~30 s (figure-eight on several
 %   planes). The log holds the field already in the BODY frame (MAG_AXIS_MAP
 %   applied), so the offset can be copied as-is into MAG_HARD_IRON (app_config.h).

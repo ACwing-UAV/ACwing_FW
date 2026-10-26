@@ -3,9 +3,9 @@ requires = ["setuptools>=61"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "iekf-tools"
+name = "acwing-tools"
 version = "1.0.0"
-description = "Python tools for the STM32WB55 IEKF attitude firmware: telemetry, live viewer, capture, magnetometer calibration, embedded-vs-reference filter comparison"
+description = "ACwing flight-controller PC tools: telemetry (USB/BLE), live attitude viewer, capture, magnetometer calibration, embedded-vs-reference IEKF comparison"
 readme = "README.md"
 requires-python = ">=3.9"
 dependencies = ["numpy>=1.21", "scipy>=1.7", "matplotlib>=3.5", "pyserial>=3.5"]
@@ -15,10 +15,11 @@ test = ["pytest>=7"]
 ble = ["bleak>=0.22"]
 
 [project.scripts]
-iekf-tools = "iekf_tools.__main__:main"
+acwing-tools = "acwing_tools.__main__:main"
+iekf-tools = "acwing_tools.__main__:main"    # old name, kept as an alias
 
 [tool.setuptools.packages.find]
-include = ["iekf_tools*"]
+include = ["acwing_tools*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

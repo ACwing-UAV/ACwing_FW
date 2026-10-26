@@ -2,7 +2,7 @@ function out = compareEmbeddedVsMatlab(captureFile, doPlot)
 %COMPAREEMBEDDEDVSMATLAB  Compares the embedded IEKF (C, float32, on the board)
 %   with the project's ORIGINAL MATLAB filter iekfAttitude.m, on the same inputs.
 %
-%   out = compareEmbeddedVsMatlab('iekf_cap_YYYYMMDD_HHMMSS.bin')
+%   out = compareEmbeddedVsMatlab('acwing_cap_YYYYMMDD_HHMMSS.bin')
 %
 %   HOW IT WORKS
 %   For every 240 Hz window the firmware (APP_TLM_REPLAY = 1) records the EXACT
@@ -31,7 +31,7 @@ function out = compareEmbeddedVsMatlab(captureFile, doPlot)
 %     capture exercised. The original is also run, to show how much the
 %     extensions change the estimate.
 %
-%   The .bin is the raw capture written by tlmCapture.m (or by iekfLiveViewer
+%   The .bin is the raw capture written by tlmCapture.m (or by acwingLiveViewer
 %   next to its .mat). Start the capture BEFORE resetting the board (window 0
 %   is needed). Path: run 01 - Tools/00 - Matlab/initPath.m (the original
 %   iekfAttitude.m, expSO3.m, skewSym.m live in FiltersComparison/IEKF_originalVersion).

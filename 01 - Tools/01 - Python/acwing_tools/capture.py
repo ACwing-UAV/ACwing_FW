@@ -13,7 +13,7 @@ from .telemetry import decode_status, frame_counts, parse_telemetry, status_diag
 
 
 def tlm_capture(port: str, duration: float = 60.0, baud: int = 921600, out_dir: str = ".") -> str:
-    """Records the raw telemetry to ``iekf_cap_YYYYMMDD_HHMMSS.bin``, no decoding.
+    """Records the raw telemetry to ``acwing_cap_YYYYMMDD_HHMMSS.bin``, no decoding.
 
     Used for the comparison with the reference filters (``APP_TLM_REPLAY = 1``):
     at ~44 kB/s a live viewer cannot keep up, while writing bytes to disk costs
@@ -23,7 +23,7 @@ def tlm_capture(port: str, duration: float = 60.0, baud: int = 921600, out_dir: 
     2-4 s, then move it. Window 0 of the trace arrives right after the
     calibration. Returns the file path.
     """
-    path = os.path.join(out_dir, datetime.now().strftime("iekf_cap_%Y%m%d_%H%M%S.bin"))
+    path = os.path.join(out_dir, datetime.now().strftime("acwing_cap_%Y%m%d_%H%M%S.bin"))
     ser = open_serial(port, baud)
     print(f"Recording to {path} for {duration:.0f} s: reset the board NOW.")
     n_tot = 0
@@ -49,7 +49,7 @@ def tlm_capture(port: str, duration: float = 60.0, baud: int = 921600, out_dir: 
     finally:
         ser.close()
     print(f"Done: {n_tot} bytes ({n_tot / duration / 1000:.1f} kB/s on average).")
-    print(f"  python -m iekf_tools compare {path}")
+    print(f"  python -m acwing_tools compare {path}")
     # rate over the second half only: the first half includes the reset and the
     # 2 s calibration, during which only STATUS (~0.6 kB/s) is sent
     if n_half is not None and duration > t_half:
@@ -63,7 +63,7 @@ def tlm_capture(port: str, duration: float = 60.0, baud: int = 921600, out_dir: 
 
 def ble_capture(target: str = "", duration: float = 30.0, decim: int | None = 4,
                 out_dir: str = ".") -> str:
-    """Records the BLE telemetry to ``iekf_ble_YYYYMMDD_HHMMSS.bin``, no graphics.
+    """Records the BLE telemetry to ``acwing_ble_YYYYMMDD_HHMMSS.bin``, no graphics.
 
     Every 2 s it prints what the PC actually receives:
     - notifications/s and kB/s;
@@ -77,7 +77,7 @@ def ble_capture(target: str = "", duration: float = 30.0, decim: int | None = 4,
     from .ble_io import BleSource
     from .telemetry import BLE_STATES, decode_state
 
-    path = os.path.join(out_dir, datetime.now().strftime("iekf_ble_%Y%m%d_%H%M%S.bin"))
+    path = os.path.join(out_dir, datetime.now().strftime("acwing_ble_%Y%m%d_%H%M%S.bin"))
     src = BleSource(target, decim=decim)
     print(f"Recording to {path} for {duration:.0f} s (Ctrl+C to stop).")
     buf = b""

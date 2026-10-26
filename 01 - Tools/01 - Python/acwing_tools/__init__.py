@@ -1,4 +1,4 @@
-"""Python tools for the STM32WB55 IEKF attitude firmware.
+"""PC tools of the ACwing flight controller (IEKF attitude firmware, STM32WB55).
 
 Python equivalents of the MATLAB tools in ``01 - Tools/00 - Matlab/``: telemetry parsing and
 decoding, live 3D viewer, raw capture, byte-level sniffer, magnetometer
