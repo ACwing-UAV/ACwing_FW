@@ -127,13 +127,17 @@ stm32_iekf_attitude_fw/
 │   │   └── FiltersComparison/      tlmCapture, tlmSniffer, compareEmbeddedVsMatlab
 │   │       ├── IEKF_originalVersion/   ORIGINAL filter developed in MATLAB: iekfAttitude.m, expSO3, logSO3, skewSym
 │   │       └── IEKF_embeddedVersion/   EXTENDED filter: iekfAttitudeEmb.m + iekfCore*.m (MATLAB mirror of the C code)
-│   └── 01 - Python/                Python equivalents of the MATLAB tools (package iekf_tools, CLI iekf-tools)
-│       ├── iekf_tools/             viewer, capture + sniffer, compare, magcalib, telemetry,
-│       │                           ble_io (BLE link, bleak), filters/ (original + embedded mirror),
-│       │                           logio (.mat logs), simulate
-│       ├── tests/                  pytest suite: parity with the MATLAB outputs, recorded captures
-│       ├── pyproject.toml, requirements.txt
-│       └── README.md               installation, MATLAB ↔ Python map, commands
+│   ├── 01 - Python/                Python equivalents of the MATLAB tools (package iekf_tools, CLI iekf-tools)
+│   │   ├── iekf_tools/             viewer, capture + sniffer, compare, magcalib, telemetry,
+│   │   │                           ble_io (BLE link, bleak), filters/ (original + embedded mirror),
+│   │   │                           logio (.mat logs), simulate
+│   │   ├── tests/                  pytest suite: parity with the MATLAB outputs, recorded captures
+│   │   ├── pyproject.toml, requirements.txt
+│   │   └── README.md               installation, MATLAB ↔ Python map, commands
+│   └── 02 - App/                   ACwing Pilot: flight/telemetry/settings/calibration app (web/PWA, iOS, Android)
+│       ├── src/                    React + TypeScript; protocol/ (v2 frames and commands), sim/ (reference drone)
+│       ├── HANDOVER_FW.md          drone ↔ app protocol v2: what the firmware must implement
+│       └── README.md               run, simulator, native builds
 ├── .gitignore                      build outputs (Debug/, Release/) are not versioned
 └── README.md                       this file: theory, firmware, procedures, results
 ```
@@ -170,6 +174,7 @@ belong to:
 | validate the embedded filter | §11: MATLAB `compareEmbeddedVsMatlab`, Python `iekf-tools compare` |
 | use the BLE link | §12: MATLAB `iekfLiveViewer("ble")`, Python `iekf-tools viewer --ble` |
 | use the tools without MATLAB | [`01 - Tools/01 - Python/README.md`](01%20-%20Tools/01%20-%20Python/README.md) |
+| fly from the ACwing Pilot app / implement the app protocol | [`01 - Tools/02 - App/README.md`](01%20-%20Tools/02%20-%20App/README.md), [`HANDOVER_FW.md`](01%20-%20Tools/02%20-%20App/HANDOVER_FW.md) |
 | fix a problem | §13 (troubleshooting) |
 
 ---
@@ -783,6 +788,10 @@ Bandwidth: ~19 kB/s normally, ~44 kB/s with REPLAY (921600 baud ≈ 92 kB/s).
 The same frames travel over BLE as a byte stream, STATE decimated and no
 REPLAY (§12). The decoders read both STATUS lengths, so phase-1 captures
 still work.
+
+Frame types `0x05…0x0F` (CAPS, FLIGHT, POWER, NAV, MOTORS, SYSTEM, EVENT,
+PARAM, CALIB, ACK, CHECKS) belong to the app protocol v2, specified in
+`01 - Tools/02 - App/HANDOVER_FW.md`; the PC tools ignore them.
 
 > **Pitfall.** Telemetry structs are `packed`: float fields are not 4-byte
 > aligned. Never pass the address of such a field to a function that writes
@@ -1497,7 +1506,9 @@ validation) is concluded. Open items for the next phases:
   about the vertical) — the LIS2MDL internal filter delay is not modelled.
 - I²C Fast-mode Plus and 1920 Hz sampling (check bus edges on a scope first).
 - Phase 2: the mobile app on the same GATT service (§12.11). Over BLE the PC
-  side is done.
+  side is done. The app (**ACwing Pilot**, `01 - Tools/02 - App/`) is written;
+  the firmware side of its protocol v2 (frames `0x05…0x0F`, commands
+  `≥ 0x10`) is specified in `01 - Tools/02 - App/HANDOVER_FW.md`.
 - Optionally read the LSM6DSV16X `INTERNAL_FREQ_FINE` register at start-up to
   use the true ODR from the first sample, instead of the nominal value during
   the first 2 s.
