@@ -1,99 +1,341 @@
 # Embedded Invariant EKF for attitude estimation on STM32WB55
 
-*Technical notebook — phase 1: attitude estimation only (control hooks in place, motors disabled).*
+This repository contains the firmware of an **attitude estimator for a small
+quadrotor**, together with the PC tools used to develop, calibrate and validate
+it.
+
+The estimator is an **Invariant Extended Kalman Filter (IEKF) on SO(3)** that
+fuses a gyroscope, an accelerometer and a magnetometer. It runs on an
+**STM32WB55** (P-NUCLEO-WB55) with the **X-NUCLEO-IKS4A1** sensor shield: the
+LSM6DSV16X provides gyroscope + accelerometer, the LIS2MDL the magnetometer.
+The filter was first developed and benchmarked in MATLAB, then ported to C on
+FreeRTOS + CMSIS-DSP, inside a multi-rate architecture:
+- 960 Hz propagation;
+- 240 Hz accelerometer update;
+- ~100 Hz magnetometer update.
+
+The rate and attitude control loops are already wired in and empty.
+
+Two things make the repository more than a firmware project:
+
+- **Validation against the reference filter.** The firmware streams the
+  *exact* inputs of every filter call. The PC replays them through the
+  reference filter and checks that the embedded estimate is the same, up to
+  float32 vs double. This was done on the board for the original equations
+  and for every embedded improvement (§11).
+- **Two equivalent toolchains.** All PC tools exist in **MATLAB**
+  (`Matlab/`) and in **Python** (`Tools/Python/`, for users without MATLAB).
+  The two give the same numbers on the same data, and their logs are
+  interchangeable.
 
 | | |
 |---|---|
+| **Vehicle** | quadrotor, 4 × brushed coreless 8520 motors, 1S LiPo; attitude control only (no GPS, no position control) |
 | **Target** | P-NUCLEO-WB55 (NUCLEO-WB55RG: Cortex-M4F @ 64 MHz + Cortex-M0+ radio core) |
 | **Sensors** | X-NUCLEO-IKS4A1 in **Mode 3**: LSM6DSV16X (gyro + acc) on the MCU I²C bus, LIS2MDL (mag) read through the LSM6DSV16X sensor hub |
-| **Software** | STM32CubeIDE / CubeMX, FreeRTOS (CMSIS-RTOS2), CMSIS-DSP, MATLAB R2019b+ |
-| **Status** | **Phase 1 concluded.** Both tests validated **on the board**: base equations vs the original `iekfAttitude.m` (≤ 0.003 σ) and full extended filter vs `iekfAttitudeEmb.m` (≤ 0.002 σ), see §10.5 |
+| **Software** | STM32CubeIDE / CubeMX, FreeRTOS (CMSIS-RTOS2), CMSIS-DSP; PC tools: MATLAB R2019b+ or Python ≥ 3.9 |
+| **Status** | **Phase 1 (attitude estimation) concluded.** Both validation tests passed **on the board**: base equations vs the original `iekfAttitude.m` (≤ 0.003 σ), full embedded filter vs `iekfAttitudeEmb.m` (≤ 0.002 σ), see §11.5. Motors disabled. |
 
 ---
 
 ## Contents
 
 1. [Introduction](#1-introduction)
-2. [Repository layout](#2-repository-layout)
-3. [Theory: the original IEKF](#3-theory-the-original-iekf)
-4. [From MATLAB to embedded: improvements](#4-from-matlab-to-embedded-improvements)
-5. [Firmware architecture](#5-firmware-architecture)
-6. [Telemetry protocol](#6-telemetry-protocol)
-7. [Building and flashing](#7-building-and-flashing)
-8. [MATLAB tools: setup and live viewer](#8-matlab-tools-setup-and-live-viewer)
-9. [Magnetometer calibration](#9-magnetometer-calibration)
-10. [Telemetry capture and embedded-vs-MATLAB comparison](#10-telemetry-capture-and-embedded-vs-matlab-comparison)
-11. [Troubleshooting](#11-troubleshooting)
-12. [Lessons learned](#12-lessons-learned)
-13. [Next steps](#13-next-steps)
-14. [References](#14-references)
+2. [Repository structure](#2-repository-structure)
+3. [Vehicle model and dynamics](#3-vehicle-model-and-dynamics)
+4. [Theory: the original IEKF](#4-theory-the-original-iekf)
+5. [From MATLAB to embedded: improvements](#5-from-matlab-to-embedded-improvements)
+6. [Firmware architecture](#6-firmware-architecture)
+7. [Telemetry protocol](#7-telemetry-protocol)
+8. [Building and flashing](#8-building-and-flashing)
+9. [PC tools (MATLAB and Python): setup and live viewer](#9-pc-tools-matlab-and-python-setup-and-live-viewer)
+10. [Magnetometer calibration](#10-magnetometer-calibration)
+11. [Telemetry capture and embedded-vs-reference comparison](#11-telemetry-capture-and-embedded-vs-reference-comparison)
+12. [Troubleshooting](#12-troubleshooting)
+13. [Lessons learned](#13-lessons-learned)
+14. [Next steps](#14-next-steps)
+15. [References](#15-references)
 
 ---
 
 ## 1. Introduction
 
-The goal of the project is attitude control of a small quadrotor (4 × brushed
-coreless 8520 motors, 1S). Position and trajectory are out of scope and there is
-no GPS: the estimator only has to provide **attitude**, using a gyroscope, an
-accelerometer and a magnetometer.
+The goal of the project is **attitude control of a small quadrotor**
+(4 × brushed coreless 8520 motors, 1S). Position and trajectory are out of
+scope and there is no GPS: the estimator has to provide only the **attitude**
+(and the gyroscope bias), from a gyroscope, an accelerometer and a
+magnetometer.
 
-The estimator is an **Invariant Extended Kalman Filter (IEKF)** on the Lie group
-SO(3). It was first developed and benchmarked in MATLAB
-(`Matlab/FiltersComparison/IEKF_originalVersion/iekfAttitude.m`) and then ported to C for the
-STM32WB55, inside a multi-rate FreeRTOS architecture that already hosts the
-(empty) control loops.
+The work is organised in phases:
 
-Phase 1 delivers:
+| Phase | Content | Status |
+|---|---|---|
+| 1 | Embedded attitude estimation: IEKF on SO(3), multi-rate FreeRTOS pipeline, telemetry, PC tools, validation against the reference filter | **concluded** |
+| 2 | Wireless telemetry (BLE on the Cortex-M0+ core), then a mobile app | planned |
+| 3 | Control: rate loop at 960 Hz, attitude loop at 240 Hz, motor power stage, arming/fail-safe, thrust model in the estimator | planned |
 
-- the embedded IEKF (attitude + gyro bias, 6 error states) running at 960 Hz
-  propagation / 240 Hz accelerometer update / ~100 Hz magnetometer update;
-- a telemetry link to a PC over the ST-LINK virtual COM port;
-- MATLAB tools to visualise the attitude in real time, calibrate the
-  magnetometer and **compare the embedded filter with the original MATLAB one on
-  identical inputs**.
+How to read this document:
 
----
+| Sections | Content |
+|---|---|
+| §3–§4 | the physics: the vehicle, its sensors, the filter |
+| §5–§8 | how the filter was made to work on the microcontroller, and how to build it |
+| §9–§11 | how to use the PC tools to see, calibrate and validate the estimate |
 
-## 2. Repository layout
-
-```
-.
-├── App/                          application code (hardware-independent where possible)
-│   ├── app/                      app_main (tasks, IRQ glue), app_config.h (ALL parameters),
-│   │                             est_pipeline (multi-rate estimation), tlm_build (frames)
-│   ├── iekf/                     so3, iekf, accwin (rotated acc mean), calib (static window)
-│   ├── drivers/                  sensor_bus.h (abstract bus) + imu_lsm6dsv16x (IMU + sensor hub + FIFO parser)
-│   ├── platform/                 imu_i2c: STM32 HAL I²C + DMA binding
-│   ├── telemetry/                packet format, CRC, UART+DMA transport
-│   ├── control/                  control hooks (weak, empty) and motor PWM (disabled)
-│   └── third_party/              ST lsm6dsv16x-pid driver (BSD-3), CMSIS-DSP
-├── Core/, Drivers/, Middlewares/ CubeMX-generated code (HAL, CMSIS, FreeRTOS)
-├── IEKFcfg.ioc                   CubeMX configuration
-├── IEKFcfg.launch                STM32CubeIDE debug configuration
-├── STM32WB55RGVX_*.ld            linker scripts
-└── Matlab/
-    ├── initPath.m                adds every folder below to the path
-    ├── Viewer/                   iekfLiveViewer.m (3D triad + logging), quat2rotmLocal.m
-    ├── Telemetry/                parseTelemetry, decode*, crc16ccitt, statusDiagnosis
-    ├── MagCalib/                 calibMagAxes.m (axis map + hard-iron), fitHardIron.m
-    └── FiltersComparison/        tlmCapture, tlmSniffer, compareEmbeddedVsMatlab
-        ├── IEKF_embeddedVersion/ EXTENDED filter: iekfAttitudeEmb.m + iekfCore*.m (MATLAB mirror of the C code)
-        └── IEKF_originalVersion/ ORIGINAL filter developed in MATLAB: iekfAttitude.m, expSO3.m, logSO3.m, skewSym.m
-```
-
-`IEKF_originalVersion` is the filter as first developed and benchmarked in
-MATLAB, kept unchanged: it is the reference of the base-equation test (§10.2).
-`IEKF_embeddedVersion` is the MATLAB mirror of what runs on the board.
+The theory sections give each equation in the form used by the code, with the
+name of the file that implements it.
 
 ---
 
-## 3. Theory: the original IEKF
+## 2. Repository structure
+
+```
+stm32_iekf_attitude_fw/
+├── App/                        Application code, hardware-independent where possible
+│   ├── app/                    app_main (FreeRTOS tasks, IRQ glue), app_config.h (ALL parameters),
+│   │                           est_pipeline (multi-rate estimation), tlm_build (telemetry frames)
+│   ├── iekf/                   IEKF on SO(3): so3 (Exp/Log, orthonormalisation), iekf (filter),
+│   │                           accwin (rotation-compensated acc mean), calib (static calibration window)
+│   ├── drivers/                sensor_bus.h (abstract bus) + imu_lsm6dsv16x (IMU, sensor hub, FIFO parser)
+│   ├── platform/               imu_i2c: STM32 HAL I²C + DMA binding of the sensor bus
+│   ├── telemetry/              frame format and CRC (telemetry.h), UART + DMA transport
+│   ├── control/                control hooks (weak, empty) and motor PWM (disabled in phase 1)
+│   └── third_party/            ST lsm6dsv16x-pid driver (BSD-3), CMSIS-DSP headers and library
+├── Core/                       CubeMX-generated: main.c, interrupts, HAL MSP, FreeRTOS config, startup
+├── Drivers/, Middlewares/      CubeMX-generated: STM32WB HAL, CMSIS, FreeRTOS
+├── Debug/                      STM32CubeIDE build output
+├── IEKFcfg.ioc                 CubeMX configuration (pins, clocks, DMA, FreeRTOS)
+├── IEKFcfg.launch              STM32CubeIDE debug configuration (ST-LINK, SWD)
+├── .project, .cproject, .settings/   STM32CubeIDE project files
+├── STM32WB55RGVX_FLASH.ld, ..._RAM.ld   linker scripts
+├── Matlab/                     MATLAB tools (R2019b+)
+│   ├── initPath.m              adds every folder below to the path
+│   ├── Viewer/                 iekfLiveViewer.m (live 3D triad + logging), quat2rotmLocal.m
+│   ├── Telemetry/              parseTelemetry, decode*, crc16ccitt, statusDiagnosis
+│   ├── MagCalib/               calibMagAxes.m (axis map + hard-iron), fitHardIron.m, magCheck.m
+│   └── FiltersComparison/      tlmCapture, tlmSniffer, compareEmbeddedVsMatlab
+│       ├── IEKF_originalVersion/   ORIGINAL filter developed in MATLAB: iekfAttitude.m, expSO3, logSO3, skewSym
+│       └── IEKF_embeddedVersion/   EXTENDED filter: iekfAttitudeEmb.m + iekfCore*.m (MATLAB mirror of the C code)
+├── Tools/
+│   └── Python/                 Python equivalents of the MATLAB tools (package iekf_tools, CLI iekf-tools)
+│       ├── iekf_tools/         viewer, capture + sniffer, compare, magcalib, telemetry,
+│       │                       filters/ (original + embedded mirror), logio (.mat logs), simulate
+│       ├── tests/              pytest suite: parity with the MATLAB outputs, recorded captures
+│       └── README.md           installation, MATLAB ↔ Python map, commands
+└── README.md                   this file: theory, firmware, procedures, results
+```
+
+**Three implementations of the same filter**, each with its role:
+
+| Implementation | Role |
+|---|---|
+| `App/iekf/` (C, float32) | what flies |
+| `Matlab/FiltersComparison/IEKF_originalVersion/` | the filter as first designed, kept **unchanged** as the reference of the equations |
+| `Matlab/FiltersComparison/IEKF_embeddedVersion/` | MATLAB mirror of the C code, written line by line after `iekf.c`, with every improvement of §5 |
+
+`Tools/Python/iekf_tools/filters/` ports both MATLAB filters, matching them to
+~1e-14.
+
+**Where to start:**
+
+| I want to... | Where |
+|---|---|
+| understand the vehicle and its sensors | §3 |
+| understand the filter | §4 (original IEKF), §5 (embedded improvements) |
+| build and flash the firmware | §6 (architecture), §8 (build), `App/app/app_config.h` (parameters) |
+| see the attitude live / record logs | §9: MATLAB `iekfLiveViewer`, Python `iekf-tools viewer` |
+| calibrate or check the magnetometer | §10: MATLAB `calibMagAxes` / `magCheck`, Python `iekf-tools calib-mag` / `mag-check` |
+| validate the embedded filter | §11: MATLAB `compareEmbeddedVsMatlab`, Python `iekf-tools compare` |
+| use the tools without MATLAB | [`Tools/Python/README.md`](Tools/Python/README.md) |
+| fix a problem | §12 (troubleshooting) |
+
+---
+
+## 3. Vehicle model and dynamics
+
+The estimator itself uses only kinematics: the gyroscope is its input and no
+vehicle parameter appears in the filter. The vehicle dynamics still matter for
+three reasons:
+- they decide what the accelerometer and the magnetometer *actually* measure
+  in flight;
+- they set the rates of the multi-rate design;
+- they are the plant of the controllers of phase 3.
+
+This section collects the model and the conventions shared by firmware, tools
+and documentation.
+
+### 3.1 Frames and conventions
+
+- **World frame $\mathcal W$: NWU**. $x$ = magnetic north (horizontal), $y$ =
+  west, $z$ = up. It is built by the firmware at start-up from the static
+  calibration (§5.3): $z$ along the measured "up" (opposite to gravity), $x$
+  along the horizontal component of the measured magnetic field.
+- **Body frame $\mathcal B$**: the LSM6DSV16X axes, which are the axes of the
+  board. With the board level and the components on top, $z_b$ is up, so at
+  rest the accelerometer reads $+1\,g$ on $z$. On the vehicle the board is to
+  be mounted with $x_b$ forward, $y_b$ left, $z_b$ up (FLU), consistent with
+  NWU.
+- **Attitude** $R \in SO(3)$ maps body vectors into the world frame,
+  $v_{\mathcal W} = R\,v_{\mathcal B}$. The firmware transmits the equivalent
+  unit quaternion $q = [w\;x\;y\;z]$ (body → world). Euler angles are used
+  **only** for display: ZYX, yaw–pitch–roll, $R = R_z(\psi)R_y(\theta)R_x(\phi)$.
+- **Normalised units.** In the filter, gravity and magnetic field are unit
+  directions. The accelerometer is in $g$, the magnetometer in µT, both
+  normalised before each update.
+
+### 3.2 Attitude kinematics
+
+$$
+\dot R = R\,[\omega]_\times, \qquad
+\dot q = \tfrac12\, q \otimes \begin{bmatrix}0\\ \omega\end{bmatrix},
+$$
+
+where $\omega$ is the angular velocity **in the body frame**, which is exactly
+what the gyroscope measures. Over one step $h$ with constant $\omega$ the
+exact solution is
+
+$$
+R_{k+1} = R_k\,\mathrm{Exp}(\omega h).
+$$
+
+The firmware applies it with the *angle increment* $\Delta\theta =
+\sum \omega_i\,\Delta t$ of the gyro samples in the step (§5.1). These
+kinematics are **group-affine**: this property is what makes the invariant
+filter of §4 possible.
+
+### 3.3 Rigid-body dynamics
+
+With mass $m$, inertia $J$ (body frame, diagonal for a symmetric frame),
+world position $p$ and total thrust $T$ along $z_b$:
+
+$$
+m\,\ddot p = -m g\,e_3 + R\,\begin{bmatrix}0\\0\\T\end{bmatrix} + f_{drag},
+\qquad
+J\dot\omega = -\,\omega\times J\omega + \tau + \tau_{dist},
+$$
+
+where $e_3 = [0\;0\;1]^\top$ (up), $g = 9.81\ \mathrm{m/s^2}$, and $\tau$ is the
+control torque produced by the rotors. The terms $\omega\times J\omega$
+(gyroscopic coupling of the body) and the rotor gyroscopic torques are small
+on a symmetric micro-quad at the rates of interest. They are kept in the model
+and neglected in a first controller design.
+
+### 3.4 Rotors and mixer
+
+Each rotor $i$ spins at $\Omega_i$. It produces a thrust along $z_b$ and a
+reaction torque about $z_b$:
+
+$$
+T_i = k_T\,\Omega_i^2, \qquad Q_i = k_Q\,\Omega_i^2 = \kappa\,T_i,\quad \kappa = k_Q/k_T .
+$$
+
+The rotor sits at $r_i = d\,[\cos\psi_i\;\sin\psi_i\;0]^\top$, at distance $d$
+from the centre and azimuth $\psi_i$. Let $\sigma_i = +1$ if the propeller
+turns counter-clockwise seen from above (the reaction on the frame is
+clockwise), $-1$ otherwise. Then
+
+$$
+T = \sum_i T_i, \qquad
+\tau = \sum_i r_i \times \begin{bmatrix}0\\0\\T_i\end{bmatrix}
+      - \kappa\sum_i \sigma_i T_i\,e_3 .
+$$
+
+For the X configuration, take rotors at $\psi = 45°, 135°, 225°, 315°$
+(front-left, rear-left, rear-right, front-right in FLU), with diagonal rotors
+turning the same way, $\sigma = (+1, -1, +1, -1)$:
+
+$$
+\begin{bmatrix}T\\ \tau_x\\ \tau_y\\ \tau_z\end{bmatrix} =
+\underbrace{\begin{bmatrix}
+1 & 1 & 1 & 1\\
+\tfrac{d}{\sqrt2} & \tfrac{d}{\sqrt2} & -\tfrac{d}{\sqrt2} & -\tfrac{d}{\sqrt2}\\
+-\tfrac{d}{\sqrt2} & \tfrac{d}{\sqrt2} & \tfrac{d}{\sqrt2} & -\tfrac{d}{\sqrt2}\\
+-\kappa & \kappa & -\kappa & \kappa
+\end{bmatrix}}_{M}
+\begin{bmatrix}T_1\\T_2\\T_3\\T_4\end{bmatrix}.
+$$
+
+The **mixer** of the controller is $M^{-1}$: from the demanded $(T, \tau)$ to
+the per-rotor thrusts, which are then saturated and converted to PWM. The rotor
+numbering and the turning directions are a convention to be fixed when the
+frame is assembled. The formula above holds for any choice once $\psi_i$ and
+$\sigma_i$ are set.
+
+### 3.5 Brushed motor dynamics
+
+The 8520 coreless motors are driven by low-side PWM: duty $u \in [0,1]$ on a
+1S battery of voltage $V_{bat}$ (4.2 → ~3.3 V during a flight).
+
+- The electrical time constant is negligible against the mechanical one.
+- The rotor speed follows a **first-order lag**,
+  $$
+  \dot\Omega_i = \frac{\Omega_{ss}(u_i V_{bat}) - \Omega_i}{\tau_m},
+  $$
+  with $\tau_m$ of the order of tens of milliseconds.
+- The steady-state speed grows roughly linearly with the applied voltage
+  $u V_{bat}$, so thrust grows roughly with $(u V_{bat})^2$.
+
+Two consequences shape the control design of phase 3:
+- the actuator lag $\tau_m$ limits the useful bandwidth of the rate loop;
+- the same duty gives less thrust as the battery discharges, so the mixer
+  output should be compensated with the measured $V_{bat}$.
+
+$k_T$, $k_Q$, $\tau_m$ and the speed curve have to be **identified on a thrust
+stand** with the actual propellers. No values are assumed here.
+
+### 3.6 Sensor models
+
+The firmware calibrates or estimates every term below, except noise and the
+disturbances, which the filter has to tolerate.
+
+| Sensor | Model (body frame) | Calibrated / estimated in |
+|---|---|---|
+| Gyroscope | $\omega_m = \omega + b + n_g$, $\dot b = n_b$ | bias $b$: static calibration (§5.3) + online in the filter state (§4) |
+| Accelerometer | $a_m = R^\top(\ddot p + g\,e_3) + n_a = \dfrac{1}{m}\begin{bmatrix}0\\0\\T\end{bmatrix} + \dfrac{1}{m}R^\top f_{drag} + n_a$ | scale via nominal magnitude at rest (§5.3) |
+| Magnetometer | $m_m = M_{map}^{-1}\big(R^\top m_{\mathcal W} + h + d(t)\big) + n_m$ | axis map $M_{map}$ and hard-iron $h$: §10; disturbances $d(t)$: dip check (§5.7) |
+
+The accelerometer measures the **specific force**, not gravity:
+- at rest or in steady hover, $\ddot p = 0$ and $a_m = R^\top g\,e_3$, the
+  "up" direction in the body frame. This is the measurement the filter uses
+  (§4.4);
+- in any acceleration, $a_m$ is mostly thrust along $z_b$ plus drag. For an
+  ideal quadrotor the $x,y$ components carry only the rotor drag
+  $\approx -\mu\,v_{\mathcal B}$, whatever the tilt;
+- a filter that trusted the accelerometer blindly would therefore estimate
+  "level" during a sustained turn.
+
+The firmware handles this in two ways. It de-weights the accelerometer when
+the measured magnitude or the innovation are inconsistent with gravity
+(adaptive noise and NIS inflation, §5.7). It also trusts it fully only when the
+vehicle is detected still (§5.7). A thrust/drag model in the measurement
+equation is a phase-3 item (§14).
+
+The magnetometer sees, besides the Earth field:
+- the constant field of the board and of the nearby parts (the **hard-iron**
+  $h$, ~4× the Earth field on this board, §10);
+- in flight, the field of the **motor currents**, which grows with thrust.
+
+The dip check (angle between measured field and measured gravity) de-weights
+the magnetometer when the field is disturbed.
+
+### 3.7 Rates of the multi-rate design
+
+| Loop / signal | Rate | Why |
+|---|---|---|
+| Gyro + acc sampling (LSM6DSV16X ODR) | 960 Hz | ~10× the bandwidth of a micro-quad rate loop; gyro integrated without aliasing the vibrations |
+| Propagation (§4.3) and rate loop (phase 3) | 960 Hz | the rate loop needs the freshest bias-corrected gyro |
+| Accelerometer update and attitude loop (phase 3) | 240 Hz | mean of 4 samples rotated into a common frame (§5.2): less vibration noise, 4× less CPU |
+| Magnetometer update | ~100 Hz (LIS2MDL), on new data only | yaw is slow; the sample age is compensated (§5.4) |
+
+---
+
+## 4. Theory: the original IEKF
 
 This section documents the filter as implemented in
 `Matlab/FiltersComparison/IEKF_originalVersion/iekfAttitude.m`. The embedded filter implements the
-same equations (§4 lists what was added on top).
+same equations (§5 lists what was added on top).
 
-### 3.1 State and error definition
+### 4.1 State and error definition
 
 The attitude $R \in SO(3)$ rotates body-frame vectors into the world frame.
 $SO(3)$ is not a vector space, so the estimation error is defined through the
@@ -115,7 +357,7 @@ $$
 x = \begin{bmatrix}\delta \\ \beta\end{bmatrix}, \qquad \beta = b - \hat b .
 $$
 
-### 3.2 Process model
+### 4.2 Process model
 
 The gyroscope measures $\omega_m = \omega + b + n_g$; the bias is a random walk,
 $\dot b = n_b$. The error dynamics are
@@ -131,7 +373,7 @@ This is what distinguishes the IEKF from a classical multiplicative EKF and
 gives it consistent covariance even when the estimate is far off (fast
 convergence from a bad initialisation).
 
-### 3.3 Propagation (discrete, step $h$)
+### 4.3 Propagation (discrete, step $h$)
 
 $$
 \hat R \leftarrow \hat R\,\mathrm{Exp}(\hat\omega h)
@@ -145,7 +387,7 @@ Q = \begin{bmatrix}\sigma_g^2 h\, I & 0 \\ 0 & \sigma_b^2 h\, I\end{bmatrix},
 P \leftarrow F P F^\top + Q .
 $$
 
-### 3.4 Vector measurements
+### 4.4 Vector measurements
 
 Accelerometer and magnetometer are both treated as observations of a known
 world-frame direction $v$ (gravity $g_{ref}$, magnetic field $m_{ref}$):
@@ -181,7 +423,7 @@ $$
 h_w = \hat R y,\qquad b_w = \begin{bmatrix}\sqrt{h_{w,x}^2 + h_{w,y}^2} & 0 & h_{w,z}\end{bmatrix}^\top,\qquad \hat y = \hat R^\top b_w .
 $$
 
-### 3.5 Update and retraction
+### 4.5 Update and retraction
 
 $$
 S = H P H^\top + R_m, \qquad K = P H^\top S^{-1}, \qquad \delta x = K\,(y - \hat y)
@@ -199,15 +441,76 @@ The retraction through $\mathrm{Exp}$ keeps $\hat R$ on $SO(3)$ at all times.
 Per sample the order is: propagate with `gyro(:,k-1)`, accelerometer update,
 magnetometer update.
 
+### 4.6 Filter dynamics: what is observable, how fast it corrects
+
+**Error dynamics as a linear system.** Between updates the error evolves as
+$x_{k+1} = F_k x_k + w_k$, with $F_k$ from §4.3. At an update,
+$x^+ = (I - K_k H_k)\,x^-$. Both $F_k$ and $H_k$ depend only on the measured
+rate and on the *predicted* measurement direction $\hat y = \hat R^\top v$,
+never on how wrong $\hat R$ is. The closed-loop error dynamics are therefore
+the same for small and large errors. This is the practical benefit of the
+invariant formulation: the covariance stays consistent and the filter
+converges from any initial attitude without tuning for it.
+
+**Observability.** $[\hat y]_\times$ has rank 2, and its null space is
+$\hat y$ itself: a vector measurement corrects the two error components
+orthogonal to the measured direction and says nothing about rotations
+*about* it.
+
+| Measurement | Corrects | Cannot see |
+|---|---|---|
+| gravity (accelerometer) | roll and pitch | yaw, i.e. rotations about the vertical |
+| magnetic field (magnetometer) | rotations about axes orthogonal to the field: mainly yaw, plus part of the tilt unless tilt-compensated | rotations about the field direction |
+| both, non-parallel | the full attitude | (singular only where the field is vertical, i.e. at the magnetic poles) |
+
+The gyro bias enters through the coupling $-hI$ in $F$: a bias produces an
+attitude drift that the measurements see, so it becomes observable.
+- With gravity alone, the bias component about the vertical is unobservable,
+  because the yaw drift it causes is invisible.
+- The magnetometer makes the full bias observable.
+
+The *tilt-compensated* magnetometer (§4.4) makes the separation explicit: the
+magnetometer only acts on yaw, and a disturbed field cannot tilt the
+estimate.
+
+**Correction bandwidth.** The filter can be read as a complementary filter
+whose crossover is set by the noise ratio. Take one axis, small angles, gyro
+noise density $\sigma_g$ (rad/s/√Hz, $Q = \sigma_g^2 h$) and accelerometer
+updates at $f_u$ with direction noise $\sigma_a$ (rad). The steady-state
+Kalman gain gives a first-order correction of the gyro-integrated attitude
+with bandwidth and steady-state uncertainty
+
+$$
+\omega_c \simeq \frac{\sigma_g\sqrt{f_u}}{\sigma_a},
+\qquad
+\sigma_{\delta,ss} \simeq \sqrt{\frac{\sigma_g\,\sigma_a}{\sqrt{f_u}}} .
+$$
+
+With the firmware values ($\sigma_g$ = 0.5 °/s/√Hz, $f_u$ = 240 Hz):
+
+| $\sigma_a$ | $\omega_c$ | crossover | steady-state σ |
+|---|---|---|---|
+| 0.01 (floor of the static calibration, §5.3) | 13.5 rad/s | 2.2 Hz | 0.13° |
+| 0.02 | 6.8 rad/s | 1.1 Hz | 0.19° |
+| 0.2, i.e. $R$ inflated ×100 by the NIS logic (§5.7) | 0.68 rad/s | 0.11 Hz | 0.61° |
+
+The values were checked against the iterated scalar Riccati equation.
+
+Below the crossover the attitude follows the accelerometer and magnetometer,
+above it the gyroscope. The adaptive noise and the NIS inflation of §5.7 work
+by *moving the crossover down* while the measurement is not trustworthy, down
+to ~0.1 Hz at the cap. In that window the estimate is essentially
+gyro-integrated, and the gyro bias error sets how fast it drifts.
+
 ---
 
-## 4. From MATLAB to embedded: improvements
+## 5. From MATLAB to embedded: improvements
 
 Each item lists *why* it was needed. Unless stated otherwise all numbers come
 from the PC simulation of the full firmware pipeline (same C code, synthetic
 LSM6DSV16X FIFO encoded byte by byte).
 
-### 4.1 Multi-rate structure with angle increments
+### 5.1 Multi-rate structure with angle increments
 
 | Function | Rate |
 |---|---|
@@ -226,7 +529,7 @@ $$
 $\Delta t$ is **measured** by the MCU (DWT cycle counter between interrupts),
 which absorbs the tolerance of the sensor's internal oscillator.
 
-### 4.2 Rotation-compensated accelerometer mean (`accwin`)
+### 5.2 Rotation-compensated accelerometer mean (`accwin`)
 
 Averaging the acc over a 4 ms window while rotating at 360 °/s smears the
 direction and lags by half a window (**0.66°** error). Each sample is moved to
@@ -239,7 +542,7 @@ $$
 
 Error after compensation: **0.000°**.
 
-### 4.3 Static calibration and levelled world frame
+### 5.3 Static calibration and levelled world frame
 
 At start-up the board must stay still for ~2 s (`calib.c`, restarts if it moves):
 
@@ -259,7 +562,7 @@ $$
 The tilt-compensated magnetometer update assumes a vertical world $z$; with
 "body at $t=0$" and a board that is not perfectly level that assumption fails.
 
-### 4.4 Magnetometer through the sensor hub, with latency compensation
+### 5.4 Magnetometer through the sensor hub, with latency compensation
 
 In IKS4A1 Mode 3 the LIS2MDL is behind the LSM6DSV16X and its samples land in
 the same FIFO, time-aligned with gyro and acc. The hub re-reads the LIS2MDL
@@ -279,7 +582,7 @@ $$
 | 50/60 Hz, compensated | 0.165° |
 | **100/120 Hz, compensated** | **0.095°** |
 
-### 4.5 Single-precision numerics
+### 5.5 Single-precision numerics
 
 - `so3_exp` switches to a 4th-order Taylor series below 0.05 rad: in float32,
   $(1-\cos\theta)/\theta^2$ loses all digits for $\theta \sim 10^{-3}$, the typical
@@ -291,7 +594,7 @@ $$
 - The 6×6 covariance algebra uses CMSIS-DSP (`arm_mat_*`); static workspaces keep
   large matrices off the RTOS task stack.
 
-### 4.6 Error reset after the retraction
+### 5.6 Error reset after the retraction
 
 After $\hat R \leftarrow \hat R\,\mathrm{Exp}(\delta\theta)$ the error is defined
 w.r.t. the *new* estimate, $\delta' \approx \delta - \delta\theta - \tfrac12[\delta\theta]_\times\delta$, hence
@@ -302,9 +605,9 @@ $$
 
 Negligible at steady state, relevant for large corrections (`IEKF_RESET_JACOBIAN`).
 
-### 4.7 Robustness to external accelerations
+### 5.7 Robustness to external accelerations
 
-The magnitude test of §3.4 misses accelerations **perpendicular** to gravity:
+The magnitude test of §4.4 misses accelerations **perpendicular** to gravity:
 0.4 g sideways changes $\|a\|$ by a few percent but rotates the measured
 direction by >20°. The tilt error then leaks into yaw through the
 tilt-compensated compass (× tan of the magnetic dip, ~1.6 in Italy).
@@ -364,7 +667,7 @@ Tried and left disabled: gain projection so that acc corrects only tilt and mag
 only yaw (`IEKF_DECOUPLE`: tilt max 3.3° vs 2.3°); NIS inflation on the
 magnetometer (`IEKF_MAG_NIS_GATE`: a high mag NIS is often a true yaw error).
 
-### 4.8 Tuning notes
+### 5.8 Tuning notes
 
 - **6 states, not 3.** With a realistic bias: RMSE 0.095° (6 states) vs 0.184°
   (3 states). `IEKF_ESTIMATE_BIAS = 0` reduces the filter exactly to 3 states.
@@ -373,7 +676,7 @@ magnetometer (`IEKF_MAG_NIS_GATE`: a high mag NIS is often a true yaw error).
   (~0.003 °/s/√Hz). With 1 % scale error and 1° misalignment: σ = 0.1 → RMSE 1.17°,
   σ = 0.5 → 0.42°. Lower it only after calibrating the gyro.
 
-### 4.9 MATLAB mirror of the C code
+### 5.9 MATLAB mirror of the C code
 
 `IEKF_embeddedVersion/iekfAttitudeEmb.m` is the **extended MATLAB filter**: same
 signature and options as `iekfAttitude.m` plus the extensions above
@@ -389,7 +692,7 @@ original within 10⁻¹² deg.
 
 ---
 
-## 5. Firmware architecture
+## 6. Firmware architecture
 
 ```
 INT1 LSM6DSV16X (FIFO threshold, 960 Hz) ── EXTI ISR: DWT timestamp, thread flag ──┐
@@ -438,7 +741,7 @@ are to be chosen together with the power stage.
 
 ---
 
-## 6. Telemetry protocol
+## 7. Telemetry protocol
 
 Frame (little-endian): `A5 5A | TYPE | LEN | PAYLOAD[LEN] | CRC16 (LSB, MSB)`,
 CRC-16/CCITT-FALSE (poly 0x1021, init 0xFFFF) over TYPE..PAYLOAD.
@@ -462,11 +765,12 @@ Bandwidth: ~19 kB/s normally, ~44 kB/s with REPLAY (921600 baud ≈ 92 kB/s).
 
 ---
 
-## 7. Building and flashing
+## 8. Building and flashing
 
-1. Open `IEKFcfg.ioc` in STM32CubeMX/IDE and generate the project for
-   STM32CubeIDE (the `.project`/`.cproject` files are not part of this package).
-   Relevant settings already in the `.ioc`: SYSCLK 64 MHz; I2C1 on PB8/PB9 with
+1. The repository is an STM32CubeIDE project: *File → Import → General →
+   Existing Projects into Workspace*, select the repository folder. To change
+   pins or clocks, open `IEKFcfg.ioc` in CubeMX and regenerate (user code is
+   kept). Relevant settings already in the `.ioc`: SYSCLK 64 MHz; I2C1 on PB8/PB9 with
    DMA RX and event/error IRQs; USART1 921600 baud with DMA TX (**Memory increment
    enabled**) and global IRQ; PA15 EXTI rising edge (`IMU_INT1`); FreeRTOS
    CMSIS_V2, 1 kHz tick, 20 KB heap; HAL timebase on a TIM; Serial Wire debug.
@@ -493,14 +797,24 @@ procedures below:
 |---|---|---|
 | `APP_TLM_REPLAY` | 0 | 1 |
 | `APP_COMPARE_ORIGINAL` | 0 | 1 (base-equation test vs original) or 0 (extended-filter test) |
-| `MAG_AXIS_MAP`, `MAG_HARD_IRON` | from §9 | unchanged |
+| `MAG_AXIS_MAP`, `MAG_HARD_IRON` | from §10 | unchanged |
 
 ---
 
-## 8. MATLAB tools: setup and live viewer
+## 9. PC tools (MATLAB and Python): setup and live viewer
+
+Every tool exists in MATLAB and in Python, with the same options and outputs.
+MATLAB setup:
 
 ```matlab
 run('<repo>/Matlab/initPath.m')   % once per session
+```
+
+Python setup (details in [`Tools/Python/README.md`](Tools/Python/README.md)):
+
+```bash
+cd Tools/Python
+python -m pip install -e .        # installs the iekf-tools command
 ```
 
 `initPath.m` adds all folders (tools, original filter, extended filter) to the
@@ -532,9 +846,20 @@ L = iekfLiveViewer("serial", "COM6", 921600, "C:\logs") % choose the log folder
 tlmSniffer("COM6")      % bytes -> frames -> STATUS -> diagnosis
 ```
 
+**Python equivalents** (installation in [`Tools/Python/README.md`](Tools/Python/README.md)):
+
+```bash
+iekf-tools viewer COM6                  # live viewer; --log-dir DIR, --baud B
+iekf-tools viewer --replay file.bin     # replay a recorded session (no board needed)
+iekf-tools sniff COM6                   # byte-level link check
+```
+
+The Python viewer shows the same panel and writes the same `.mat` log (variable
+`L`) and raw `.bin`. Logs are interchangeable between MATLAB and Python.
+
 ---
 
-## 9. Magnetometer calibration
+## 10. Magnetometer calibration
 
 On the IKS4A1 the LIS2MDL axes are **not** aligned with the LSM6DSV16X axes, and
 the board carries a large hard-iron offset. Both are estimated from data by
@@ -584,14 +909,54 @@ Current calibration (2026-10-07): LIS2MDL rotated 180° about x (y, z flipped),
 hard-iron (100.31, −0.56, −166.07) µT. The offset is ~4× the Earth field:
 recalibrate whenever anything near the sensor changes.
 
+**Without re-flashing.** A log recorded with an already calibrated firmware
+can also be used: pass that firmware's values, and the raw field is
+reconstructed. The printed values are always absolute: paste them as they are.
+
+```matlab
+calibMagAxes(log, [], [1 0 0, 0 -1 0, 0 0 -1], [100.31 -0.56 -166.07])
+```
+
+> **Pitfall.** On a log of a calibrated firmware, calling `calibMagAxes(log)`
+> without the firmware values returns ≈ identity and ≈ 0: that is the
+> residual *correction*, not the calibration. Pasting it removes the real map
+> and offset. The yaw then locks onto a fixed body axis, the magnetometer is
+> always de-weighted, and at rest the same axis points the same way whatever
+> the orientation.
+
 `fitHardIron.m` (sphere fit) is kept for a quick hard-iron-only check once the
 axis map is known.
 
+**Checking the calibration without re-flashing.** `magCheck.m` works on an
+ordinary viewer log recorded with the current firmware: board still for 2 s,
+then ~30 s of slow rotations about all axes.
+
+```matlab
+out = magCheck('iekf_log_YYYYMMDD_HHMMSS.mat', [100.31 -0.56 -166.07])  % current MAG_HARD_IRON
+```
+
+It fits a sphere to the logged (already corrected) field and compares how much
+the field direction turns with how much the gyro turns. Possible verdicts:
+- **consistent**: residual offset ≈ 0, |B| 25–65 µT;
+- **`MAG_HARD_IRON` no longer matches**: it prints the corrected value; the axis
+  map is unchanged;
+- **constant field**: the LIS2MDL is not delivering new data.
+
+**Python**, same algorithms and same numbers (checked on the same log against
+the MATLAB functions), with logs from either viewer:
+
+```bash
+iekf-tools calib-mag iekf_log_....mat                       # firmware with identity map, zero offset
+iekf-tools calib-mag iekf_log_....mat --map 1,0,0,0,-1,0,0,0,-1 --hard-iron 100.31,-0.56,-166.07
+iekf-tools fit-hard-iron iekf_log_....mat
+iekf-tools mag-check iekf_log_....mat --hard-iron 100.31,-0.56,-166.07
+```
+
 ---
 
-## 10. Telemetry capture and embedded-vs-MATLAB comparison
+## 11. Telemetry capture and embedded-vs-reference comparison
 
-### 10.1 Principle
+### 11.1 Principle
 
 The firmware records, for every 240 Hz window, the **exact arguments** of every
 filter call (960 Hz angle increments, rotated acc mean, latency-compensated mag)
@@ -611,14 +976,14 @@ expected by the **unmodified** MATLAB filters (`iekfAttitude.m` and
 
 Inputs are identical bit for bit: any difference comes from the filter.
 
-### 10.2 Two validation tests
+### 11.2 Two validation tests
 
 | `APP_COMPARE_ORIGINAL` | Firmware behaviour | Reference filter | Meaning of the test |
 |---|---|---|---|
-| **1** | extensions of §4.4–4.7 that the original lacks are disabled | original `iekfAttitude.m` | **base equations**: the C port of the original filter is exact → MATCH / DIVERGE |
+| **1** | extensions of §5.4–4.7 that the original lacks are disabled | original `iekfAttitude.m` | **base equations**: the C port of the original filter is exact → MATCH / DIVERGE |
 | **0** | full configuration (as flown) | extended `iekfAttitudeEmb.m` | **every improvement**: NIS inflation and memory, dip check, stillness detector, mag-age variance, error reset, lockout protection → MATCH / DIVERGE. The original is also run, to show how much the extensions change the estimate. |
 
-### 10.3 Procedure
+### 11.3 Procedure
 
 1. `app_config.h`: `APP_TLM_REPLAY 1`, `APP_COMPARE_ORIGINAL 1`; build and flash.
 2. Record **without the viewer** (it cannot keep up with ~44 kB/s):
@@ -641,7 +1006,18 @@ Inputs are identical bit for bit: any difference comes from the filter.
 A previously recorded file is analysed the same way:
 `compareEmbeddedVsMatlab('C:\...\iekf_cap_YYYYMMDD_HHMMSS.bin')`.
 
-### 10.4 Reading the result
+Python, same procedure and same report:
+
+```bash
+iekf-tools capture COM6 --duration 60          # then reset the board immediately
+iekf-tools compare iekf_cap_YYYYMMDD_HHMMSS.bin
+```
+
+The Python port of both filters matches the MATLAB code to ~1e-14, and
+`compare` reproduces the figures of `compareEmbeddedVsMatlab` on the same
+captures (`Tools/Python/tests`).
+
+### 11.4 Reading the result
 
 Console report:
 
@@ -684,7 +1060,7 @@ The output struct contains `t`, `eulEmb`, `eulMatlab` (original), `eulRef`
 (reference of the mode), `dAng`, `dBias`, `dP` (vs original), `extended`
 (metrics vs the extended filter, mode 0), `ok`, `adapted`, `init`.
 
-### 10.5 Results
+### 11.5 Results
 
 | Data | Attitude diff. | Bias diff. | diag P (rel.) | Verdict |
 |---|---|---|---|---|
@@ -718,7 +1094,7 @@ windows. The original filter has no NIS inflation, so it trusts every
 accelerometer sample during shaking. It then needs time to reconverge, which is
 why large differences also appear outside the inflated windows (RMS 13.9°). The
 difference is not an error of the embedded filter, which matches its own
-reference at 0.002 σ. It measures how much the §4.7 extensions change the
+reference at 0.002 σ. It measures how much the §5.7 extensions change the
 estimate in real use.
 
 **Phase 1 validation: complete.**
@@ -732,7 +1108,7 @@ In both tests the only residual is float32 vs double.
 
 ---
 
-## 11. Troubleshooting
+## 12. Troubleshooting
 
 | Symptom | Cause / action |
 |---|---|
@@ -742,17 +1118,17 @@ In both tests the only residual is float32 vs double.
 | Bytes but no valid frame | baud mismatch or SYSCLK ≠ 64 MHz |
 | One frame, then nothing | UART TX-complete callback not wired / USART1 IRQ disabled |
 | Only STATUS frames | filter never started: `statusDiagnosis` (IMU init, no INT1, no mag from hub, board moving during calibration) |
-| HardFault ~2 s after reset | unaligned float write into a packed telemetry struct (§6) |
+| HardFault ~2 s after reset | unaligned float write into a packed telemetry struct (§7) |
 | Attitude "converges slowly" in the viewer | viewer lagging: check the *lag* field; disable REPLAY or use `tlmCapture` |
-| Yaw moves when tilting | wrong `MAG_AXIS_MAP` / hard-iron → §9 |
+| Yaw moves when tilting | wrong `MAG_AXIS_MAP` / hard-iron → §10 |
 | `iekfAttitude` not found | run `initPath.m` |
 | Comparison: "INIT of this boot was lost" | UART saturated during the capture; repeat |
 | Euler plots jump by 180° | gimbal lock (|pitch| ≈ 90°); use the quaternion figure |
-| `undefined reference to arm_mat_*` | CMSIS-DSP GCC library not linked (§7) |
+| `undefined reference to arm_mat_*` | CMSIS-DSP GCC library not linked (§8) |
 
 ---
 
-## 12. Lessons learned
+## 13. Lessons learned
 
 - **Validate on identical inputs, judge in sigma.** Comparing filters on
   separately acquired data mixes sensor and algorithm differences; replaying the
@@ -770,7 +1146,7 @@ In both tests the only residual is float32 vs double.
 
 ---
 
-## 13. Next steps
+## 14. Next steps
 
 Phase 1 (embedded attitude estimation, telemetry, MATLAB tools and
 validation) is concluded. Open items for the next phases:
@@ -790,7 +1166,7 @@ validation) is concluded. Open items for the next phases:
 
 ---
 
-## 14. References
+## 15. References
 
 - A. Barrau, S. Bonnabel, *The Invariant Extended Kalman Filter as a Stable
   Observer*, IEEE TAC, 2017.

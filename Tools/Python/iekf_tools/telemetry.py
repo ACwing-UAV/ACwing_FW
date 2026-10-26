@@ -1,0 +1,255 @@
+"""Telemetry frames: CRC, stream parser, packet decoders, STATUS diagnosis.
+
+Python equivalent of ``Matlab/Telemetry`` (crc16ccitt.m, parseTelemetry.m,
+decodeState.m, decodeInit.m, decodeStatus.m, decodeReplay.m,
+statusDiagnosis.m). Field names are those of the MATLAB structs.
+
+Frame format (little-endian, see ``App/telemetry/telemetry.h``)::
+
+    0xA5 0x5A | TYPE | LEN | PAYLOAD[LEN] | CRC16 (LSB, MSB)
+
+CRC-16/CCITT-FALSE (poly 0x1021, init 0xFFFF) over TYPE..PAYLOAD.
+"""
+from __future__ import annotations
+
+import binascii
+from typing import Iterable, List, Tuple
+
+import numpy as np
+
+from .common import Struct
+
+SYNC0, SYNC1 = 0xA5, 0x5A
+TYPE_STATE, TYPE_INIT, TYPE_STATUS, TYPE_REPLAY = 1, 2, 3, 4
+TYPE_NAMES = {TYPE_STATE: "STATE", TYPE_INIT: "INIT", TYPE_STATUS: "STATUS", TYPE_REPLAY: "REPLAY"}
+OVERHEAD = 6
+
+# STATE flags (TLM_F_* in telemetry.h)
+F_RUNNING, F_MAG_NEW, F_ACC_GATED, F_MAG_GATED, F_OVERRUN, F_STILL = 1, 2, 4, 8, 16, 32
+
+
+def crc16ccitt(data) -> int:
+    """CRC-16/CCITT-FALSE, as ``tlm_crc16()`` in C. ``crc16ccitt(b"123456789") == 0x29B1``."""
+    return binascii.crc_hqx(bytes(data), 0xFFFF)
+
+
+def encode_frame(ftype: int, payload: bytes) -> bytes:
+    """Builds a complete frame (useful for tests and simulators), as ``tlm_encode()``."""
+    payload = bytes(payload)
+    if len(payload) > 255:
+        raise ValueError("payload longer than 255 bytes")
+    body = bytes([ftype, len(payload)]) + payload
+    crc = crc16ccitt(body)
+    return bytes([SYNC0, SYNC1]) + body + bytes([crc & 0xFF, crc >> 8])
+
+
+def parse_telemetry(buf, skip_types: Iterable[int] = ()) -> Tuple[List[Struct], bytes]:
+    """Extracts the complete, valid frames from a byte buffer.
+
+    Parameters
+    ----------
+    buf : bytes-like
+        Received bytes, possibly the ``rest`` of the previous call followed by
+        new data.
+    skip_types : iterable of int
+        Frame types to skip WITHOUT checking the CRC (e.g. ``(4,)`` for REPLAY
+        in the live viewer, which only stores them raw in the ``.bin``). A
+        skipped frame is accepted only if a new sync follows immediately.
+
+    Returns
+    -------
+    frames : list of Struct
+        ``frame.type`` (int) and ``frame.payload`` (bytes), in stream order.
+    rest : bytes
+        Bytes not consumed yet (incomplete frame at the tail): prepend them to
+        the next chunk.
+
+    A wrong CRC shifts by one byte and re-synchronises, exactly as
+    ``parseTelemetry.m``.
+    """
+    buf = bytes(buf)
+    skip = set(int(t) for t in skip_types)
+    n = len(buf)
+    frames: List[Struct] = []
+    i = 0
+    while i + OVERHEAD <= n:
+        if buf[i] != SYNC0 or buf[i + 1] != SYNC1:
+            j = buf.find(b"\xA5\x5A", i + 1)
+            if j < 0:
+                i = n - 1                       # keep the last byte: it may be 0xA5
+                break
+            i = j
+            continue
+        length = buf[i + 3]
+        total = length + OVERHEAD
+        if i + total > n:
+            break                               # incomplete frame: wait for more bytes
+        if skip and buf[i + 2] in skip:
+            j = i + total                       # next sync expected here
+            if j + 2 > n:
+                break
+            if buf[j] == SYNC0 and buf[j + 1] == SYNC1:
+                i = j
+                continue
+        body = buf[i + 2:i + 4 + length]
+        crc_rx = buf[i + 4 + length] | (buf[i + 5 + length] << 8)
+        if crc16ccitt(body) == crc_rx:
+            frames.append(Struct(type=buf[i + 2], payload=buf[i + 4:i + 4 + length]))
+            i += total
+        else:
+            i += 1                              # false sync or corrupted data
+    return frames, buf[i:]
+
+
+def _f32(p: bytes, start: int, count: int) -> np.ndarray:
+    return np.frombuffer(p, dtype="<f4", count=count, offset=start).astype(float)
+
+
+def decode_state(p: bytes) -> Struct:
+    """Payload TYPE 0x01 (71 bytes) -> Struct. Layout = ``tlm_state_t`` in C."""
+    p = bytes(p)
+    f = _f32(p, 6, 16)
+    return Struct(
+        seq=float(int.from_bytes(p[0:2], "little")),
+        t_us=float(int.from_bytes(p[2:6], "little")),
+        q=f[0:4],          # [w x y z], body -> world
+        bias=f[4:7],       # rad/s
+        acc=f[7:10],       # g
+        gyro=f[10:13],     # rad/s
+        mag=f[13:16],      # uT, body frame, hard-iron removed
+        flags=float(p[70]),
+    )
+
+
+def decode_init(p: bytes) -> Struct:
+    """Payload TYPE 0x02 -> Struct. Layout = ``tlm_init_t`` in C (137 bytes;
+    the older 97- and 113-byte formats are accepted too)."""
+    p = bytes(p)
+    nf = (len(p) - 1) // 4
+    if len(p) == 137:
+        nf = 33
+    f = _f32(p, 0, nf)
+    I = Struct(
+        q0=f[0:4], gRef=f[4:7], mRef=f[7:10], b0=f[10:13],
+        sigmaAcc=f[13], sigmaMag=f[14], sigmaGyro=f[15], sigmaBias=f[16],
+        nomAcc=f[17], nomMag=f[18], fs=f[19],
+        accTol=f[20], magTol=f[21], p0att=f[22], p0bias=f[23],
+        accNisGate=0.0, magNisGate=0.0, inflDecay=0.0, dipTol=0.0,
+        inflMax=1e4, lockoutPBump=0.0, persistDecay=0.0, persistRatio=0.6, persistMin=0.02,
+        lockoutUpdates=0.0, graceUpdates=0.0,
+    )
+    if nf >= 28:
+        I.accNisGate, I.magNisGate, I.inflDecay, I.dipTol = f[24], f[25], f[26], f[27]
+    if len(p) == 137:
+        I.inflMax, I.lockoutPBump, I.persistDecay = f[28], f[29], f[30]
+        I.persistRatio, I.persistMin = f[31], f[32]
+        u = np.frombuffer(p, dtype="<u2", count=2, offset=132)
+        I.lockoutUpdates, I.graceUpdates = float(u[0]), float(u[1])
+    fl = p[-1]
+    I.estimateBias = bool(fl & 1)
+    I.adaptive = bool(fl & 2)
+    I.tiltComp = bool(fl & 4)
+    I.decouple = bool(fl & 8)
+    I.resetJacobian = bool(fl & 16)
+    for k, v in list(I.items()):
+        if isinstance(v, np.floating):
+            I[k] = float(v)
+    return I
+
+
+def decode_status(p: bytes) -> Struct:
+    """Payload TYPE 0x03 (54 bytes) -> Struct. Layout = ``tlm_status_t`` in C."""
+    p = bytes(p)
+    u = np.frombuffer(p, dtype="<u4", count=12, offset=0).astype(float)
+    w = np.frombuffer(p, dtype="<u2", count=2, offset=48).astype(float)
+    return Struct(
+        uptime_s=u[0] / 1000.0,
+        irq_count=u[1], bus_err=u[2], fifo_ovr=u[3],
+        tlm_drop=u[4], uart_drop=u[5], proc_us_max=u[6] / 64.0,    # SYSCLK 64 MHz
+        n_gyro=u[7], n_acc=u[8], n_mag=u[9], n_mag_dup=u[10], n_sh_nack=u[11],
+        words_max=w[0], calib_count=w[1],
+        imu_init=float(np.int8(p[52])),
+        running=float(p[53]),
+    )
+
+
+def decode_replay(p: bytes) -> Struct:
+    """Payload TYPE 0x04 -> Struct (see ``tlm_build_replay()`` and est_pipeline.h).
+
+    Fields: ``win``, ``overflow``, ``ops`` (list of Struct with ``op`` in
+    ``'P'|'A'|'M'``, ``v`` and ``trusted``), ``q`` (4), ``b`` (3), ``Pd`` (6),
+    ``accInfl``, ``magInfl``.
+
+    Operations: ``'P' dtheta[3] h`` (propagation), ``'A' acc[3] trusted``
+    (acc update), ``'M' mag[3] extraVar`` (mag update).
+    """
+    p = bytes(p)
+    tail = _f32(p, len(p) - 60, 15)
+    R = Struct(
+        win=float(int.from_bytes(p[0:4], "little")),
+        overflow=p[5] != 0,
+        q=tail[0:4], b=tail[4:7], Pd=tail[7:13],
+        accInfl=float(tail[13]), magInfl=float(tail[14]),
+        ops=[],
+    )
+    nops = p[4]
+    i = 6
+    for _ in range(nops):
+        op = chr(p[i])
+        if op in ("P", "M"):
+            R.ops.append(Struct(op=op, v=_f32(p, i + 1, 4), trusted=False))
+            i += 17
+        elif op == "A":
+            R.ops.append(Struct(op=op, v=_f32(p, i + 1, 3), trusted=p[i + 13] != 0))
+            i += 14
+        else:
+            raise ValueError(f"decode_replay: unknown operation 0x{p[i]:02X}")
+    return R
+
+
+_IMU_CODES = {
+    -1: "I2C bus error towards the LSM6DSV16X (pins PB8/PB9, power, jumpers)",
+    -2: "wrong LSM6DSV16X WHO_AM_I (address 0x6B? right board?)",
+    -3: "LIS2MDL does not answer through the sensor hub (J4/J5 not in Mode 3?)",
+    -4: "sensor-hub timeout (J4/J5 in Mode 3? LIS2MDL powered?)",
+    -5: "invalid arguments",
+}
+
+
+def status_diagnosis(S) -> str:
+    """Translates a STATUS packet into the first broken link of the chain
+    IMU -> interrupt -> I2C/DMA -> FIFO -> sensor hub -> calibration -> filter."""
+    if S.imu_init == 1:
+        return "IMU: initialisation in progress or stuck"
+    if S.imu_init < 0:
+        return "IMU: " + _IMU_CODES.get(int(S.imu_init), f"error {int(S.imu_init)}")
+    if S.irq_count == 0:
+        return ("IMU OK but no INT1 interrupts: PA15/EXTI15, label IMU_INT1, "
+                "NVIC EXTI15_10, debug = Serial Wire")
+    if S.bus_err > 0 and S.n_gyro == 0:
+        return ("Interrupts OK but FIFO reads fail: DMA I2C1_RX, I2C1 event/error "
+                "interrupts, HAL_I2C_MemRxCpltCallback")
+    if S.n_gyro == 0:
+        return "Reads OK but no gyro data in the FIFO: FIFO configuration"
+    if S.n_mag == 0:
+        return "Gyro/acc OK but no mag data from the sensor hub: Mode 3 (J4/J5 on 5-6), n_sh_nack"
+    if not S.running:
+        return (f"Data OK, calibration {int(S.calib_count)}/100: keep the board STILL "
+                "(restarts if it moves)")
+    return "Filter running: STATE packets should be arriving"
+
+
+def read_capture(path) -> bytes:
+    """Reads a raw ``.bin`` capture (tlm_capture / viewer) into bytes."""
+    with open(path, "rb") as fh:
+        return fh.read()
+
+
+def frame_counts(frames) -> dict:
+    """Number of frames per type name, e.g. ``{'STATE': 10, 'INIT': 1, ...}``."""
+    counts = {name: 0 for name in TYPE_NAMES.values()}
+    for fr in frames:
+        name = TYPE_NAMES.get(fr.type)
+        if name:
+            counts[name] += 1
+    return counts

@@ -1,4 +1,4 @@
-function out = calibMagAxes(logFile, gapSec)
+function out = calibMagAxes(logFile, gapSec, mapFw, hardIronFw)
 %CALIBMAGAXES  Magnetometer orientation w.r.t. the gyroscope + hard-iron, from data.
 %
 %   out = calibMagAxes('iekf_log_....mat')
@@ -14,13 +14,22 @@ function out = calibMagAxes(logFile, gapSec)
 %       (I - D') * M * h = M*m_j - D'*M*m_i
 %   The M with the smallest residual wins, and it must win by a clear margin.
 %
-%   ACQUISITION: firmware with MAG_AXIS_MAP = identity and MAG_HARD_IRON = 0,
-%   iekfLiveViewer, board still for 2 s, then ~40 s of slow/moderate rotations
-%   about ALL axes (tilts included), away from metal objects.
+%   ACQUISITION: iekfLiveViewer, board still for 2 s, then ~40 s of slow/moderate
+%   rotations about ALL axes (tilts included), away from metal objects.
+%   The log holds the field AFTER the MAG_AXIS_MAP / MAG_HARD_IRON of the firmware
+%   that recorded it. Either
+%     - record with MAG_AXIS_MAP = identity and MAG_HARD_IRON = 0, or
+%     - pass the values of the firmware used for the log (no re-flash needed):
+%         calibMagAxes(log, [], [1 0 0; 0 -1 0; 0 0 -1], [100.31 -0.56 -166.07])
+%   The printed values are ABSOLUTE in both cases: paste them as they are.
+%   (Running it on a log of a calibrated firmware WITHOUT passing its values gives
+%   ~identity and ~0, i.e. the CORRECTION, not the calibration.)
 %
 %   Requires expSO3.m (Matlab/FiltersComparison/IEKF_originalVersion, see Matlab/initPath.m).
 
-if nargin < 2, gapSec = 0.2; end
+if nargin < 2 || isempty(gapSec), gapSec = 0.2; end
+if nargin < 3, mapFw = []; end
+if nargin < 4, hardIronFw = []; end
 S = load(logFile); L = S.L;
 N = numel(L.seq);
 
@@ -28,6 +37,15 @@ N = numel(L.seq);
 if ~isempty(L.init), b = L.init.b0(:); else, b = L.bias(:,1); end
 g = L.gyro - b;
 m = L.mag;
+if isempty(mapFw) && isempty(hardIronFw)
+    fprintf(['Assuming the log was recorded with MAG_AXIS_MAP = identity, MAG_HARD_IRON = 0.\n' ...
+             'Otherwise pass them: calibMagAxes(log, [], MAP, HARD_IRON).\n']);
+else
+    if isempty(mapFw), mapFw = eye(3); end
+    if isempty(hardIronFw), hardIronFw = zeros(3,1); end
+    if isvector(mapFw), mapFw = reshape(mapFw, 3, 3).'; end   % row-major as in app_config.h
+    m = mapFw.' * (m + hardIronFw(:));                         % back to the raw sensor field
+end
 
 t  = double(L.t_us) * 1e-6;
 dt = [0, diff(t)];
