@@ -1429,6 +1429,7 @@ CMD is the place for future commands: arming, gains, logging.
 | Comparison: "INIT of this boot was lost" | UART saturated during the capture; repeat |
 | Euler plots jump by 180° | gimbal lock (|pitch| ≈ 90°); use the quaternion figure |
 | `iekf-tools info`: IMU interrupts 0/s, gyro far below 960/s, tens of I²C errors/s; viewer below its rate with a growing `lag` and `lost 0` | INT1 stuck high: it is a *level* (FIFO ≥ watermark) and the EXTI is on the *rising edge*. One late read leaves the FIFO above the watermark, so no edge arrives any more and the task lives on its 5 ms timeout, with big reads, DMA timeouts and lost samples. Fixed in `ImuTask`: immediate re-read after a large read or a timeout wake-up, and a 12 ms DMA timeout. `s_drainReads` in *Live Expressions* counts the recoveries |
+| `lag` grows slowly (about 1 %/s) with no loss; `iekf-tools info`: filter time behind the uptime | the gyro was integrated with the nominal 1/960 s for part of the samples, while the LSM6DSV16X runs on its own RC oscillator (916 Hz measured). Fixed: the sample period is measured over 2 s windows against the MCU clock and used for every sample. `s_odrHz` in *Live Expressions* shows it |
 | `undefined reference to arm_mat_*` | CMSIS-DSP GCC library not linked (§8) |
 
 ---
@@ -1451,6 +1452,10 @@ CMD is the place for future commands: arming, gains, logging.
   above it, no new edge ever comes and the loop silently degrades to polling.
   Phase 1 never hit it; enabling BLE, with a slower start-up, did. The reader
   must drain the FIFO below the watermark.
+- **The sensor's clock is not the MCU's clock.** The IMU ODR comes from its
+  internal RC oscillator, ~5 % off on this board. The integration step must be
+  measured against the MCU crystal over long windows, not assumed and not
+  taken from single reads.
 - **Process noise is a model-error budget.** The gyro σ that worked was 150×
   the datasheet noise density because it also covers scale and alignment errors.
 
