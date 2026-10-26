@@ -2,7 +2,8 @@
 
 A 3D board + body triad follows the attitude in the levelled NWU world frame
 (x = magnetic north, y = west, z = up) defined by the firmware's static
-calibration: keep the board STILL ~2 s after reset.
+calibration: keep the board STILL ~2 s after reset. The view shows x to the
+right, y into the screen and z up.
 
 - Reception runs in a background thread: the plot never slows it down.
 - Every received byte is written to a raw ``.bin`` (usable by ``compare``).
@@ -86,6 +87,7 @@ class LiveViewer:
         self.lag_ref = None
         self.t_start = time.monotonic()
         self.finished = False
+        self.draw_ms = 0.0                                     # smoothed redraw time
 
     # ------------------------------------------------------------ reception
     def _reader(self):
@@ -163,6 +165,8 @@ class LiveViewer:
             txt += f"   lag {lag:.2f} s"
             if lag > 0.5:
                 txt += "  <-- VIEWER CANNOT KEEP UP"
+            if self.draw_ms > 0:
+                txt += f"   draw {self.draw_ms:.0f} ms"
             txt += "\nbias [deg/s]  {:6.3f} {:6.3f} {:6.3f}".format(*np.degrees(s.bias))
             fl = int(s.flags)
             tags = [n for b, n in ((F_ACC_GATED, "ACC de-weighted"), (F_MAG_GATED, "MAG de-weighted"),
@@ -181,7 +185,7 @@ class LiveViewer:
                 txt += f"  err 0x{int(st.ble_err):02X}"
             n_notif = getattr(self.source, "n_notifications", None)
             if n_notif is not None:
-                txt += f"  ({n_notif} notifications)"
+                txt += f"  ({n_notif} notif., {n_notif / max(el, 1e-3):.0f}/s)"
         if s is None and self.latest_status is not None:
             txt = "STATUS (no attitude data yet)\n" + status_diagnosis(self.latest_status)
         if s is None and self.latest_status is None:
@@ -198,7 +202,9 @@ class LiveViewer:
         ax.set_xlim(-lim, lim); ax.set_ylim(-lim, lim); ax.set_zlim(-lim, lim)
         ax.set_box_aspect((1, 1, 1))
         ax.set_xlabel("x  (N)"); ax.set_ylabel("y  (W)"); ax.set_zlabel("z  (Up)")
-        ax.view_init(elev=25, azim=135)
+        # camera behind the scene looking along +y: x to the right, y into the
+        # screen, z up (a small elevation keeps the depth readable)
+        ax.view_init(elev=20, azim=-90)
         grey = (0.5, 0.5, 0.5)
         for e, lbl in ((np.array([1.4, 0, 0]), "N"), (np.array([0, 1.4, 0]), "W"), (np.array([0, 0, 1.4]), "Up")):
             ax.plot([0, e[0]], [0, e[1]], [0, e[2]], ":", color=grey, lw=1)
@@ -235,7 +241,7 @@ class LiveViewer:
         self._fig.canvas.draw_idle()
 
     # ------------------------------------------------------------ main loop
-    def run(self, refresh_hz: float = 30.0) -> Struct:
+    def run(self, refresh_hz: float = 15.0) -> Struct:
         import matplotlib.pyplot as plt
 
         print(f"Log: {self.log_file}\nRaw capture: {self.bin_file}")
@@ -264,13 +270,19 @@ class LiveViewer:
                     got = True
                 now = time.monotonic()
                 if got and now - t_draw > 1.0 / refresh_hz:
+                    t0 = time.monotonic()
                     self._redraw()
+                    if self.show:
+                        self._fig.canvas.flush_events()       # draw now, to time it
+                    self.draw_ms = 0.8 * self.draw_ms + 0.2 * 1e3 * (time.monotonic() - t0)
                     t_draw = now
                 if now - t_save > 10:
                     self.save()
                     t_save = now
                 if self.show:
-                    plt.pause(0.005)
+                    # GUI events without plt.pause (which re-shows the window at
+                    # every call and makes it sluggish on Windows)
+                    self._fig.canvas.start_event_loop(0.01)
                 else:
                     time.sleep(0.005)
         except KeyboardInterrupt:

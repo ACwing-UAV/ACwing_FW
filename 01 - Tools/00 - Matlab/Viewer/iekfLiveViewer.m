@@ -4,8 +4,8 @@ function L = iekfLiveViewer(transport, target, baud, logDir)
 %   iekfLiveViewer("serial", "COM6")                 % USB (ST-LINK VCP), 921600 baud
 %   iekfLiveViewer("serial", "/dev/ttyACM0", 460800)
 %   iekfLiveViewer("ble")                            % BLE, board found automatically, 60 Hz
-%   iekfLiveViewer("ble", "IEKF-WB55")               % BLE, by name (or address), 60 Hz
-%   iekfLiveViewer("ble", "IEKF-WB55", 8)            % BLE, STATE every 8 -> 30 Hz
+%   iekfLiveViewer("ble", "IEKF")               % BLE, by name (or address), 60 Hz
+%   iekfLiveViewer("ble", "IEKF", 8)            % BLE, STATE every 8 -> 30 Hz
 %
 %   Both links carry the SAME frames (STATE, INIT, STATUS): the log, the .bin
 %   and everything downstream are identical. Over BLE the STATE rate is lower
@@ -15,6 +15,7 @@ function L = iekfLiveViewer(transport, target, baud, logDir)
 %
 %   World frame NWU (x = magnetic north, y = west, z = up), defined by the
 %   firmware through the static calibration: keep the board STILL ~2 s after reset.
+%   View: x to the right, y into the screen, z up.
 %   Start the viewer BEFORE resetting the board if you want the complete log.
 %   Close the figure to stop (with Ctrl+C the last autosave remains, at most
 %   10 s old). With APP_TLM_REPLAY = 1 use tlmCapture.m instead: the viewer
@@ -286,7 +287,7 @@ ax  = axes(fig, 'Position', [0.05 0.22 0.9 0.75]);
 hold(ax, 'on'); grid(ax, 'on'); axis(ax, 'equal');
 lim = 1.6; axis(ax, [-lim lim -lim lim -lim lim]);
 xlabel(ax, 'x  (N)'); ylabel(ax, 'y  (W)'); zlabel(ax, 'z  (Up)');
-view(ax, 135, 25);
+view(ax, 0, 20);   % x to the right, y into the screen, z up (slight elevation)
 
 % world frame, grey
 plot3(ax, [0 1.4], [0 0], [0 0], ':', 'Color', [.5 .5 .5], 'LineWidth', 1);
