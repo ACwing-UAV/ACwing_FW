@@ -265,3 +265,45 @@ def frame_counts(frames) -> dict:
         if name:
             counts[name] += 1
     return counts
+
+
+def timing_report(frames) -> List[str]:
+    """Firmware rates from the STATUS counters of a capture (first vs last STATUS
+    of the same boot) and filter time vs real time from STATE.
+
+    Answers "is the firmware running in real time?": at 960 Hz the board must
+    show ~960 gyro samples/s, ~480 IMU interrupts/s, no FIFO overruns, and the
+    filter time (STATE t_us) must advance like the uptime.
+    """
+    st = [(decode_status(f.payload)) for f in frames if f.type == 3]
+    sv = [decode_state(f.payload) for f in frames if f.type == 1]
+    out: List[str] = []
+    if len(st) < 2:
+        return ["  timing: fewer than 2 STATUS frames"]
+    # last boot only (uptime decreasing = reboot)
+    k0 = 0
+    for k in range(1, len(st)):
+        if st[k].uptime_s < st[k - 1].uptime_s:
+            k0 = k
+    a, b = st[k0], st[-1]
+    du = b.uptime_s - a.uptime_s
+    if du <= 0:
+        return ["  timing: STATUS uptime does not advance"]
+    def rate(f):
+        return (b[f] - a[f]) / du
+    out.append(f"  firmware over {du:.1f} s of uptime (STATUS {a.uptime_s:.1f} -> {b.uptime_s:.1f} s):")
+    out.append(f"    gyro samples {rate('n_gyro'):7.1f}/s   acc {rate('n_acc'):7.1f}/s   "
+               f"mag {rate('n_mag'):6.1f}/s   IMU interrupts {rate('irq_count'):6.1f}/s   (960/960/~100/~480 expected)")
+    out.append(f"    FIFO overruns +{b.fifo_ovr - a.fifo_ovr:.0f}   I2C errors +{b.bus_err - a.bus_err:.0f}   "
+               f"words/IRQ max {b.words_max:.0f}   processing max {b.proc_us_max:.0f} us")
+    out.append(f"    telemetry drops: queue +{b.tlm_drop - a.tlm_drop:.0f}   UART +{b.uart_drop - a.uart_drop:.0f}   "
+               f"BLE +{b.ble_drop - a.ble_drop:.0f}")
+    if len(sv) >= 2:
+        span_fw = (sv[-1].t_us - sv[0].t_us) * 1e-6
+        dseq = (sv[-1].seq - sv[0].seq) % 65536
+        out.append(f"    STATE: {len(sv)} frames, seq +{dseq} ({dseq / 240:.1f} s at 240 Hz), "
+                   f"filter time +{span_fw:.1f} s")
+        g = rate('n_gyro')
+        if g > 0:
+            out.append(f"    -> the IMU delivers {100 * g / 960:.0f} % of the nominal gyro rate")
+    return out

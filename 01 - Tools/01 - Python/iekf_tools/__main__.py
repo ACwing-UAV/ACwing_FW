@@ -127,6 +127,8 @@ def _cmd_info(a):
     st = [fr for fr in frames if fr.type == 3]
     if st:
         print("  last STATUS: " + status_diagnosis(decode_status(st[-1].payload)))
+        from .telemetry import timing_report
+        print("\n".join(timing_report(frames)))
     return 0
 
 
