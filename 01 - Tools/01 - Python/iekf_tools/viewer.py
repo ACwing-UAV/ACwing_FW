@@ -181,7 +181,7 @@ class LiveViewer:
                 txt += f"  err 0x{int(st.ble_err):02X}"
             n_notif = getattr(self.source, "n_notifications", None)
             if n_notif is not None:
-                txt += f"  ({n_notif} notifications)"
+                txt += f"  ({n_notif} notif., {n_notif / max(el, 1e-3):.0f}/s)"
         if s is None and self.latest_status is not None:
             txt = "STATUS (no attitude data yet)\n" + status_diagnosis(self.latest_status)
         if s is None and self.latest_status is None:

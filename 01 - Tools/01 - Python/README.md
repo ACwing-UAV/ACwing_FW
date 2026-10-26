@@ -119,6 +119,12 @@ iekf-tools scan                     # the board must be listed (disconnect any p
 iekf-tools viewer --ble             # or: --ble IEKF --decim 8
 ```
 
+The BLE reception runs in a separate process. Bluetooth notifications arrive
+through Python callbacks, and in the viewer's own process the 3D redraw delayed
+them: on Windows the viewer showed 23 packets/s instead of 60 and a growing
+lag, with nothing lost. The panel's `BLE:` line shows the notifications/s
+actually received.
+
 The BLE link carries the same frames as USB, with STATE decimated and no
 REPLAY. Log and `.bin` have the same format as over USB, so every other tool
 works on them. Use USB for `capture` and `compare`.
@@ -221,7 +227,7 @@ Next to every log, the viewer writes the raw byte stream (`.bin`), which
 
 ```bash
 pip install -e ".[test]"
-pytest                    # 24 tests, ~20 s
+pytest                    # 25 tests, ~20 s
 ```
 
 | Test file | Checks |
@@ -229,7 +235,7 @@ pytest                    # 24 tests, ~20 s
 | `test_telemetry.py` | CRC check value; parser on random chunks with garbage and false syncs; skip of REPLAY; decoding of every packet type; STATUS diagnosis |
 | `test_filters.py` | `iekf_attitude` and `iekf_attitude_emb` (three configurations, all extensions) vs the MATLAB outputs: attitude < 1e-11, bias < 1e-12, covariance < 1e-14; SO(3) maps |
 | `test_compare.py` | `compare_embedded` on a mode-1 and a mode-0 capture (stillness, NIS inflation, mag age, 1 lockout) vs the MATLAB `compareEmbeddedVsMatlab` figures; **negative control**: a 20 % change of the dip tolerance in INIT must give DIVERGE |
-| `test_ble.py` | STATUS of 54 and 62 bytes; board discovery by name/address/RSSI; a stream cut into 20-byte notifications reassembles exactly; viewer fed by notifications from another thread (4× decimated stream: 0 lost, BLE line in the panel, `.bin` identical); a real gap on a decimated stream counted once |
+| `test_ble.py` | STATUS of 54 and 62 bytes; board discovery by name/address/RSSI; a stream cut into 20-byte notifications reassembles exactly; viewer fed by notifications from another thread (4× decimated stream: 0 lost, BLE line in the panel, `.bin` identical); a real gap on a decimated stream counted once; reception through the worker process (radio replaced by a recorded stream) |
 | `test_tools.py` | viewer replay (log, `.bin` identical to the stream), `.mat` round trip, `calib_mag_axes` recovers a known axis map and hard-iron, `fit_hard_iron`, `mag_check` finds a stale hard-iron and its absolute correction, sniffer diagnosis, CLI |
 
 Fixtures in `tests/data`:
@@ -265,7 +271,7 @@ cd tests/reference && matlab -batch make_reference     # or: octave-cli --eval m
 │   ├── magcalib.py      axis map + hard-iron, sphere fit, calibration check
 │   ├── logio.py         MATLAB-compatible .mat logs
 │   ├── serial_io.py     serial port / file replay sources
-│   ├── ble_io.py        BLE source (bleak): scan, discovery, TLM notifications, CMD
+│   ├── ble_io.py        BLE source (bleak, in a worker process): scan, discovery, TLM notifications, CMD
 │   └── simulate.py      synthetic telemetry stream (USB or BLE: decimated STATE,
 │                        62-byte STATUS, notification cutting)
 └── tests/               pytest suite, fixtures, MATLAB reference generators
