@@ -1,3 +1,0 @@
-../App/control/motors.c:13:6:motors_init	4	static
-../App/control/motors.c:24:6:motors_arm	32	static
-../App/control/motors.c:30:6:motors_set	16	static

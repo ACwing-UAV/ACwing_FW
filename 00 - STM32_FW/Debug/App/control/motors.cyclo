@@ -1,3 +1,0 @@
-../App/control/motors.c:13:6:motors_init	1
-../App/control/motors.c:24:6:motors_arm	3
-../App/control/motors.c:30:6:motors_set	1
