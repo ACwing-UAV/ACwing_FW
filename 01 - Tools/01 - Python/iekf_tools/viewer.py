@@ -2,7 +2,8 @@
 
 A 3D board + body triad follows the attitude in the levelled NWU world frame
 (x = magnetic north, y = west, z = up) defined by the firmware's static
-calibration: keep the board STILL ~2 s after reset.
+calibration: keep the board STILL ~2 s after reset. The view shows x to the
+right, y into the screen and z up.
 
 - Reception runs in a background thread: the plot never slows it down.
 - Every received byte is written to a raw ``.bin`` (usable by ``compare``).
@@ -201,7 +202,9 @@ class LiveViewer:
         ax.set_xlim(-lim, lim); ax.set_ylim(-lim, lim); ax.set_zlim(-lim, lim)
         ax.set_box_aspect((1, 1, 1))
         ax.set_xlabel("x  (N)"); ax.set_ylabel("y  (W)"); ax.set_zlabel("z  (Up)")
-        ax.view_init(elev=25, azim=135)
+        # camera behind the scene looking along +y: x to the right, y into the
+        # screen, z up (a small elevation keeps the depth readable)
+        ax.view_init(elev=20, azim=-90)
         grey = (0.5, 0.5, 0.5)
         for e, lbl in ((np.array([1.4, 0, 0]), "N"), (np.array([0, 1.4, 0]), "W"), (np.array([0, 0, 1.4]), "Up")):
             ax.plot([0, e[0]], [0, e[1]], [0, e[2]], ":", color=grey, lw=1)

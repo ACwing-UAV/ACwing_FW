@@ -114,8 +114,8 @@ stm32_iekf_attitude_fw/
 │   ├── STM32_WPAN/App/             CubeMX-generated BLE application (app_ble.c with our 3 hooks, §12.5)
 │   ├── Drivers/, Middlewares/      CubeMX-generated: STM32WB HAL, CMSIS, FreeRTOS, ST STM32_WPAN (BLE)
 │   ├── Utilities/                  CubeMX-generated: low-power manager used by STM32_WPAN
-│   ├── IEKFcfg.ioc                 CubeMX configuration (pins, clocks, DMA, FreeRTOS)
-│   ├── IEKFcfg.launch              STM32CubeIDE debug configuration (ST-LINK, SWD)
+│   ├── STM32_IEKF.ioc              CubeMX configuration (pins, clocks, DMA, FreeRTOS)
+│   ├── STM32_IEKF.launch           STM32CubeIDE debug configuration (ST-LINK, SWD)
 │   ├── .project, .cproject, .mxproject, .settings/   STM32CubeIDE project files
 │   └── STM32WB55RGVX_FLASH.ld, ..._RAM.ld   linker scripts
 ├── 01 - Tools/                     PC tools, in two equivalent flavours
@@ -143,7 +143,7 @@ belong to:
 
 | Paths like | Are relative to |
 |---|---|
-| `App/…`, `Core/…`, `IEKFcfg.ioc` | `00 - STM32_FW/` |
+| `App/…`, `Core/…`, `STM32_IEKF.ioc` | `00 - STM32_FW/` |
 | `Viewer/…`, `MagCalib/…`, `FiltersComparison/…`, `initPath.m` | `01 - Tools/00 - Matlab/` |
 | `iekf_tools/…`, `tests/…` | `01 - Tools/01 - Python/` |
 
@@ -796,7 +796,7 @@ still work.
 1. The folder `00 - STM32_FW` is an STM32CubeIDE project: *File → Import →
    General → Existing Projects into Workspace*, select `00 - STM32_FW`. Build
    outputs (`Debug/`) are not versioned: the first build regenerates them. To change
-   pins or clocks, open `IEKFcfg.ioc` in CubeMX and regenerate (user code is
+   pins or clocks, open `STM32_IEKF.ioc` in CubeMX and regenerate (user code is
    kept). Relevant settings already in the `.ioc`: SYSCLK 64 MHz; I2C1 on PB8/PB9 with
    DMA RX and event/error IRQs; USART1 921600 baud with DMA TX (**Memory increment
    enabled**) and global IRQ; PA15 EXTI rising edge (`IMU_INT1`); FreeRTOS
@@ -812,7 +812,7 @@ still work.
 4. `main.c` already calls `app_start()` and forwards the HAL callbacks
    (`HAL_GPIO_EXTI_Callback`, `HAL_I2C_MemRxCpltCallback`,
    `HAL_I2C_ErrorCallback`, `HAL_UART_TxCpltCallback`).
-5. Debug/flash: `IEKFcfg.launch` (ST-LINK GDB server, SWD, connect under reset).
+5. Debug/flash: `STM32_IEKF.launch` (ST-LINK GDB server, SWD, connect under reset).
 6. BLE: the wireless stack must be flashed once on the Cortex-M0+ (§12.6). Without
    it, the radio core never starts. Set `APP_TLM_BLE 0` to run on USB only.
 
@@ -864,7 +864,8 @@ L = iekfLiveViewer("ble");                            % BLE, board found automat
 
 1. Start the viewer, then reset the board and keep it **still for 2–4 s**
    (static calibration; it restarts if the board moves).
-2. The 3D triad follows the board in the levelled NWU frame. The text panel shows
+2. The 3D triad follows the board in the levelled NWU frame, seen with x (N)
+   to the right, y (W) into the screen and z up, slightly from above. The text panel shows
    roll/pitch/yaw, packet rate (~240 Hz), lost packets, **display lag** (warning
    above 0.5 s), gyro bias, flags (`ACC de-weighted`, `MAG de-weighted`, `STILL`)
    and the calibration result. Before the filter starts it shows the STATUS
@@ -1239,7 +1240,8 @@ reference, and to check after a regeneration:
 1. **Clocks.**
    - HSE 32 MHz and LSE 32.768 kHz crystals on.
    - RTC clock and RF wake-up clock from **LSE**.
-   - SYSCLK 64 MHz.
+   - SYSCLK 64 MHz from the PLL fed by **HSE** (M = /2, N = ×8, R = /2). The
+     crystal also makes the UART baud rate accurate.
 2. **Peripherals.**
    - **HSEM** and **IPCC** activated, with the IPCC C1 RX/TX interrupts.
    - **RTC**: clock source activated, internal wake-up (timer server of the
@@ -1263,14 +1265,15 @@ reference, and to check after a regeneration:
 5. **NVIC.** Every interrupt that calls RTOS functions needs priority ≥ 5
    (IMU EXTI, IPCC, HSEM, RTC wake-up).
 
-Settings to review in CubeMX. The repository still has the CubeMX defaults
-for:
-- the advertised **name**: `STM32WB`. Set it to **`IEKF`**: CubeMX accepts only
-  5 characters here, because the name shares the 31-byte advertising packet
-  with the template's data. The PC tools recognise any name starting with
-  `IEKF`, and `STM32WB` too;
-- `CFG_BLE_MAX_ATT_MTU`: **156** (247 gives fewer notifications on PCs);
-- the **PLL source**: MSI (HSE is preferable, for the UART baud accuracy too).
+6. **BLE parameters** (*STM32_WPAN → BLE → Configuration*).
+   - Advertised **name**: **`IEKF`**. CubeMX accepts only 5 characters here
+     because the name shares the 31-byte advertising packet with the
+     template's data. The PC tools recognise any name starting with `IEKF`,
+     and also `STM32WB` (the CubeMX default).
+   - `CFG_BLE_MAX_ATT_MTU`: **247**. It gives fewer and fuller notifications.
+
+The CubeIDE project is named `STM32_IEKF` (`STM32_IEKF.ioc`,
+`STM32_IEKF.launch`).
 
 ### 12.5 Firmware hooks
 
@@ -1393,7 +1396,7 @@ and were fixed in `ImuTask` (§13):
 | Check | Result |
 |---|---|
 | Notifications on the board, nRF Connect | frames `A5 5A …` received |
-| Full firmware build with ARM GCC 13.3, include paths and defines read from `.cproject` (87 C files + startup, linked with `STM32WB55RGVX_FLASH.ld` and CMSIS-DSP) | 0 errors; only warnings: 3 unused functions in the generated `hrs_app.c`. Debug flags (`-O0 -g3`): 107 KB flash, 73 KB RAM; `-O2`: 66 KB flash |
+| Full firmware build with ARM GCC 13.3, include paths and defines read from `.cproject` (87 C files + startup, linked with `STM32WB55RGVX_FLASH.ld` and CMSIS-DSP) | 0 errors, 0 warnings (with the per-file flags of `hrs_app.c`, §12.4). HSE clock, MTU 247. Debug flags (`-O0 -g3`): 108 KB flash, 73 KB RAM; `-O2`: 66 KB flash |
 | `ble_tlm_svc.c` against the STM32_WPAN headers | all ACI/HCI functions, events and structs used exist with that signature |
 | Host test of the BLE queue: 60 s of frames, random MTU 23–247, 30 % refused sends | bytes received = frames queued; overload drops whole frames only |
 | MATLAB viewer, BLE path with simulated notifications (Octave) | 660 STATE at step 4, 0 lost, INIT/STATUS decoded, `.bin` identical, CMD `[2 4]` written |
