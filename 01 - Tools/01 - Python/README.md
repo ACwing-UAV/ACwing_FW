@@ -116,7 +116,7 @@ iekf-tools viewer COM6              # start, THEN reset the board and keep it st
 
 ```bash
 iekf-tools scan                     # the board must be listed (disconnect any phone first)
-iekf-tools viewer --ble             # or: --ble IEKF-WB --decim 8
+iekf-tools viewer --ble             # or: --ble IEKF --decim 8
 ```
 
 The BLE link carries the same frames as USB, with STATE decimated and no

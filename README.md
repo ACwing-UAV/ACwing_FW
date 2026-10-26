@@ -1246,8 +1246,14 @@ reference, and to check after a regeneration:
      stack).
    - **RNG** and **RF** activated.
 3. **STM32_WPAN.**
-   - *BLE* enabled, server profile. The repository uses the Heart Rate
-     template: its service stays registered alongside ours and is unused.
+   - *BLE* enabled, server profile, **Heart Rate** template. It is kept
+     because, in the CubeMX version used, it is the template that exposes the
+     advertised name (`LOCAL_NAME`); with the Custom Template the field is not
+     available. The Heart Rate service stays registered alongside ours, unused.
+   - The generated `hrs_app.c` has three unused functions (compiler warnings).
+     They are outside USER CODE, so silence them for that file only:
+     *Properties → C/C++ Build → Settings → MCU GCC Compiler → Miscellaneous*,
+     add `-Wno-unused-function -Wno-unused-variable` (Debug and Release).
    - Our service is added in code (`ble_tlm_svc.c`), not in the *BLE GATT* tab.
    - Debug trace **off**: it would use USART1, our telemetry port.
    - Low power **off** (`CFG_LPM_SUPPORTED` = 0): stop mode would halt the
@@ -1259,10 +1265,10 @@ reference, and to check after a regeneration:
 
 Settings to review in CubeMX. The repository still has the CubeMX defaults
 for:
-- the advertised **name**: `STM32WB` (set e.g. `IEKF-WB`; the PC tools find
-  both). The name must fit in the 31-byte advertising packet together with
-  the template's manufacturer data: CubeMX accepts about 8 characters, and any
-  name starting with `IEKF` is recognised;
+- the advertised **name**: `STM32WB`. Set it to **`IEKF`**: CubeMX accepts only
+  5 characters here, because the name shares the 31-byte advertising packet
+  with the template's data. The PC tools recognise any name starting with
+  `IEKF`, and `STM32WB` too;
 - `CFG_BLE_MAX_ATT_MTU`: **156** (247 gives fewer notifications on PCs);
 - the **PLL source**: MSI (HSE is preferable, for the UART baud accuracy too).
 
@@ -1338,7 +1344,7 @@ MATLAB (R2019b+, Windows 10+/macOS, Bluetooth 4.0+ adapter):
 
 ```matlab
 L = iekfLiveViewer("ble");                 % board found automatically, STATE 60 Hz
-L = iekfLiveViewer("ble", "IEKF-WB", 8); % by name or address, STATE 30 Hz
+L = iekfLiveViewer("ble", "IEKF", 8); % by name or address, STATE 30 Hz
 blelist                                    % what is advertising
 ```
 
@@ -1348,7 +1354,7 @@ Linux/BlueZ):
 ```bash
 iekf-tools scan                            # boards advertising, marked "<-- IEKF board"
 iekf-tools viewer --ble                    # board found automatically, STATE 60 Hz
-iekf-tools viewer --ble IEKF-WB --decim 8
+iekf-tools viewer --ble IEKF --decim 8
 ```
 
 How the tools behave:

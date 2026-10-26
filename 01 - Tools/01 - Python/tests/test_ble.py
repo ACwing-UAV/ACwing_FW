@@ -22,9 +22,9 @@ def test_decode_status_both_lengths():
 
 
 def test_board_discovery():
-    devs = [("Phone", "AA:01", -40), ("STM32WB", "AA:02", -70), ("IEKF-WB", "AA:03", -60),
+    devs = [("Phone", "AA:01", -40), ("STM32WB", "AA:02", -70), ("IEKF", "AA:03", -60),
             ("", "AA:04", -30)]
-    assert is_board_name("IEKF-WB") and is_board_name("STM32WB") and not is_board_name("Phone")
+    assert is_board_name("IEKF") and is_board_name("STM32WB") and not is_board_name("Phone")
     assert pick_board(devs)[1] == "AA:03"                            # strongest board name
     assert pick_board(devs, "STM32WB")[1] == "AA:02"                  # by name
     assert pick_board(devs, "aa:01")[0] == "Phone"                    # by address
