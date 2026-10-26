@@ -1400,7 +1400,7 @@ and were fixed in `ImuTask` (§13):
 | `ble_tlm_svc.c` against the STM32_WPAN headers | all ACI/HCI functions, events and structs used exist with that signature |
 | Host test of the BLE queue: 60 s of frames, random MTU 23–247, 30 % refused sends | bytes received = frames queued; overload drops whole frames only |
 | MATLAB viewer, BLE path with simulated notifications (Octave) | 660 STATE at step 4, 0 lost, INIT/STATUS decoded, `.bin` identical, CMD `[2 4]` written |
-| Python: 5 BLE tests (`tests/test_ble.py`) | STATUS 54/62 B, board discovery, reassembly from 20-byte notifications, viewer on a decimated stream (0 lost, BLE line), a real gap counted once |
+| Python: 7 BLE tests (`tests/test_ble.py`, 26 in the whole suite) | STATUS 54/62 B, board discovery, reassembly from 20-byte notifications, viewer on a decimated stream (0 lost, BLE line), a real gap counted once, BLE worker process, headless `capture --ble` |
 
 ### 12.10 Troubleshooting (BLE)
 
