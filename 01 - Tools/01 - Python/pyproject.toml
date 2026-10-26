@@ -12,6 +12,7 @@ dependencies = ["numpy>=1.21", "scipy>=1.7", "matplotlib>=3.5", "pyserial>=3.5"]
 
 [project.optional-dependencies]
 test = ["pytest>=7"]
+ble = ["bleak>=0.22"]
 
 [project.scripts]
 iekf-tools = "iekf_tools.__main__:main"

@@ -118,4 +118,18 @@
                                           the real-time viewer -> record with
                                           tlmCapture.m and analyse offline */
 
+/* ---------------- telemetry over BLE (phase 2, see the README) ----------------
+ * Same frames as the UART, as a byte stream on a GATT notification. The UART
+ * keeps working unchanged (REPLAY and comparison stay USB-only). */
+#define APP_TLM_BLE            1       /* 1 once STM32_WPAN (BLE) is enabled in CubeMX
+                                          and the CPU2 wireless stack is flashed      */
+#define APP_BLE_STATE_DECIM    4u      /* STATE over BLE: 240/4 = 60 Hz (~5.4 kB/s in
+                                          total with STATUS and INIT). Changeable at run
+                                          time with the CMD characteristic.            */
+#define APP_BLE_FLUSH_MS       10u     /* TX thread period: groups frames in one
+                                          notification when the MTU allows it          */
+#define APP_BLE_CONN_INT_MIN   12u     /* x1.25 ms = 15 ms (iOS minimum)               */
+#define APP_BLE_CONN_INT_MAX   24u     /* x1.25 ms = 30 ms (iOS: max >= min + 15 ms)   */
+#define APP_BLE_SUPERV_TIMEOUT 400u    /* x10 ms   = 4 s                               */
+
 #endif /* APP_CONFIG_H */

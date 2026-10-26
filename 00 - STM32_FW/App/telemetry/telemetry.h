@@ -14,8 +14,8 @@
  * TYPE 0x03 STATUS : diagnostics, always sent
  * TYPE 0x04 REPLAY : trace of the filter calls + resulting state
  *
- * The BLE packet is compact (<= 20 bytes, default ATT MTU) and unframed:
- * one notification = one packet (reserved for phase 2).
+ * The same frames go over BLE as a byte stream (tlm_ble.h): no BLE-specific
+ * packet format.
  */
 #ifndef TELEMETRY_H
 #define TELEMETRY_H
@@ -92,21 +92,19 @@ typedef struct {
     uint16_t calib_count;    /* calibration samples collected           */
     int8_t   imu_init;       /* 1 = in progress, 0 = OK, <0 = imu_status_t */
     uint8_t  running;        /* 1 = filter running                      */
-} tlm_status_t;              /* 54 bytes */
-
-typedef struct {
-    uint16_t seq;
-    int16_t  q[4];       /* Q15: q_i * 32767                  */
-    int16_t  bias[3];    /* milli-degrees/s                   */
-    uint8_t  flags;
-} tlm_ble_t;             /* 17 bytes */
+    /* ---- phase 2: BLE link (all 0 with APP_TLM_BLE = 0) ---- */
+    uint32_t ble_drop;       /* frames not queued for BLE (link too slow) */
+    uint16_t ble_mtu;        /* ATT_MTU in use                           */
+    uint8_t  ble_state;      /* tlm_ble_state_t: 0 off, 1 advertising,
+                                2 connected, 3 streaming                 */
+    uint8_t  ble_err;        /* last BLE stack error code (0 = none)     */
+} tlm_status_t;              /* 62 bytes (54 in phase 1) */
 #pragma pack(pop)
 
 #if defined(__STDC_VERSION__) && (__STDC_VERSION__ >= 201112L)
 _Static_assert(sizeof(tlm_state_t) == 71, "tlm_state_t layout");
 _Static_assert(sizeof(tlm_init_t)  == 137, "tlm_init_t layout");
-_Static_assert(sizeof(tlm_status_t) == 54, "tlm_status_t layout");
-_Static_assert(sizeof(tlm_ble_t)   <= 20, "tlm_ble_t must fit default BLE MTU");
+_Static_assert(sizeof(tlm_status_t) == 62, "tlm_status_t layout");
 #endif
 
 /* REPLAY (variable length, max TLM_REPLAY_MAX payload bytes):

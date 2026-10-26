@@ -2,7 +2,8 @@
 
 Commands (MATLAB equivalent in brackets):
 
-  viewer         live 3D attitude viewer + log            [iekfLiveViewer]
+  viewer         live 3D attitude viewer + log, USB or BLE [iekfLiveViewer]
+  scan           list the boards advertising over BLE      [blelist]
   capture        raw telemetry to .bin, no decoding       [tlmCapture]
   sniff          byte-level link diagnosis                [tlmSniffer]
   compare        embedded filter vs reference filters     [compareEmbeddedVsMatlab]
@@ -19,8 +20,30 @@ import sys
 
 def _cmd_viewer(a):
     from .viewer import live_viewer
-    live_viewer(port=a.port, baud=a.baud, log_dir=a.log_dir, replay=a.replay,
-                replay_rate=None if a.rate <= 0 else a.rate)
+    try:
+        live_viewer(port=a.port, baud=a.baud, log_dir=a.log_dir, replay=a.replay,
+                    replay_rate=None if a.rate <= 0 else a.rate,
+                    ble=a.ble, ble_decim=a.decim)
+    except (RuntimeError, ImportError) as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
+        return 2
+
+
+def _cmd_scan(a):
+    from .ble_io import is_board_name, scan
+    try:
+        devs = scan(a.timeout)
+    except (ImportError, RuntimeError) as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
+        return 2
+    if not devs:
+        print("No BLE device found.")
+        return 1
+    print(f"{'name':24s} {'address':40s} RSSI")
+    for name, addr, rssi in devs:
+        mark = "  <-- IEKF board" if is_board_name(name) else ""
+        print(f"{name or '-':24s} {addr:40s} {rssi:4d}{mark}")
+    return 0 if any(is_board_name(n) for n, _, _ in devs) else 1
 
 
 def _cmd_capture(a):
@@ -102,14 +125,23 @@ def build_parser() -> argparse.ArgumentParser:
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = p.add_subparsers(dest="cmd", required=True)
 
-    s = sub.add_parser("viewer", help="live 3D viewer (serial port or replay of a .bin)")
+    s = sub.add_parser("viewer", help="live 3D viewer (serial port, BLE, or replay of a .bin)")
     s.add_argument("port", nargs="?", help="serial port, e.g. COM6 or /dev/ttyACM0")
+    s.add_argument("--ble", nargs="?", const="", metavar="NAME_OR_ADDRESS",
+                   help="use BLE instead of the serial port; without a value the board is found "
+                        "automatically (name IEKF... or STM32WB). Needs: pip install bleak")
+    s.add_argument("--decim", type=int, default=4,
+                   help="BLE only: STATE every N acc updates (default 4 = 60 Hz; 8 = 30 Hz)")
     s.add_argument("--baud", type=int, default=921600)
     s.add_argument("--log-dir", default=".", help="folder for the .mat log and the .bin capture")
     s.add_argument("--replay", metavar="BIN", help="replay a recorded capture instead of a port")
     s.add_argument("--rate", type=float, default=19000.0,
                    help="replay speed in bytes/s (0 = as fast as possible)")
     s.set_defaults(func=_cmd_viewer)
+
+    s = sub.add_parser("scan", help="list the devices advertising over BLE (needs bleak)")
+    s.add_argument("--timeout", type=float, default=5.0, help="scan time [s] (default 5)")
+    s.set_defaults(func=_cmd_scan)
 
     s = sub.add_parser("capture", help="record raw telemetry to iekf_cap_*.bin")
     s.add_argument("port")
@@ -159,8 +191,10 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv=None) -> int:
     args = build_parser().parse_args(argv)
-    if args.cmd == "viewer" and not (args.port or args.replay):
-        print("viewer: give a serial port or --replay <file.bin>", file=sys.stderr)
+    if args.cmd == "viewer" and sum(x is not None and x is not False for x in
+                                    (args.port, args.replay, args.ble)) != 1:
+        print("viewer: give exactly one of: a serial port, --ble [NAME], --replay <file.bin>",
+              file=sys.stderr)
         return 2
     rc = args.func(args)
     return int(rc or 0)

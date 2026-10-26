@@ -3,7 +3,15 @@ function L = iekfLiveViewer(transport, target, baud, logDir)
 %
 %   iekfLiveViewer("serial", "COM6")                 % USB (ST-LINK VCP), 921600 baud
 %   iekfLiveViewer("serial", "/dev/ttyACM0", 460800)
-%   iekfLiveViewer("ble", "IEKF-IMU")                % BLE (skeleton, phase 2)
+%   iekfLiveViewer("ble")                            % BLE, board found automatically, 60 Hz
+%   iekfLiveViewer("ble", "IEKF-WB55")               % BLE, by name (or address), 60 Hz
+%   iekfLiveViewer("ble", "IEKF-WB55", 8)            % BLE, STATE every 8 -> 30 Hz
+%
+%   Both links carry the SAME frames (STATE, INIT, STATUS): the log, the .bin
+%   and everything downstream are identical. Over BLE the STATE rate is lower
+%   (3rd argument = decimation, default 4) and REPLAY is never sent.
+%   Automatic discovery picks the first board advertising a name that starts
+%   with "IEKF" or equals "STM32WB" (the CubeMX default). blelist lists them all.
 %
 %   World frame NWU (x = magnetic north, y = west, z = up), defined by the
 %   firmware through the static calibration: keep the board STILL ~2 s after reset.
@@ -18,21 +26,24 @@ function L = iekfLiveViewer(transport, target, baud, logDir)
 %       L = iekfLiveViewer("serial","COM6");
 %   logDir (optional) selects the folder, default the current folder.
 %
-%   serialport: R2019b+.
-%   BLE: Bluetooth Low Energy support (R2019b+), NOT tested with the hardware.
+%   serialport: R2019b+.  ble: R2019b+, Windows 10+ or macOS, Bluetooth 4.0+ adapter.
 
 if nargin < 1, transport = "serial"; end
-if nargin < 2, target    = "COM6";   end
-if nargin < 3, baud      = 921600;   end
+isBle = strcmpi(string(transport), "ble");
+if nargin < 2, if isBle, target = ""; else, target = "COM6"; end, end
+if nargin < 3 || isempty(baud), if isBle, baud = 4; else, baud = 921600; end, end
 if nargin < 4 || isempty(logDir), logDir = pwd; end
 
-SVC_UUID = "7E4A0001-2C6B-4F8E-9A5D-3B1C0E1D2F30";   % = BLE service UUID (phase 2)
-CHR_UUID = "7E4A0002-2C6B-4F8E-9A5D-3B1C0E1D2F30";
+SVC_UUID = "7E4A0001-2C6B-4F8E-9A5D-3B1C0E1D2F30";   % = ble_tlm_svc.c
+CHR_UUID = "7E4A0002-2C6B-4F8E-9A5D-3B1C0E1D2F30";   % TLM: notify, byte stream
+CMD_UUID = "7E4A0003-2C6B-4F8E-9A5D-3B1C0E1D2F30";   % CMD: write without response
 
 % ------------------------------------------------------------------ state
-dev = []; bleDev = []; bleChr = [];
+dev = []; bleDev = []; bleChr = []; bleRx = uint8([]); nBleNotif = 0;
 L = newLog(6000); nLog = 0;
 lastSeq = NaN; seqOffset = 0; nLost = 0; nFrames = 0; nStatus = 0;
+seqStep = Inf;                 % STATE decimation seen in the stream (1, 4, 8, ...)
+buf = uint8([]);
 lastUptime = -1; nResets = 0; finished = false;
 logFile = fullfile(logDir, sprintf('iekf_log_%s.mat', datestr(now, 'yyyymmdd_HHMMSS'))); %#ok<TNOW1,DATST>
 tSave = tic;
@@ -52,37 +63,36 @@ try
         case "serial"
             dev = serialport(target, baud, "Timeout", 1);
             flush(dev);
-            buf = uint8([]);
             while ishghandle(fig)
                 nb = dev.NumBytesAvailable;
                 if nb > 0
-                    chunk = uint8(read(dev, nb, "uint8"));
-                    if binFid > 0, fwrite(binFid, chunk, 'uint8'); end
-                    buf = [buf, chunk]; %#ok<AGROW>
-                    [frames, buf] = parseTelemetry(buf, 4);   % REPLAY: only in the .bin
-                    for k = 1:numel(frames)
-                        switch frames(k).type
-                            case 1, handleState(decodeState(frames(k).payload));
-                            case 2, L.init = decodeInit(frames(k).payload);
-                            case 3, handleStatus(decodeStatus(frames(k).payload));
-                            case 4, nReplay = nReplay + 1;     % only in the .bin capture
-                        end
-                    end
-                    refresh();
-                    if toc(tSave) > 10, saveLog(); tSave = tic; end
+                    consumeBytes(uint8(read(dev, nb, "uint8")));
                 else
                     pause(0.005);
                 end
             end
 
         case "ble"
+            if strlength(string(target)) == 0, target = findIekfBoard(); end
+            fprintf('Connecting to "%s" over BLE...\n', target);
             bleDev = ble(target);
             bleChr = characteristic(bleDev, SVC_UUID, CHR_UUID);
             bleChr.DataAvailableFcn = @onBle;
-            subscribe(bleChr);
+            subscribe(bleChr);                         % the board starts streaming + sends INIT
+            try                                        % optional: STATE decimation
+                cmdChr = characteristic(bleDev, SVC_UUID, CMD_UUID);
+                write(cmdChr, uint8([2, max(1, min(240, round(baud)))]), "withoutresponse");
+            catch err
+                fprintf(2, 'CMD not written (%s): default decimation in use\n', err.message);
+            end
+            fprintf('Connected: STATE every %d acc updates (%.0f Hz)\n', round(baud), 240/round(baud));
             while ishghandle(fig)
-                refresh();
-                pause(0.02);
+                if ~isempty(bleRx)
+                    chunk = bleRx; bleRx = uint8([]);  % notifications arrived meanwhile
+                    consumeBytes(chunk);
+                else
+                    pause(0.01);                       % callbacks run here
+                end
             end
 
         otherwise
@@ -95,11 +105,29 @@ end
 finish();          % normal close: save and prepare the output
 
 % ================================================================== nested
+    function consumeBytes(chunk)
+        % same path for USB and BLE: raw .bin, parser, dispatch
+        if binFid > 0, fwrite(binFid, chunk, 'uint8'); end
+        buf = [buf, chunk];
+        [frames, buf] = parseTelemetry(buf, 4);   % REPLAY: only in the .bin
+        for k = 1:numel(frames)
+            switch frames(k).type
+                case 1, handleState(decodeState(frames(k).payload));
+                case 2, L.init = decodeInit(frames(k).payload);
+                case 3, handleStatus(decodeStatus(frames(k).payload));
+                case 4, nReplay = nReplay + 1;     % only in the .bin capture
+            end
+        end
+        refresh();
+        if toc(tSave) > 10, saveLog(); tSave = tic; end
+    end
+
     function handleState(s)
         if ~isnan(lastSeq)
             d = mod(s.seq - lastSeq, 65536);
             if d == 0, return; end                 % duplicate
-            if d > 1, nLost = nLost + d - 1; end
+            seqStep = min(seqStep, d);             % decimation of the stream
+            nLost = nLost + max(0, round(d / seqStep) - 1);
             if s.seq < lastSeq, seqOffset = seqOffset + 65536; end   % wrap-around
         end
         lastSeq = s.seq;
@@ -129,15 +157,10 @@ finish();          % normal close: save and prepare the output
     end
 
     function onBle(src, ~)
-        p = uint8(read(src, 'oldest'));
-        if numel(p) < 17, return; end
-        s.seq   = double(typecast(p(1:2), 'uint16'));
-        s.t_us  = NaN;
-        s.q     = double(typecast(p(3:10), 'int16')) / 32767;
-        s.bias  = deg2rad(double(typecast(p(11:16), 'int16')) * 1e-3);
-        s.acc   = nan(1,3); s.gyro = nan(1,3); s.mag = nan(1,3);
-        s.flags = double(p(17));
-        handleState(s);
+        % one notification = up to ATT_MTU-3 bytes of the frame stream (frames may
+        % be split across notifications): only append, parsing is in the main loop
+        pkt = uint8(read(src, 'oldest')); bleRx = [bleRx, pkt(:).'];
+        nBleNotif = nBleNotif + 1;
     end
 
     function refresh()
@@ -168,6 +191,13 @@ finish();          % normal close: save and prepare the output
             txt = [txt, sprintf('\ncalib: sigmaAcc %.4f  sigmaMag %.4f  dip %.1f deg', ...
                    L.init.sigmaAcc, L.init.sigmaMag, -asind(L.init.mRef(3)))];
         end
+        if ~isempty(latestStatus) && latestStatus.ble_state > 0
+            bs = {'off', 'advertising', 'connected', 'streaming'};
+            txt = [txt, sprintf('\nBLE: %s  MTU %d  drop %d', bs{latestStatus.ble_state + 1}, ...
+                   latestStatus.ble_mtu, latestStatus.ble_drop)];
+            if latestStatus.ble_err, txt = [txt, sprintf('  err 0x%02X', latestStatus.ble_err)]; end
+            if isBle, txt = [txt, sprintf('  (%d notifications)', nBleNotif)]; end
+        end
         if isempty(latestS) && ~isempty(latestStatus)
             txt = sprintf('STATUS (no attitude data yet)\n%s', statusDiagnosis(latestStatus));
         end
@@ -194,6 +224,10 @@ finish();          % normal close: save and prepare the output
         catch
         end
         dev = []; bleChr = []; bleDev = []; %#ok<SETNU>
+        if ~isempty(bleRx)                  % notifications received while closing
+            if binFid > 0, fwrite(binFid, bleRx, 'uint8'); end
+            bleRx = uint8([]);
+        end
         if binFid > 0, fclose(binFid); binFid = -1; end
         saveLog();
         L = trimLog(L, nLog);
@@ -208,6 +242,21 @@ finish();          % normal close: save and prepare the output
 end
 
 % ================================================================== local functions
+function target = findIekfBoard()
+%FINDIEKFBOARD  Address of the first board advertising "IEKF..." or "STM32WB".
+fprintf('Scanning for the board (5 s)...\n');
+T = blelist("Timeout", 5);
+names = string(T.Name);
+k = find(startsWith(names, "IEKF") | names == "STM32WB", 1);
+if isempty(k)
+    disp(T(:, {'Name', 'Address', 'RSSI'}));
+    error(['No IEKF board found: is it advertising (USB viewer: "BLE: advertising")? ' ...
+           'Is it connected to a phone? Pass the name or the address explicitly.']);
+end
+target = string(T.Address(k));
+fprintf('Found "%s" (%s, RSSI %d dBm)\n', names(k), target, T.RSSI(k));
+end
+
 function L = newLog(cap)
 L = struct('seq', zeros(1,cap), 't_us', zeros(1,cap), 'q', zeros(4,cap), ...
            'bias', zeros(3,cap), 'acc', zeros(3,cap), 'gyro', zeros(3,cap), ...

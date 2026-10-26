@@ -8,8 +8,9 @@ calibration: keep the board STILL ~2 s after reset.
 - Every received byte is written to a raw ``.bin`` (usable by ``compare``).
 - The decoded log is saved as ``.mat`` (same ``L`` struct as the MATLAB
   viewer, see ``logio.py``) every 10 s and on exit (window closed or Ctrl+C).
-- ``source`` can be a serial port or a recorded ``.bin`` (``replay``), so the
-  viewer also runs without the board.
+- ``source`` can be a serial port, the BLE link (``ble_io.BleSource``: same
+  frames, STATE decimated) or a recorded ``.bin`` (``replay``), so the viewer
+  also runs without the board.
 
 With ``APP_TLM_REPLAY = 1`` (~44 kB/s) use ``capture`` instead.
 """
@@ -27,7 +28,7 @@ import numpy as np
 from .common import Struct, eul_zyx, quat2rotm
 from .logio import save_log
 from .serial_io import FileSource, SerialSource
-from .telemetry import (F_ACC_GATED, F_MAG_GATED, F_OVERRUN, F_STILL, decode_init,
+from .telemetry import (BLE_STATES, F_ACC_GATED, F_MAG_GATED, F_OVERRUN, F_STILL, decode_init,
                         decode_state, decode_status, parse_telemetry, status_diagnosis)
 
 _FIELDS = (("seq", 1), ("t_us", 1), ("q", 4), ("bias", 3), ("acc", 3), ("gyro", 3),
@@ -76,6 +77,7 @@ class LiveViewer:
         self.buf = b""
         self.last_seq = None
         self.seq_offset = 0
+        self.seq_step = None          # STATE decimation seen in the stream (1, 4, 8, ...)
         self.n_lost = self.n_frames = self.n_status = self.n_replay = self.n_resets = 0
         self.last_uptime = -1.0
         self.latest_q = np.array([1.0, 0.0, 0.0, 0.0])
@@ -107,8 +109,9 @@ class LiveViewer:
             d = int(s.seq - self.last_seq) % 65536
             if d == 0:
                 return                                         # duplicate
-            if d > 1:
-                self.n_lost += d - 1
+            # decimated streams (BLE, REPLAY on) step by N: count only real gaps
+            self.seq_step = d if self.seq_step is None else min(self.seq_step, d)
+            self.n_lost += max(0, int(round(d / self.seq_step)) - 1)
             if s.seq < self.last_seq:
                 self.seq_offset += 65536                       # wrap-around
         self.last_seq = s.seq
@@ -170,6 +173,15 @@ class LiveViewer:
         if I:
             txt += (f"\ncalib: sigmaAcc {I.sigmaAcc:.4f}  sigmaMag {I.sigmaMag:.4f}  "
                     f"dip {-np.degrees(np.arcsin(np.clip(I.mRef[2], -1, 1))):.1f} deg")
+        st = self.latest_status
+        if st is not None and st.ble_state > 0:
+            txt += (f"\nBLE: {BLE_STATES[int(st.ble_state)] if st.ble_state < 4 else '?'}"
+                    f"  MTU {st.ble_mtu:.0f}  drop {st.ble_drop:.0f}")
+            if st.ble_err:
+                txt += f"  err 0x{int(st.ble_err):02X}"
+            n_notif = getattr(self.source, "n_notifications", None)
+            if n_notif is not None:
+                txt += f"  ({n_notif} notifications)"
         if s is None and self.latest_status is not None:
             txt = "STATUS (no attitude data yet)\n" + status_diagnosis(self.latest_status)
         if s is None and self.latest_status is None:
@@ -291,9 +303,18 @@ class LiveViewer:
 
 def live_viewer(port: str | None = None, baud: int = 921600, log_dir: str = ".",
                 replay: str | None = None, replay_rate: float | None = 19000.0,
-                show: bool = True) -> Struct:
-    """One-call viewer. ``port`` (e.g. ``"COM6"``, ``"/dev/ttyACM0"``) or ``replay``
-    (a recorded ``.bin``, played at ``replay_rate`` bytes/s). Returns the log Struct."""
+                show: bool = True, ble: str | None = None, ble_decim: int | None = 4) -> Struct:
+    """One-call viewer. Exactly one source:
+
+    - ``port``: serial port (e.g. ``"COM6"``, ``"/dev/ttyACM0"``);
+    - ``ble``: BLE board name or address, ``""`` = automatic discovery; STATE
+      every ``ble_decim`` acc updates (4 -> 60 Hz);
+    - ``replay``: a recorded ``.bin``, played at ``replay_rate`` bytes/s.
+
+    Returns the log Struct."""
+    if ble is not None:
+        from .ble_io import BleSource
+        return LiveViewer(BleSource(ble, decim=ble_decim), log_dir=log_dir, show=show).run()
     if replay:
         src = FileSource(replay, rate=replay_rate)
         stop_at_eof = True

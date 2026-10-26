@@ -158,7 +158,11 @@ def decode_init(p: bytes) -> Struct:
 
 
 def decode_status(p: bytes) -> Struct:
-    """Payload TYPE 0x03 (54 bytes) -> Struct. Layout = ``tlm_status_t`` in C."""
+    """Payload TYPE 0x03 -> Struct. Layout = ``tlm_status_t`` in C.
+
+    62 bytes since phase 2 (BLE fields), 54 bytes in phase-1 captures (BLE
+    fields = 0). ``ble_state``: 0 off, 1 advertising, 2 connected, 3 streaming.
+    """
     p = bytes(p)
     u = np.frombuffer(p, dtype="<u4", count=12, offset=0).astype(float)
     w = np.frombuffer(p, dtype="<u2", count=2, offset=48).astype(float)
@@ -170,7 +174,15 @@ def decode_status(p: bytes) -> Struct:
         words_max=w[0], calib_count=w[1],
         imu_init=float(np.int8(p[52])),
         running=float(p[53]),
+        ble_drop=float(np.frombuffer(p, "<u4", 1, 54)[0]) if len(p) >= 62 else 0.0,
+        ble_mtu=float(np.frombuffer(p, "<u2", 1, 58)[0]) if len(p) >= 62 else 0.0,
+        ble_state=float(p[60]) if len(p) >= 62 else 0.0,
+        ble_err=float(p[61]) if len(p) >= 62 else 0.0,
     )
+
+
+#: names of ``tlm_status_t.ble_state``
+BLE_STATES = ("off", "advertising", "connected", "streaming")
 
 
 def decode_replay(p: bytes) -> Struct:
