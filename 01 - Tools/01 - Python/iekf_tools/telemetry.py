@@ -305,5 +305,12 @@ def timing_report(frames) -> List[str]:
                    f"filter time +{span_fw:.1f} s")
         g = rate('n_gyro')
         if g > 0:
-            out.append(f"    -> the IMU delivers {100 * g / 960:.0f} % of the nominal gyro rate")
+            out.append(f"    -> IMU sample rate {g:.1f} Hz ({100 * g / 960:.1f} % of the nominal 960 Hz: "
+                       "the sensor's own oscillator)")
+        if len(sv) >= 2 and span_fw > 0:
+            # real time of the STATE span = gyro samples in it / measured sample rate
+            ratio = span_fw / (dseq * 4 / g) if g > 0 else float("nan")
+            out.append(f"    -> filter time / real time {100 * ratio:.1f} %"
+                       + ("  (OK: every sample integrated with the measured period)" if abs(ratio - 1) < 0.005
+                          else "  (!) samples lost or integrated with a wrong period"))
     return out

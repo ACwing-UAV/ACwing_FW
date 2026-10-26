@@ -35,7 +35,7 @@ Two things make the repository more than a firmware project:
 | **Target** | P-NUCLEO-WB55 (NUCLEO-WB55RG: Cortex-M4F @ 64 MHz + Cortex-M0+ radio core) |
 | **Sensors** | X-NUCLEO-IKS4A1 in **Mode 3**: LSM6DSV16X (gyro + acc) on the MCU I²C bus, LIS2MDL (mag) read through the LSM6DSV16X sensor hub |
 | **Software** | STM32CubeIDE / CubeMX, FreeRTOS (CMSIS-RTOS2), CMSIS-DSP; PC tools: MATLAB R2019b+ or Python ≥ 3.9 |
-| **Status** | **Phase 1 (attitude estimation) concluded.** Both validation tests passed **on the board**: base equations vs the original `iekfAttitude.m` (≤ 0.003 σ), full embedded filter vs `iekfAttitudeEmb.m` (≤ 0.002 σ), see §11.5. **Phase 2 (BLE telemetry)**: notifications working on the board; PC viewers over BLE ready, board test pending (§12). Motors disabled. |
+| **Status** | **Phase 1 (attitude estimation) concluded.** Both validation tests passed **on the board**: base equations vs the original `iekfAttitude.m` (≤ 0.003 σ), full embedded filter vs `iekfAttitudeEmb.m` (≤ 0.002 σ), see §11.5. **Phase 2 (BLE telemetry to the PC)**: working on the board, 57 STATE/s with no loss and no drift (§12.9). Motors disabled. |
 
 ---
 
@@ -73,7 +73,7 @@ The work is organised in phases:
 | Phase | Content | Status |
 |---|---|---|
 | 1 | Embedded attitude estimation: IEKF on SO(3), multi-rate FreeRTOS pipeline, telemetry, PC tools, validation against the reference filter | **concluded** |
-| 2 | Wireless telemetry (BLE on the Cortex-M0+ core) to the PC, then a mobile app | **in progress**: BLE link working on the board, PC tools ready (§12); mobile app planned |
+| 2 | Wireless telemetry (BLE on the Cortex-M0+ core) to the PC, then a mobile app | **BLE to the PC concluded** and validated on the board (§12); mobile app planned |
 | 3 | Control: rate loop at 960 Hz, attitude loop at 240 Hz, motor power stage, arming/fail-safe, thrust model in the estimator | planned |
 
 How to read this document:
@@ -1158,8 +1158,8 @@ app can use it as it is.
 | Item | State |
 |---|---|
 | Notifications on the board | **working**, checked with nRF Connect (frames starting with `A5 5A`) |
-| Firmware | compiles and links with the CubeIDE settings (§12.9) |
-| PC viewers over BLE (MATLAB and Python) | tested with simulated notifications; test on the board pending |
+| PC over BLE (Python) | **working on the board**: 57 STATE/s, lag flat within ±0.02 s over 30 s, 0 lost, 0 firmware drops (§12.9) |
+| PC over BLE (MATLAB) | same frame path; tested with simulated notifications |
 
 ### 12.1 Architecture
 
@@ -1370,6 +1370,26 @@ How the tools behave:
 
 ### 12.9 Verification
 
+**On the board.** The link was measured with `iekf-tools capture --ble --duration 30` and
+`iekf-tools info`, on the P-NUCLEO-WB55, HSE clock, Windows PC:
+
+| Quantity | Measured |
+|---|---|
+| STATE received | 56.8/s; 916 Hz IMU / 16 (the LSM6DSV16X runs at 916 Hz, not 960) |
+| Notifications | ~62/s, ~5.2 kB/s, ATT MTU 247 |
+| Lag PC − firmware time | flat, −0.00 … +0.02 s over 30 s |
+| Lost STATE, firmware BLE drops | 0, 0 |
+| Firmware | 916 gyro samples/s, ~560 IMU interrupts/s, 0 FIFO overruns, 0 I²C errors; filter time 30.0 s over 29.9 s of uptime |
+
+Two firmware problems appeared only on the board, with the BLE stack running,
+and were fixed in `ImuTask` (§13):
+- **INT1 stuck high.** It caused 0 IRQ/s, 39 % of the samples and ~50 I²C
+  errors/s.
+- **Gyro integrated partly with the nominal period.** The filter time fell
+  1.3 % behind real time.
+
+**Off the board:**
+
 | Check | Result |
 |---|---|
 | Notifications on the board, nRF Connect | frames `A5 5A …` received |
@@ -1473,8 +1493,11 @@ validation) is concluded. Open items for the next phases:
 - Verify the magnetometer latency $\bar\tau$ on the bench (constant-rate rotation
   about the vertical) — the LIS2MDL internal filter delay is not modelled.
 - I²C Fast-mode Plus and 1920 Hz sampling (check bus edges on a scope first).
-- Phase 2: test the PC viewers over BLE on the board (§12.7), set the advertised
-  name and the ATT MTU in CubeMX (§12.4), then the mobile app (§12.11).
+- Phase 2: the mobile app on the same GATT service (§12.11). Over BLE the PC
+  side is done.
+- Optionally read the LSM6DSV16X `INTERNAL_FREQ_FINE` register at start-up to
+  use the true ODR from the first sample, instead of the nominal value during
+  the first 2 s.
 - Phase 3: rate PID at 960 Hz with notch-filtered gyro, attitude loop at 240 Hz,
   motor power stage, arming and fail-safe, and a **thrust model** to reject
   sustained accelerations in the acc update.
