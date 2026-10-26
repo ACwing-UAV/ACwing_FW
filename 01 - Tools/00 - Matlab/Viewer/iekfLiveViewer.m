@@ -4,8 +4,8 @@ function L = iekfLiveViewer(transport, target, baud, logDir)
 %   iekfLiveViewer("serial", "COM6")                 % USB (ST-LINK VCP), 921600 baud
 %   iekfLiveViewer("serial", "/dev/ttyACM0", 460800)
 %   iekfLiveViewer("ble")                            % BLE, board found automatically, 60 Hz
-%   iekfLiveViewer("ble", "IEKF-WB55")               % BLE, by name (or address), 60 Hz
-%   iekfLiveViewer("ble", "IEKF-WB55", 8)            % BLE, STATE every 8 -> 30 Hz
+%   iekfLiveViewer("ble", "IEKF-WB")               % BLE, by name (or address), 60 Hz
+%   iekfLiveViewer("ble", "IEKF-WB", 8)            % BLE, STATE every 8 -> 30 Hz
 %
 %   Both links carry the SAME frames (STATE, INIT, STATUS): the log, the .bin
 %   and everything downstream are identical. Over BLE the STATE rate is lower

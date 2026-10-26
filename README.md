@@ -1259,8 +1259,10 @@ reference, and to check after a regeneration:
 
 Settings to review in CubeMX. The repository still has the CubeMX defaults
 for:
-- the advertised **name**: `STM32WB` (set e.g. `IEKF-WB55`; the PC tools find
-  both);
+- the advertised **name**: `STM32WB` (set e.g. `IEKF-WB`; the PC tools find
+  both). The name must fit in the 31-byte advertising packet together with
+  the template's manufacturer data: CubeMX accepts about 8 characters, and any
+  name starting with `IEKF` is recognised;
 - `CFG_BLE_MAX_ATT_MTU`: **156** (247 gives fewer notifications on PCs);
 - the **PLL source**: MSI (HSE is preferable, for the UART baud accuracy too).
 
@@ -1336,7 +1338,7 @@ MATLAB (R2019b+, Windows 10+/macOS, Bluetooth 4.0+ adapter):
 
 ```matlab
 L = iekfLiveViewer("ble");                 % board found automatically, STATE 60 Hz
-L = iekfLiveViewer("ble", "IEKF-WB55", 8); % by name or address, STATE 30 Hz
+L = iekfLiveViewer("ble", "IEKF-WB", 8); % by name or address, STATE 30 Hz
 blelist                                    % what is advertising
 ```
 
@@ -1346,7 +1348,7 @@ Linux/BlueZ):
 ```bash
 iekf-tools scan                            # boards advertising, marked "<-- IEKF board"
 iekf-tools viewer --ble                    # board found automatically, STATE 60 Hz
-iekf-tools viewer --ble IEKF-WB55 --decim 8
+iekf-tools viewer --ble IEKF-WB --decim 8
 ```
 
 How the tools behave:
