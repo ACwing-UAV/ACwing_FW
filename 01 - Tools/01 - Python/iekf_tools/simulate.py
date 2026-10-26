@@ -37,18 +37,27 @@ def pack_init(q0, g_ref, m_ref, b0, fs=FS, flags=0x13) -> bytes:
     return struct.pack("<33fHHB", *f, 120, 60, flags)
 
 
-def pack_status(uptime_ms, n_samples, running=1, calib=100) -> bytes:
-    """``tlm_status_t`` (54 bytes)."""
-    return struct.pack("<12IHHbB", int(uptime_ms), 4 * n_samples, 0, 0, 0, 0, 30000,
-                       4 * n_samples, 4 * n_samples, n_samples // 2, 0, 0, 5, calib, 0, running)
+def pack_status(uptime_ms, n_samples, running=1, calib=100, ble=None) -> bytes:
+    """``tlm_status_t``: 62 bytes (phase 2) with ``ble = (state, mtu, drop, err)``,
+    54 bytes (phase 1 layout) with ``ble=None``."""
+    p = struct.pack("<12IHHbB", int(uptime_ms), 4 * n_samples, 0, 0, 0, 0, 30000,
+                    4 * n_samples, 4 * n_samples, n_samples // 2, 0, 0, 5, calib, 0, running)
+    if ble is not None:
+        state, mtu, drop, err = ble
+        p += struct.pack("<IHBB", int(drop), int(mtu), int(state), int(err))
+    return p
 
 
 def synthetic_stream(duration=40.0, axis_map=None, hard_iron=(30.0, -12.0, 55.0),
-                     field=(20.0, 0.0, -40.0), gyro_bias=(0.01, -0.005, 0.003), seed=1) -> bytes:
+                     field=(20.0, 0.0, -40.0), gyro_bias=(0.01, -0.005, 0.003), seed=1,
+                     state_decim=1, ble=None) -> bytes:
     """Returns the bytes of a telemetry stream (see the module docstring).
 
     ``axis_map``: ``mag_body = M mag_sensor`` (default: 180 deg about x, as on
     the IKS4A1). ``hard_iron``: offset in the body frame [uT].
+    ``state_decim``: one STATE every N samples (BLE sends 240/4 = 60 Hz).
+    ``ble``: ``(state, mtu, drop, err)`` for 62-byte STATUS frames (phase 2);
+    ``None`` = 54-byte phase-1 STATUS.
     """
     rng = np.random.default_rng(seed)
     M = np.diag([1.0, -1.0, -1.0]) if axis_map is None else np.asarray(axis_map, float)
@@ -60,7 +69,7 @@ def synthetic_stream(duration=40.0, axis_map=None, hard_iron=(30.0, -12.0, 55.0)
     w = np.vstack([0.9 * np.sin(0.5 * t), 0.7 * np.cos(0.31 * t), 1.1 * np.sin(0.23 * t + 1)])
     w[:, t < 2.0] = 0.0                               # still for the static calibration
     out = bytearray()
-    out += encode_frame(TYPE_STATUS, pack_status(0, 0, running=0, calib=0))
+    out += encode_frame(TYPE_STATUS, pack_status(0, 0, running=0, calib=0, ble=ble))
     out += encode_frame(TYPE_INIT, pack_init([1, 0, 0, 0], [0, 0, 1], B / np.linalg.norm(B), b))
     R = np.eye(3)
     for k in range(n):
@@ -70,11 +79,24 @@ def synthetic_stream(duration=40.0, axis_map=None, hard_iron=(30.0, -12.0, 55.0)
         acc = R.T @ np.array([0.0, 0.0, 1.0]) + 0.003 * rng.standard_normal(3)
         mag_sensor = M.T @ (R.T @ B + h) + 0.3 * rng.standard_normal(3)
         flags = 1 | (2 if k % 5 in (0, 2) else 0)    # MAG_NEW at ~96 Hz
-        out += encode_frame(TYPE_STATE, pack_state(k, k * 1e6 / FS, rotm2quat(R), b, acc, gyro,
-                                                   mag_sensor, flags))
+        if k % state_decim == 0:
+            out += encode_frame(TYPE_STATE, pack_state(k, k * 1e6 / FS, rotm2quat(R), b, acc, gyro,
+                                                       mag_sensor, flags))
         if k % 24 == 0:
-            out += encode_frame(TYPE_STATUS, pack_status(2000 + k * 1000 / FS, k))
+            out += encode_frame(TYPE_STATUS, pack_status(2000 + k * 1000 / FS, k, ble=ble))
     return bytes(out)
+
+
+def ble_notifications(stream: bytes, mtu: int = 247, seed: int = 0):
+    """Cuts a stream into notification payloads of 1..(mtu-3) bytes, at random
+    points regardless of the frame boundaries, as the firmware BLE link does."""
+    rng = np.random.default_rng(seed)
+    out, i, m = [], 0, max(1, mtu - 3)
+    while i < len(stream):
+        n = int(rng.integers(1, m + 1))
+        out.append(stream[i:i + n])
+        i += n
+    return out
 
 
 def write_stream(path, **kw) -> str:

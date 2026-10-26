@@ -38,6 +38,7 @@ Python ≥ 3.9. From this folder (`01 - Tools/01 - Python`; quote the path, it c
 python -m venv .venv
 .venv\Scripts\activate             # Windows   (Linux/macOS: source .venv/bin/activate)
 pip install -e .                   # numpy, scipy, matplotlib, pyserial + the "iekf-tools" command
+pip install -e ".[ble]"            # optional: BLE link (bleak)
 ```
 
 Without installing, run from this folder with `pip install -r requirements.txt`
@@ -54,6 +55,8 @@ The board appears as **"STMicroelectronics STLink Virtual COM Port"**:
 | MATLAB (`00 - Matlab/`) | Python (`iekf_tools`) | Command line |
 |---|---|---|
 | `Viewer/iekfLiveViewer.m` | `viewer.live_viewer`, `viewer.LiveViewer` | `iekf-tools viewer COM6` |
+| `iekfLiveViewer("ble", ...)` | `ble_io.BleSource` + `viewer.LiveViewer` | `iekf-tools viewer --ble [NAME]` |
+| `blelist` | `ble_io.scan` | `iekf-tools scan` |
 | `FiltersComparison/tlmCapture.m` | `capture.tlm_capture` | `iekf-tools capture COM6 --duration 60` |
 | `FiltersComparison/tlmSniffer.m` | `capture.tlm_sniffer` | `iekf-tools sniff COM6` |
 | `FiltersComparison/compareEmbeddedVsMatlab.m` | `compare.compare_embedded` | `iekf-tools compare iekf_cap_*.bin` |
@@ -88,6 +91,8 @@ argument is taken as an option.
 | Command | What it does |
 |---|---|
 | `viewer PORT [--baud 921600] [--log-dir DIR]` | Live 3D board + triad in the NWU frame. Text panel: roll/pitch/yaw, packet rate, lost packets, display lag, bias, flags, calibration. Writes `iekf_log_*.mat` (every 10 s and on exit) and the raw `iekf_log_*.bin`. Stop by closing the window or with Ctrl+C: the log is saved in both cases. |
+| `viewer --ble [NAME_OR_ADDRESS] [--decim 4]` | Same viewer over BLE (needs `bleak`). Without a name, the strongest board advertising `IEKF…` or `STM32WB` is used. `--decim N`: STATE every N acc updates (4 = 60 Hz, 8 = 30 Hz), written to the CMD characteristic. The panel adds a `BLE:` line (state, MTU, drops, notifications). |
+| `scan [--timeout 5]` | Lists the BLE devices advertising, IEKF boards marked. |
 | `viewer --replay FILE.bin [--rate B/s]` | Same viewer fed by a recorded capture (default 19 kB/s ≈ real time; `--rate 0` = as fast as possible). |
 | `capture PORT [--duration 60] [--out-dir DIR]` | Raw bytes to `iekf_cap_*.bin`, no decoding: for `APP_TLM_REPLAY = 1` (~44 kB/s). Reports the rate over the second half (~44 kB/s expected). |
 | `sniff PORT [--duration 3]` / `sniff --file FILE.bin` | Bytes → frames → STATUS → diagnosis of the first broken link (no bytes, stuck DMA, wrong baud rate, IMU, interrupt, FIFO, sensor hub, calibration). |
@@ -106,6 +111,17 @@ These follow README §9–§11 step by step; only the commands change.
 ```bash
 iekf-tools viewer COM6              # start, THEN reset the board and keep it still 2-4 s
 ```
+
+**Live view over BLE** (firmware with `APP_TLM_BLE 1`, README §12):
+
+```bash
+iekf-tools scan                     # the board must be listed (disconnect any phone first)
+iekf-tools viewer --ble             # or: --ble IEKF-WB55 --decim 8
+```
+
+The BLE link carries the same frames as USB, with STATE decimated and no
+REPLAY. Log and `.bin` have the same format as over USB, so every other tool
+works on them. Use USB for `capture` and `compare`.
 
 **Magnetometer calibration** (README §10):
 1. Record ~40 s of rotations about all axes with the viewer.
@@ -205,7 +221,7 @@ Next to every log, the viewer writes the raw byte stream (`.bin`), which
 
 ```bash
 pip install -e ".[test]"
-pytest                    # 19 tests, ~15 s
+pytest                    # 24 tests, ~20 s
 ```
 
 | Test file | Checks |
@@ -213,6 +229,7 @@ pytest                    # 19 tests, ~15 s
 | `test_telemetry.py` | CRC check value; parser on random chunks with garbage and false syncs; skip of REPLAY; decoding of every packet type; STATUS diagnosis |
 | `test_filters.py` | `iekf_attitude` and `iekf_attitude_emb` (three configurations, all extensions) vs the MATLAB outputs: attitude < 1e-11, bias < 1e-12, covariance < 1e-14; SO(3) maps |
 | `test_compare.py` | `compare_embedded` on a mode-1 and a mode-0 capture (stillness, NIS inflation, mag age, 1 lockout) vs the MATLAB `compareEmbeddedVsMatlab` figures; **negative control**: a 20 % change of the dip tolerance in INIT must give DIVERGE |
+| `test_ble.py` | STATUS of 54 and 62 bytes; board discovery by name/address/RSSI; a stream cut into 20-byte notifications reassembles exactly; viewer fed by notifications from another thread (4× decimated stream: 0 lost, BLE line in the panel, `.bin` identical); a real gap on a decimated stream counted once |
 | `test_tools.py` | viewer replay (log, `.bin` identical to the stream), `.mat` round trip, `calib_mag_axes` recovers a known axis map and hard-iron, `fit_hard_iron`, `mag_check` finds a stale hard-iron and its absolute correction, sniffer diagnosis, CLI |
 
 Fixtures in `tests/data`:
@@ -248,9 +265,13 @@ cd tests/reference && matlab -batch make_reference     # or: octave-cli --eval m
 │   ├── magcalib.py      axis map + hard-iron, sphere fit, calibration check
 │   ├── logio.py         MATLAB-compatible .mat logs
 │   ├── serial_io.py     serial port / file replay sources
-│   └── simulate.py      synthetic telemetry stream
+│   ├── ble_io.py        BLE source (bleak): scan, discovery, TLM notifications, CMD
+│   └── simulate.py      synthetic telemetry stream (USB or BLE: decimated STATE,
+│                        62-byte STATUS, notification cutting)
 └── tests/               pytest suite, fixtures, MATLAB reference generators
 ```
 
-**Not ported:** the BLE branch of `iekfLiveViewer.m`. It is a skeleton for
-phase 2 and the firmware in this repository has no BLE yet.
+**BLE requirements:** a Bluetooth 4.0+ adapter, with Windows 10+, macOS, or
+Linux with BlueZ (`bluetoothd` running). No pairing is needed: the service is
+open. A board connected to a phone is not visible to the PC: disconnect the
+phone first.

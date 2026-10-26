@@ -12,9 +12,12 @@
  *        |  qTlm (240 Hz snapshots, never blocking)
  *        v
  *   TelemetryTask (osPriorityBelowNormal)   UART DMA -> VCP ST-LINK
+ *        |  (APP_TLM_BLE = 1) same frames, STATE decimated, no REPLAY
+ *        v
+ *   tlm_ble ring  ->  BleTxThread (ble_tlm_svc.c)  ->  GATT notifications
+ *                     (BLE stack on the Cortex-M0+, IPCC)
  *
- * Phase 2: BLE (stack on the Cortex-M0+) is added as a TelemetryTask transport;
- * ImuTask remains the only high-priority task.
+ * ImuTask remains the only high-priority task: BLE never touches it.
  */
 #include "app_main.h"
 #include "app_config.h"
@@ -26,6 +29,7 @@
 #include "motors.h"
 #include "telemetry.h"
 #include "tlm_uart.h"
+#include "tlm_ble.h"
 #include "so3.h"
 #include "tlm_build.h"
 #include <string.h>
@@ -235,6 +239,27 @@ static void ImuTask(void *arg)
 }
 
 /* ================================================================== */
+/* One frame to every link: UART always, BLE with its own selection */
+static void tx_frame(const uint8_t *f, uint16_t len)
+{
+    (void)tlm_uart_send(f, len, APP_TLM_TX_TIMEOUT_MS);
+#if APP_TLM_BLE
+    if (len < TLM_OVERHEAD) return;
+    switch (f[2]) {
+    case TLM_TYPE_STATE: {
+        const uint16_t seq = (uint16_t)(f[4] | ((uint16_t)f[5] << 8));   /* tlm_state_t.seq */
+        if (tlm_ble_want_state(seq)) (void)tlm_ble_push(f, len);
+        break;
+    }
+    case TLM_TYPE_REPLAY:
+        break;                                  /* ~44 kB/s: USB only */
+    default:                                    /* INIT, STATUS */
+        (void)tlm_ble_push(f, len);
+        break;
+    }
+#endif
+}
+
 static void send_status(uint8_t *frame, size_t cap)
 {
     tlm_status_t st;
@@ -251,8 +276,12 @@ static void send_status(uint8_t *frame, size_t cap)
     st.calib_count = (uint16_t)s_est.cal.n;
     st.imu_init    = s_imuInit;
     st.running     = s_est.running;
+    st.ble_drop    = tlm_ble_dropped();
+    st.ble_mtu     = tlm_ble_mtu();
+    st.ble_state   = (uint8_t)tlm_ble_state();
+    st.ble_err     = tlm_ble_error();
     const size_t len = tlm_encode(TLM_TYPE_STATUS, &st, sizeof st, frame, cap);
-    if (len) (void)tlm_uart_send(frame, (uint16_t)len, APP_TLM_TX_TIMEOUT_MS);
+    if (len) tx_frame(frame, (uint16_t)len);
 }
 
 static void TelemetryTask(void *arg)
@@ -275,11 +304,16 @@ static void TelemetryTask(void *arg)
 #endif
         }
 
+#if APP_TLM_BLE
+        /* a BLE client has just subscribed (or asked): INIT right away */
+        if (g_initLen && tlm_ble_take_init_request())
+            (void)tlm_ble_push(g_initFrame, g_initLen);
+#endif
         if (osMessageQueueGet(qTlm, &msg, NULL, 10) != osOK) continue;
-        (void)tlm_uart_send(msg.bytes, msg.len, APP_TLM_TX_TIMEOUT_MS);
+        tx_frame(msg.bytes, msg.len);
         /* INIT repeated ~once per second for late listeners */
         if (g_initLen && (++n % APP_INIT_EVERY_N) == 0)
-            (void)tlm_uart_send(g_initFrame, g_initLen, APP_TLM_TX_TIMEOUT_MS);
+            tx_frame(g_initFrame, g_initLen);
     }
 }
 

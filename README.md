@@ -35,7 +35,7 @@ Two things make the repository more than a firmware project:
 | **Target** | P-NUCLEO-WB55 (NUCLEO-WB55RG: Cortex-M4F @ 64 MHz + Cortex-M0+ radio core) |
 | **Sensors** | X-NUCLEO-IKS4A1 in **Mode 3**: LSM6DSV16X (gyro + acc) on the MCU I²C bus, LIS2MDL (mag) read through the LSM6DSV16X sensor hub |
 | **Software** | STM32CubeIDE / CubeMX, FreeRTOS (CMSIS-RTOS2), CMSIS-DSP; PC tools: MATLAB R2019b+ or Python ≥ 3.9 |
-| **Status** | **Phase 1 (attitude estimation) concluded.** Both validation tests passed **on the board**: base equations vs the original `iekfAttitude.m` (≤ 0.003 σ), full embedded filter vs `iekfAttitudeEmb.m` (≤ 0.002 σ), see §11.5. Motors disabled. |
+| **Status** | **Phase 1 (attitude estimation) concluded.** Both validation tests passed **on the board**: base equations vs the original `iekfAttitude.m` (≤ 0.003 σ), full embedded filter vs `iekfAttitudeEmb.m` (≤ 0.002 σ), see §11.5. **Phase 2 (BLE telemetry)**: notifications working on the board; PC viewers over BLE ready, board test pending (§12). Motors disabled. |
 
 ---
 
@@ -52,10 +52,11 @@ Two things make the repository more than a firmware project:
 9. [PC tools (MATLAB and Python): setup and live viewer](#9-pc-tools-matlab-and-python-setup-and-live-viewer)
 10. [Magnetometer calibration](#10-magnetometer-calibration)
 11. [Telemetry capture and embedded-vs-reference comparison](#11-telemetry-capture-and-embedded-vs-reference-comparison)
-12. [Troubleshooting](#12-troubleshooting)
-13. [Lessons learned](#13-lessons-learned)
-14. [Next steps](#14-next-steps)
-15. [References](#15-references)
+12. [BLE telemetry (phase 2)](#12-ble-telemetry-phase-2)
+13. [Troubleshooting](#13-troubleshooting)
+14. [Lessons learned](#14-lessons-learned)
+15. [Next steps](#15-next-steps)
+16. [References](#16-references)
 
 ---
 
@@ -72,7 +73,7 @@ The work is organised in phases:
 | Phase | Content | Status |
 |---|---|---|
 | 1 | Embedded attitude estimation: IEKF on SO(3), multi-rate FreeRTOS pipeline, telemetry, PC tools, validation against the reference filter | **concluded** |
-| 2 | Wireless telemetry (BLE on the Cortex-M0+ core), then a mobile app | planned |
+| 2 | Wireless telemetry (BLE on the Cortex-M0+ core) to the PC, then a mobile app | **in progress**: BLE link working on the board, PC tools ready (§12); mobile app planned |
 | 3 | Control: rate loop at 960 Hz, attitude loop at 240 Hz, motor power stage, arming/fail-safe, thrust model in the estimator | planned |
 
 How to read this document:
@@ -102,12 +103,17 @@ stm32_iekf_attitude_fw/
 │   │   ├── iekf/                   IEKF on SO(3): so3 (Exp/Log, orthonormalisation), iekf (filter),
 │   │   │                           accwin (rotation-compensated acc mean), calib (static calibration window)
 │   │   ├── drivers/                sensor_bus.h (abstract bus) + imu_lsm6dsv16x (IMU, sensor hub, FIFO parser)
-│   │   ├── platform/               imu_i2c: STM32 HAL I²C + DMA binding of the sensor bus
-│   │   ├── telemetry/              frame format and CRC (telemetry.h), UART + DMA transport
+│   │   ├── platform/               imu_i2c: STM32 HAL I²C + DMA binding of the sensor bus;
+│   │   │                           ble_tlm_svc: GATT service + TX thread on STM32_WPAN (BLE)
+│   │   ├── telemetry/              frame format and CRC (telemetry.h), UART + DMA transport;
+│   │   │                           tlm_ble: BLE queue + link state (host-testable)
 │   │   ├── control/                control hooks (weak, empty) and motor PWM (disabled in phase 1)
 │   │   └── third_party/            ST lsm6dsv16x-pid driver (BSD-3), CMSIS-DSP headers and library
-│   ├── Core/                       CubeMX-generated: main.c, interrupts, HAL MSP, FreeRTOS config, startup
-│   ├── Drivers/, Middlewares/      CubeMX-generated: STM32WB HAL, CMSIS, FreeRTOS
+│   ├── Core/                       CubeMX-generated: main.c, interrupts, HAL MSP, FreeRTOS config, startup,
+│   │                               radio-core infrastructure (app_entry, hw_timerserver, app_conf.h)
+│   ├── STM32_WPAN/App/             CubeMX-generated BLE application (app_ble.c with our 3 hooks, §12.5)
+│   ├── Drivers/, Middlewares/      CubeMX-generated: STM32WB HAL, CMSIS, FreeRTOS, ST STM32_WPAN (BLE)
+│   ├── Utilities/                  CubeMX-generated: low-power manager used by STM32_WPAN
 │   ├── IEKFcfg.ioc                 CubeMX configuration (pins, clocks, DMA, FreeRTOS)
 │   ├── IEKFcfg.launch              STM32CubeIDE debug configuration (ST-LINK, SWD)
 │   ├── .project, .cproject, .mxproject, .settings/   STM32CubeIDE project files
@@ -115,7 +121,7 @@ stm32_iekf_attitude_fw/
 ├── 01 - Tools/                     PC tools, in two equivalent flavours
 │   ├── 00 - Matlab/                MATLAB tools (R2019b+)
 │   │   ├── initPath.m              adds every folder below to the path
-│   │   ├── Viewer/                 iekfLiveViewer.m (live 3D triad + logging), quat2rotmLocal.m
+│   │   ├── Viewer/                 iekfLiveViewer.m (live 3D triad + logging, USB or BLE), quat2rotmLocal.m
 │   │   ├── Telemetry/              parseTelemetry, decode*, crc16ccitt, statusDiagnosis
 │   │   ├── MagCalib/               calibMagAxes.m (axis map + hard-iron), fitHardIron.m, magCheck.m
 │   │   └── FiltersComparison/      tlmCapture, tlmSniffer, compareEmbeddedVsMatlab
@@ -123,7 +129,8 @@ stm32_iekf_attitude_fw/
 │   │       └── IEKF_embeddedVersion/   EXTENDED filter: iekfAttitudeEmb.m + iekfCore*.m (MATLAB mirror of the C code)
 │   └── 01 - Python/                Python equivalents of the MATLAB tools (package iekf_tools, CLI iekf-tools)
 │       ├── iekf_tools/             viewer, capture + sniffer, compare, magcalib, telemetry,
-│       │                           filters/ (original + embedded mirror), logio (.mat logs), simulate
+│       │                           ble_io (BLE link, bleak), filters/ (original + embedded mirror),
+│       │                           logio (.mat logs), simulate
 │       ├── tests/                  pytest suite: parity with the MATLAB outputs, recorded captures
 │       ├── pyproject.toml, requirements.txt
 │       └── README.md               installation, MATLAB ↔ Python map, commands
@@ -161,8 +168,9 @@ belong to:
 | see the attitude live / record logs | §9: MATLAB `iekfLiveViewer`, Python `iekf-tools viewer` |
 | calibrate or check the magnetometer | §10: MATLAB `calibMagAxes` / `magCheck`, Python `iekf-tools calib-mag` / `mag-check` |
 | validate the embedded filter | §11: MATLAB `compareEmbeddedVsMatlab`, Python `iekf-tools compare` |
+| use the BLE link | §12: MATLAB `iekfLiveViewer("ble")`, Python `iekf-tools viewer --ble` |
 | use the tools without MATLAB | [`01 - Tools/01 - Python/README.md`](01%20-%20Tools/01%20-%20Python/README.md) |
-| fix a problem | §12 (troubleshooting) |
+| fix a problem | §13 (troubleshooting) |
 
 ---
 
@@ -323,7 +331,7 @@ The firmware handles this in two ways. It de-weights the accelerometer when
 the measured magnitude or the innovation are inconsistent with gravity
 (adaptive noise and NIS inflation, §5.7). It also trusts it fully only when the
 vehicle is detected still (§5.7). A thrust/drag model in the measurement
-equation is a phase-3 item (§14).
+equation is a phase-3 item (§15).
 
 The magnetometer sees, besides the Earth field:
 - the constant field of the board and of the nearby parts (the **hard-iron**
@@ -765,13 +773,16 @@ CRC-16/CCITT-FALSE (poly 0x1021, init 0xFFFF) over TYPE..PAYLOAD.
 |---|---|---|---|---|
 | 0x01 | STATE | 71 B | 240 Hz (30 Hz with REPLAY) | seq, time, q, bias, acc, gyro, mag, flags |
 | 0x02 | INIT | 137 B | after calibration, then ~1 Hz | initial state, references, all filter parameters |
-| 0x03 | STATUS | 54 B | 10 Hz, **always** | IMU init result, IRQ/bus/FIFO counters, calibration progress, drops |
+| 0x03 | STATUS | 62 B (54 B before phase 2) | 10 Hz, **always** | IMU init result, IRQ/bus/FIFO counters, calibration progress, drops, BLE link state/MTU/drops/last error |
 | 0x04 | REPLAY | ≤ 212 B | 240 Hz (only with `APP_TLM_REPLAY = 1`) | exact filter calls of the window + resulting q, b, diag P |
 
 REPLAY operations: `'P' dθ[3] h` (propagation), `'A' acc[3] trusted`
 (acc update), `'M' mag[3] extraVar` (mag update), all float32.
 
 Bandwidth: ~19 kB/s normally, ~44 kB/s with REPLAY (921600 baud ≈ 92 kB/s).
+The same frames travel over BLE as a byte stream, STATE decimated and no
+REPLAY (§12). The decoders read both STATUS lengths, so phase-1 captures
+still work.
 
 > **Pitfall.** Telemetry structs are `packed`: float fields are not 4-byte
 > aligned. Never pass the address of such a field to a function that writes
@@ -789,7 +800,8 @@ Bandwidth: ~19 kB/s normally, ~44 kB/s with REPLAY (921600 baud ≈ 92 kB/s).
    kept). Relevant settings already in the `.ioc`: SYSCLK 64 MHz; I2C1 on PB8/PB9 with
    DMA RX and event/error IRQs; USART1 921600 baud with DMA TX (**Memory increment
    enabled**) and global IRQ; PA15 EXTI rising edge (`IMU_INT1`); FreeRTOS
-   CMSIS_V2, 1 kHz tick, 20 KB heap; HAL timebase on a TIM; Serial Wire debug.
+   CMSIS_V2, 1 kHz tick, 52 KB heap; HAL timebase on a TIM; Serial Wire debug;
+   STM32_WPAN (BLE) with HSEM, IPCC, RTC, RNG, RF (§12.4).
    Interrupts that call RTOS functions need priority ≥ 5.
 2. Include paths (all configurations): `App/app`, `App/iekf`, `App/telemetry`,
    `App/platform`, `App/control`, `App/drivers/common`,
@@ -801,6 +813,8 @@ Bandwidth: ~19 kB/s normally, ~44 kB/s with REPLAY (921600 baud ≈ 92 kB/s).
    (`HAL_GPIO_EXTI_Callback`, `HAL_I2C_MemRxCpltCallback`,
    `HAL_I2C_ErrorCallback`, `HAL_UART_TxCpltCallback`).
 5. Debug/flash: `IEKFcfg.launch` (ST-LINK GDB server, SWD, connect under reset).
+6. BLE: the wireless stack must be flashed once on the Cortex-M0+ (§12.6). Without
+   it, the radio core never starts. Set `APP_TLM_BLE 0` to run on USB only.
 
 Bring-up check in *Live Expressions*: `s_irqCount` grows by ~480/s at 960 Hz,
 `s_busErr` stays 0, `s_est.running` becomes 1 about 2 s after reset with the board
@@ -814,6 +828,8 @@ procedures below:
 | `APP_TLM_REPLAY` | 0 | 1 |
 | `APP_COMPARE_ORIGINAL` | 0 | 1 (base-equation test vs original) or 0 (extended-filter test) |
 | `MAG_AXIS_MAP`, `MAG_HARD_IRON` | from §10 | unchanged |
+| `APP_TLM_BLE` | 1 (BLE + USB) or 0 (USB only) | unchanged (REPLAY is USB-only) |
+| `APP_BLE_STATE_DECIM` | 4 (STATE at 60 Hz over BLE) | — |
 
 ---
 
@@ -843,6 +859,7 @@ another copy shadows it).
 ```matlab
 L = iekfLiveViewer("serial", "COM6");                 % 921600 baud by default
 L = iekfLiveViewer("serial", "COM6", 921600, "C:\logs") % choose the log folder
+L = iekfLiveViewer("ble");                            % BLE, board found automatically (§12.8)
 ```
 
 1. Start the viewer, then reset the board and keep it **still for 2–4 s**
@@ -867,6 +884,7 @@ tlmSniffer("COM6")      % bytes -> frames -> STATUS -> diagnosis
 ```bash
 iekf-tools viewer COM6                  # live viewer; --log-dir DIR, --baud B
 iekf-tools viewer --replay file.bin     # replay a recorded session (no board needed)
+iekf-tools viewer --ble                 # BLE (pip install bleak), board found automatically (§12.8)
 iekf-tools sniff COM6                   # byte-level link check
 ```
 
@@ -1124,7 +1142,266 @@ In both tests the only residual is float32 vs double.
 
 ---
 
-## 12. Troubleshooting
+## 12. BLE telemetry (phase 2)
+
+**Goal.** Same behaviour as the USB link, over Bluetooth Low Energy:
+- the PC receives the same STATE, INIT and STATUS frames;
+- the same viewers, MATLAB and Python, show the attitude;
+- the same `.mat` and `.bin` logs are written.
+
+The USB link keeps working unchanged. REPLAY and the embedded-vs-reference
+comparison (§11) stay USB-only. The GATT service is designed so that a mobile
+app can use it as it is.
+
+**Status:**
+
+| Item | State |
+|---|---|
+| Notifications on the board | **working**, checked with nRF Connect (frames starting with `A5 5A`) |
+| Firmware | compiles and links with the CubeIDE settings (§12.9) |
+| PC viewers over BLE (MATLAB and Python) | tested with simulated notifications; test on the board pending |
+
+### 12.1 Architecture
+
+```
+ImuTask (Realtime, unchanged)
+   │ qTlm
+   ▼
+TelemetryTask (BelowNormal) ── tx_frame() ──► UART DMA ─► ST-LINK VCP      (all frames)
+   │                                    └──► tlm_ble ring (2 KB, lock-free SPSC)
+   │                                          STATE decimated, INIT, STATUS, no REPLAY
+   ▼
+BleTxThread (ble_tlm_svc.c, BelowNormal)
+   every 10 ms or on TX_POOL_AVAILABLE: peek ≤ ATT_MTU−3 bytes
+   → aci_gatt_update_char_value() → notification ─► IPCC ─► Cortex-M0+ BLE stack ─► radio
+```
+
+| File | Role |
+|---|---|
+| `App/telemetry/tlm_ble.c/.h` | BLE queue (lock-free ring), link state, STATE decimation, commands. No HAL, no BLE stack: host-testable |
+| `App/platform/ble_tlm_svc.c/.h` | GATT service on STM32_WPAN, event handler, TX thread |
+| `STM32_WPAN/App/app_ble.c` | CubeMX-generated BLE application; three one-line hooks in USER CODE sections (§12.5) |
+| `Core/Src/app_entry.c`, `hw_timerserver.c`, … | CubeMX-generated infrastructure of the radio core (IPCC, timer server, system commands) |
+
+Design choices:
+- **Byte stream, not packets.** A notification carries up to ATT_MTU−3 bytes
+  of the frame stream and may cut frames anywhere. The receiver concatenates
+  notifications and re-synchronises on `A5 5A` + CRC with the usual parser.
+  It works with any MTU (23 by default, 185 on iOS, up to 247 on PCs) without
+  a fragmentation protocol. Only the first notification after subscribing is
+  guaranteed to start at a frame boundary.
+- **ImuTask is never involved.** The BLE work is in TelemetryTask (queueing)
+  and BleTxThread (sending).
+- **Flow control.** When the link is slower than the data,
+  `aci_gatt_update_char_value()` returns `BLE_STATUS_INSUFFICIENT_RESOURCES`.
+  The chunk is kept and retried on `ACI_GATT_TX_POOL_AVAILABLE`. If the ring
+  fills up, *whole frames* are dropped and counted in `STATUS.ble_drop`.
+- **Thread safety.** In the FreeRTOS version of `app_ble.c`, `BLE_StatusNot()`
+  takes `MtxHciId` around every HCI command, so ACI calls from BleTxThread are
+  serialised with the stack's. The GATT event handler, which runs in the
+  stack's thread, only sets flags.
+
+### 12.2 GATT service
+
+| Item | UUID | Properties | Content |
+|---|---|---|---|
+| Service "IEKF Telemetry" | `7E4A0001-2C6B-4F8E-9A5D-3B1C0E1D2F30` | primary | |
+| TLM | `7E4A0002-…` | Notify | frame byte stream, ≤ ATT_MTU−3 bytes per notification |
+| CMD | `7E4A0003-…` | Write, Write w/o response | `[0x01]` resend INIT · `[0x02, N]` STATE every N acc updates (1…240) |
+
+When a client enables notifications, the board:
+1. clears the queue;
+2. sends INIT immediately;
+3. requests a 15–30 ms connection interval, a 4 s supervision timeout, an MTU
+   exchange and 251-byte link-layer packets.
+
+These values are within the iOS rules and are accepted by Windows, macOS and
+Linux. The central has the last word.
+
+### 12.3 Bandwidth
+
+| Frame | Size on air | Rate over BLE | Bytes/s |
+|---|---|---|---|
+| STATE | 77 B | 60 Hz (`APP_BLE_STATE_DECIM` = 4) | 4620 |
+| STATUS | 68 B | 10 Hz | 680 |
+| INIT | 143 B | ~1 Hz, plus once on subscribe | ~143 |
+| **Total** | | | **~5.4 kB/s** |
+
+- With MTU 23 (20 B per notification), ~270 notifications/s. If `ble_drop`
+  grows, use decimation 8 (30 Hz).
+- With MTU ≥ 185, one notification carries 2–3 frames.
+
+### 12.4 CubeMX configuration
+
+The `.ioc` in the repository already has the BLE middleware enabled. For
+reference, and to check after a regeneration:
+
+1. **Clocks.**
+   - HSE 32 MHz and LSE 32.768 kHz crystals on.
+   - RTC clock and RF wake-up clock from **LSE**.
+   - SYSCLK 64 MHz.
+2. **Peripherals.**
+   - **HSEM** and **IPCC** activated, with the IPCC C1 RX/TX interrupts.
+   - **RTC**: clock source activated, internal wake-up (timer server of the
+     stack).
+   - **RNG** and **RF** activated.
+3. **STM32_WPAN.**
+   - *BLE* enabled, server profile. The repository uses the Heart Rate
+     template: its service stays registered alongside ours and is unused.
+   - Our service is added in code (`ble_tlm_svc.c`), not in the *BLE GATT* tab.
+   - Debug trace **off**: it would use USART1, our telemetry port.
+   - Low power **off** (`CFG_LPM_SUPPORTED` = 0): stop mode would halt the
+     I²C/DMA of the 960 Hz loop.
+4. **FreeRTOS.** Heap ≥ 48 KB (52000 in the repository): the stack's threads
+   take ~10 KB. Tickless idle **off**.
+5. **NVIC.** Every interrupt that calls RTOS functions needs priority ≥ 5
+   (IMU EXTI, IPCC, HSEM, RTC wake-up).
+
+Settings to review in CubeMX. The repository still has the CubeMX defaults
+for:
+- the advertised **name**: `STM32WB` (set e.g. `IEKF-WB55`; the PC tools find
+  both);
+- `CFG_BLE_MAX_ATT_MTU`: **156** (247 gives fewer notifications on PCs);
+- the **PLL source**: MSI (HSE is preferable, for the UART baud accuracy too).
+
+### 12.5 Firmware hooks
+
+`STM32_WPAN/App/app_ble.c` has three calls, all in USER CODE sections, so they
+survive regeneration:
+
+```c
+/* USER CODE BEGIN Includes */
+#include "ble_tlm_svc.h"
+
+/* APP_BLE_Init(): after SVCCTL_Init(), before advertising starts */
+/* USER CODE BEGIN APP_BLE_Init_3 */
+  ble_tlm_svc_init();
+
+/* SVCCTL_App_Notification(), case HCI_LE_CONNECTION_COMPLETE_SUBEVT_CODE */
+/* USER CODE BEGIN HCI_EVT_LE_CONN_COMPLETE */
+  ble_tlm_on_connect(p_connection_complete_event->Connection_Handle);
+
+/* SVCCTL_App_Notification(), case HCI_DISCONNECTION_COMPLETE_EVT_CODE */
+/* USER CODE BEGIN EVT_DISCONN_COMPLETE */
+  ble_tlm_on_disconnect();
+```
+
+`APP_TLM_BLE` in `app_config.h` switches the BLE path:
+- **1** (repository default): the BLE path is active;
+- **0**: everything compiles without using the stack, and STATUS reports
+  `ble_state` = 0.
+
+### 12.6 Wireless stack on the Cortex-M0+
+
+The radio core runs a binary from ST that is flashed separately with
+STM32CubeProgrammer:
+
+1. Take its version from the **same** STM32CubeWB package that CubeMX uses: a
+   mismatch is the most common reason why CPU2 never starts.
+2. The files are in `Projects/STM32WB_Copro_Wireless_Binaries/STM32WB5x/` of
+   that package:
+   - the stack, `stm32wb5x_BLE_Stack_full_fw.bin`;
+   - the FUS, if it is older than the stack requires.
+3. In *Firmware Upgrade Services*:
+   1. *Start FUS*, *Read FUS infos*. Update the FUS first if needed.
+   2. *Delete FW*.
+   3. *Firmware Upgrade* with the stack at the **start address given in
+      `Release_Notes.html` for STM32WB5xxG (1 MB)**. It changes from version to
+      version.
+   4. *Start Wireless Stack*.
+4. The application uses at most 512 KB of flash (`STM32WB55RGVX_FLASH.ld`),
+   below the stack.
+
+### 12.7 Bring-up checklist
+
+1. **USB viewer first.** The text panel shows `BLE: advertising`: the service
+   is registered and the stack is running.
+   - No `BLE` line: the stack did not start. Check the CPU2 firmware (§12.6).
+   - `err 0x..`: last stack error. `0x64`/`0x98` at start-up means too little
+     GATT attribute space.
+2. **Phone, with nRF Connect or LightBlue.**
+   1. Scan **without filters**: scanner filters apply to the advertising
+      packet, never to the notifications.
+   2. Connect and enable notifications on `7E4A0002-…`: the data starts with
+      `A5 5A`.
+   3. The USB viewer now shows `BLE: streaming`, the MTU and `drop 0`.
+3. **960 Hz loop.** `s_irqCount` (~480/s) and `s_procCycMax` in *Live
+   Expressions* must behave as without BLE.
+4. **Disconnect the phone**, then connect from the PC (§12.8). A peripheral
+   accepts one central at a time.
+
+### 12.8 PC tools over BLE
+
+MATLAB (R2019b+, Windows 10+/macOS, Bluetooth 4.0+ adapter):
+
+```matlab
+L = iekfLiveViewer("ble");                 % board found automatically, STATE 60 Hz
+L = iekfLiveViewer("ble", "IEKF-WB55", 8); % by name or address, STATE 30 Hz
+blelist                                    % what is advertising
+```
+
+Python (`pip install bleak`, or `pip install -e ".[ble]"`; Windows, macOS,
+Linux/BlueZ):
+
+```bash
+iekf-tools scan                            # boards advertising, marked "<-- IEKF board"
+iekf-tools viewer --ble                    # board found automatically, STATE 60 Hz
+iekf-tools viewer --ble IEKF-WB55 --decim 8
+```
+
+How the tools behave:
+- **Discovery.** It picks the strongest device whose name starts with `IEKF`
+  or equals `STM32WB` (the CubeMX default).
+- **On connection.** The tools subscribe to TLM and write the decimation to
+  CMD.
+- **Processing.** Notifications are appended as bytes and go through the same
+  parser as the serial port. Log, `.bin` and panel are identical to USB; the
+  panel adds a `BLE:` line with state, MTU, drops and notifications received.
+- **`lost`.** It counts only real gaps of the decimated stream.
+
+### 12.9 Verification
+
+| Check | Result |
+|---|---|
+| Notifications on the board, nRF Connect | frames `A5 5A …` received |
+| Full firmware build with ARM GCC 13.3, include paths and defines read from `.cproject` (87 C files + startup, linked with `STM32WB55RGVX_FLASH.ld` and CMSIS-DSP) | 0 errors; only warnings: 3 unused functions in the generated `hrs_app.c`. Debug flags (`-O0 -g3`): 107 KB flash, 73 KB RAM; `-O2`: 66 KB flash |
+| `ble_tlm_svc.c` against the STM32_WPAN headers | all ACI/HCI functions, events and structs used exist with that signature |
+| Host test of the BLE queue: 60 s of frames, random MTU 23–247, 30 % refused sends | bytes received = frames queued; overload drops whole frames only |
+| MATLAB viewer, BLE path with simulated notifications (Octave) | 660 STATE at step 4, 0 lost, INIT/STATUS decoded, `.bin` identical, CMD `[2 4]` written |
+| Python: 5 BLE tests (`tests/test_ble.py`) | STATUS 54/62 B, board discovery, reassembly from 20-byte notifications, viewer on a decimated stream (0 lost, BLE line), a real gap counted once |
+
+### 12.10 Troubleshooting (BLE)
+
+| Symptom | Cause / action |
+|---|---|
+| The phone does not list the board | scanner filter on data: remove it (§12.7); reset the board (after 60 s the advertising interval grows to 1–2.5 s) |
+| No `BLE` line in the USB viewer | CPU2 stack missing or not matching the CubeWB package (§12.6) |
+| USB telemetry garbled after enabling BLE | stack debug trace on USART1: trace off |
+| SWD lost, IMU stops | low power on: `CFG_LPM_SUPPORTED` = 0, tickless idle off |
+| HardFault / stack overflow at start-up | FreeRTOS heap too small |
+| `multiple definition of HAL_GPIO_EXTI_Callback` after a regeneration | keep a single definition, calling `app_exti(pin)` |
+| `ble_drop` grows | link slower than the data: decimation 8, larger MTU |
+| PC tools: board not found | it is connected to another central (phone): disconnect it. Python on Linux: `bluetoothd` running |
+
+### 12.11 Towards a mobile app
+
+The service is already what an iOS/Android app needs:
+- 128-bit UUIDs;
+- notify plus write-without-response;
+- connection parameters within Apple's rules;
+- an MTU-agnostic stream.
+
+The app has to:
+1. subscribe to `7E4A0002-…`;
+2. append each notification to a buffer;
+3. port `parseTelemetry` (about 40 lines);
+4. decode STATE for the attitude, with STATUS and INIT for diagnostics.
+
+CMD is the place for future commands: arming, gains, logging.
+
+---
+
+## 13. Troubleshooting
 
 | Symptom | Cause / action |
 |---|---|
@@ -1145,7 +1422,7 @@ In both tests the only residual is float32 vs double.
 
 ---
 
-## 13. Lessons learned
+## 14. Lessons learned
 
 - **Validate on identical inputs, judge in sigma.** Comparing filters on
   separately acquired data mixes sensor and algorithm differences; replaying the
@@ -1163,7 +1440,7 @@ In both tests the only residual is float32 vs double.
 
 ---
 
-## 14. Next steps
+## 15. Next steps
 
 Phase 1 (embedded attitude estimation, telemetry, MATLAB tools and
 validation) is concluded. Open items for the next phases:
@@ -1175,15 +1452,15 @@ validation) is concluded. Open items for the next phases:
 - Verify the magnetometer latency $\bar\tau$ on the bench (constant-rate rotation
   about the vertical) — the LIS2MDL internal filter delay is not modelled.
 - I²C Fast-mode Plus and 1920 Hz sampling (check bus edges on a scope first).
-- Phase 2: BLE telemetry/commands on the Cortex-M0+ stack (IPCC/HCI priorities,
-  no flash writes in flight).
+- Phase 2: test the PC viewers over BLE on the board (§12.7), set the advertised
+  name and the ATT MTU in CubeMX (§12.4), then the mobile app (§12.11).
 - Phase 3: rate PID at 960 Hz with notch-filtered gyro, attitude loop at 240 Hz,
   motor power stage, arming and fail-safe, and a **thrust model** to reject
   sustained accelerations in the acc update.
 
 ---
 
-## 15. References
+## 16. References
 
 - A. Barrau, S. Bonnabel, *The Invariant Extended Kalman Filter as a Stable
   Observer*, IEEE TAC, 2017.
