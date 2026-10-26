@@ -24,7 +24,8 @@ Two things make the repository more than a firmware project:
   float32 vs double. This was done on the board for the original equations
   and for every embedded improvement (§11).
 - **Two equivalent toolchains.** All PC tools exist in **MATLAB**
-  (`Matlab/`) and in **Python** (`Tools/Python/`, for users without MATLAB).
+  (`01 - Tools/00 - Matlab/`) and in **Python** (`01 - Tools/01 - Python/`, for
+  users without MATLAB).
   The two give the same numbers on the same data, and their logs are
   interchangeable.
 
@@ -89,51 +90,65 @@ name of the file that implements it.
 
 ## 2. Repository structure
 
+The repository has two numbered top-level folders: the firmware and the PC
+tools.
+
 ```
 stm32_iekf_attitude_fw/
-├── App/                        Application code, hardware-independent where possible
-│   ├── app/                    app_main (FreeRTOS tasks, IRQ glue), app_config.h (ALL parameters),
-│   │                           est_pipeline (multi-rate estimation), tlm_build (telemetry frames)
-│   ├── iekf/                   IEKF on SO(3): so3 (Exp/Log, orthonormalisation), iekf (filter),
-│   │                           accwin (rotation-compensated acc mean), calib (static calibration window)
-│   ├── drivers/                sensor_bus.h (abstract bus) + imu_lsm6dsv16x (IMU, sensor hub, FIFO parser)
-│   ├── platform/               imu_i2c: STM32 HAL I²C + DMA binding of the sensor bus
-│   ├── telemetry/              frame format and CRC (telemetry.h), UART + DMA transport
-│   ├── control/                control hooks (weak, empty) and motor PWM (disabled in phase 1)
-│   └── third_party/            ST lsm6dsv16x-pid driver (BSD-3), CMSIS-DSP headers and library
-├── Core/                       CubeMX-generated: main.c, interrupts, HAL MSP, FreeRTOS config, startup
-├── Drivers/, Middlewares/      CubeMX-generated: STM32WB HAL, CMSIS, FreeRTOS
-├── Debug/                      STM32CubeIDE build output
-├── IEKFcfg.ioc                 CubeMX configuration (pins, clocks, DMA, FreeRTOS)
-├── IEKFcfg.launch              STM32CubeIDE debug configuration (ST-LINK, SWD)
-├── .project, .cproject, .settings/   STM32CubeIDE project files
-├── STM32WB55RGVX_FLASH.ld, ..._RAM.ld   linker scripts
-├── Matlab/                     MATLAB tools (R2019b+)
-│   ├── initPath.m              adds every folder below to the path
-│   ├── Viewer/                 iekfLiveViewer.m (live 3D triad + logging), quat2rotmLocal.m
-│   ├── Telemetry/              parseTelemetry, decode*, crc16ccitt, statusDiagnosis
-│   ├── MagCalib/               calibMagAxes.m (axis map + hard-iron), fitHardIron.m, magCheck.m
-│   └── FiltersComparison/      tlmCapture, tlmSniffer, compareEmbeddedVsMatlab
-│       ├── IEKF_originalVersion/   ORIGINAL filter developed in MATLAB: iekfAttitude.m, expSO3, logSO3, skewSym
-│       └── IEKF_embeddedVersion/   EXTENDED filter: iekfAttitudeEmb.m + iekfCore*.m (MATLAB mirror of the C code)
-├── Tools/
-│   └── Python/                 Python equivalents of the MATLAB tools (package iekf_tools, CLI iekf-tools)
-│       ├── iekf_tools/         viewer, capture + sniffer, compare, magcalib, telemetry,
-│       │                       filters/ (original + embedded mirror), logio (.mat logs), simulate
-│       ├── tests/              pytest suite: parity with the MATLAB outputs, recorded captures
-│       └── README.md           installation, MATLAB ↔ Python map, commands
-└── README.md                   this file: theory, firmware, procedures, results
+├── 00 - STM32_FW/                  STM32CubeIDE project of the firmware (import this folder)
+│   ├── App/                        application code, hardware-independent where possible
+│   │   ├── app/                    app_main (FreeRTOS tasks, IRQ glue), app_config.h (ALL parameters),
+│   │   │                           est_pipeline (multi-rate estimation), tlm_build (telemetry frames)
+│   │   ├── iekf/                   IEKF on SO(3): so3 (Exp/Log, orthonormalisation), iekf (filter),
+│   │   │                           accwin (rotation-compensated acc mean), calib (static calibration window)
+│   │   ├── drivers/                sensor_bus.h (abstract bus) + imu_lsm6dsv16x (IMU, sensor hub, FIFO parser)
+│   │   ├── platform/               imu_i2c: STM32 HAL I²C + DMA binding of the sensor bus
+│   │   ├── telemetry/              frame format and CRC (telemetry.h), UART + DMA transport
+│   │   ├── control/                control hooks (weak, empty) and motor PWM (disabled in phase 1)
+│   │   └── third_party/            ST lsm6dsv16x-pid driver (BSD-3), CMSIS-DSP headers and library
+│   ├── Core/                       CubeMX-generated: main.c, interrupts, HAL MSP, FreeRTOS config, startup
+│   ├── Drivers/, Middlewares/      CubeMX-generated: STM32WB HAL, CMSIS, FreeRTOS
+│   ├── IEKFcfg.ioc                 CubeMX configuration (pins, clocks, DMA, FreeRTOS)
+│   ├── IEKFcfg.launch              STM32CubeIDE debug configuration (ST-LINK, SWD)
+│   ├── .project, .cproject, .mxproject, .settings/   STM32CubeIDE project files
+│   └── STM32WB55RGVX_FLASH.ld, ..._RAM.ld   linker scripts
+├── 01 - Tools/                     PC tools, in two equivalent flavours
+│   ├── 00 - Matlab/                MATLAB tools (R2019b+)
+│   │   ├── initPath.m              adds every folder below to the path
+│   │   ├── Viewer/                 iekfLiveViewer.m (live 3D triad + logging), quat2rotmLocal.m
+│   │   ├── Telemetry/              parseTelemetry, decode*, crc16ccitt, statusDiagnosis
+│   │   ├── MagCalib/               calibMagAxes.m (axis map + hard-iron), fitHardIron.m, magCheck.m
+│   │   └── FiltersComparison/      tlmCapture, tlmSniffer, compareEmbeddedVsMatlab
+│   │       ├── IEKF_originalVersion/   ORIGINAL filter developed in MATLAB: iekfAttitude.m, expSO3, logSO3, skewSym
+│   │       └── IEKF_embeddedVersion/   EXTENDED filter: iekfAttitudeEmb.m + iekfCore*.m (MATLAB mirror of the C code)
+│   └── 01 - Python/                Python equivalents of the MATLAB tools (package iekf_tools, CLI iekf-tools)
+│       ├── iekf_tools/             viewer, capture + sniffer, compare, magcalib, telemetry,
+│       │                           filters/ (original + embedded mirror), logio (.mat logs), simulate
+│       ├── tests/                  pytest suite: parity with the MATLAB outputs, recorded captures
+│       ├── pyproject.toml, requirements.txt
+│       └── README.md               installation, MATLAB ↔ Python map, commands
+├── .gitignore                      build outputs (Debug/, Release/) are not versioned
+└── README.md                       this file: theory, firmware, procedures, results
 ```
+
+**Paths in this document.** Short paths are relative to the folder they
+belong to:
+
+| Paths like | Are relative to |
+|---|---|
+| `App/…`, `Core/…`, `IEKFcfg.ioc` | `00 - STM32_FW/` |
+| `Viewer/…`, `MagCalib/…`, `FiltersComparison/…`, `initPath.m` | `01 - Tools/00 - Matlab/` |
+| `iekf_tools/…`, `tests/…` | `01 - Tools/01 - Python/` |
 
 **Three implementations of the same filter**, each with its role:
 
 | Implementation | Role |
 |---|---|
 | `App/iekf/` (C, float32) | what flies |
-| `Matlab/FiltersComparison/IEKF_originalVersion/` | the filter as first designed, kept **unchanged** as the reference of the equations |
-| `Matlab/FiltersComparison/IEKF_embeddedVersion/` | MATLAB mirror of the C code, written line by line after `iekf.c`, with every improvement of §5 |
+| `FiltersComparison/IEKF_originalVersion/` (MATLAB) | the filter as first designed, kept **unchanged** as the reference of the equations |
+| `FiltersComparison/IEKF_embeddedVersion/` (MATLAB) | MATLAB mirror of the C code, written line by line after `iekf.c`, with every improvement of §5 |
 
-`Tools/Python/iekf_tools/filters/` ports both MATLAB filters, matching them to
+`iekf_tools/filters/` (Python) ports both MATLAB filters, matching them to
 ~1e-14.
 
 **Where to start:**
@@ -146,7 +161,7 @@ stm32_iekf_attitude_fw/
 | see the attitude live / record logs | §9: MATLAB `iekfLiveViewer`, Python `iekf-tools viewer` |
 | calibrate or check the magnetometer | §10: MATLAB `calibMagAxes` / `magCheck`, Python `iekf-tools calib-mag` / `mag-check` |
 | validate the embedded filter | §11: MATLAB `compareEmbeddedVsMatlab`, Python `iekf-tools compare` |
-| use the tools without MATLAB | [`Tools/Python/README.md`](Tools/Python/README.md) |
+| use the tools without MATLAB | [`01 - Tools/01 - Python/README.md`](01%20-%20Tools/01%20-%20Python/README.md) |
 | fix a problem | §12 (troubleshooting) |
 
 ---
@@ -332,7 +347,7 @@ the magnetometer when the field is disturbed.
 ## 4. Theory: the original IEKF
 
 This section documents the filter as implemented in
-`Matlab/FiltersComparison/IEKF_originalVersion/iekfAttitude.m`. The embedded filter implements the
+`FiltersComparison/IEKF_originalVersion/iekfAttitude.m` (MATLAB tools). The embedded filter implements the
 same equations (§5 lists what was added on top).
 
 ### 4.1 State and error definition
@@ -767,8 +782,9 @@ Bandwidth: ~19 kB/s normally, ~44 kB/s with REPLAY (921600 baud ≈ 92 kB/s).
 
 ## 8. Building and flashing
 
-1. The repository is an STM32CubeIDE project: *File → Import → General →
-   Existing Projects into Workspace*, select the repository folder. To change
+1. The folder `00 - STM32_FW` is an STM32CubeIDE project: *File → Import →
+   General → Existing Projects into Workspace*, select `00 - STM32_FW`. Build
+   outputs (`Debug/`) are not versioned: the first build regenerates them. To change
    pins or clocks, open `IEKFcfg.ioc` in CubeMX and regenerate (user code is
    kept). Relevant settings already in the `.ioc`: SYSCLK 64 MHz; I2C1 on PB8/PB9 with
    DMA RX and event/error IRQs; USART1 921600 baud with DMA TX (**Memory increment
@@ -807,13 +823,13 @@ Every tool exists in MATLAB and in Python, with the same options and outputs.
 MATLAB setup:
 
 ```matlab
-run('<repo>/Matlab/initPath.m')   % once per session
+run('<repo>/01 - Tools/00 - Matlab/initPath.m')   % once per session
 ```
 
-Python setup (details in [`Tools/Python/README.md`](Tools/Python/README.md)):
+Python setup (details in [`01 - Tools/01 - Python/README.md`](01%20-%20Tools/01%20-%20Python/README.md)):
 
 ```bash
-cd Tools/Python
+cd "01 - Tools/01 - Python"
 python -m pip install -e .        # installs the iekf-tools command
 ```
 
@@ -846,7 +862,7 @@ L = iekfLiveViewer("serial", "COM6", 921600, "C:\logs") % choose the log folder
 tlmSniffer("COM6")      % bytes -> frames -> STATUS -> diagnosis
 ```
 
-**Python equivalents** (installation in [`Tools/Python/README.md`](Tools/Python/README.md)):
+**Python equivalents** (installation in [`01 - Tools/01 - Python/README.md`](01%20-%20Tools/01%20-%20Python/README.md)):
 
 ```bash
 iekf-tools viewer COM6                  # live viewer; --log-dir DIR, --baud B
@@ -1015,7 +1031,7 @@ iekf-tools compare iekf_cap_YYYYMMDD_HHMMSS.bin
 
 The Python port of both filters matches the MATLAB code to ~1e-14, and
 `compare` reproduces the figures of `compareEmbeddedVsMatlab` on the same
-captures (`Tools/Python/tests`).
+captures (`01 - Tools/01 - Python/tests`).
 
 ### 11.4 Reading the result
 
@@ -1121,7 +1137,8 @@ In both tests the only residual is float32 vs double.
 | HardFault ~2 s after reset | unaligned float write into a packed telemetry struct (§7) |
 | Attitude "converges slowly" in the viewer | viewer lagging: check the *lag* field; disable REPLAY or use `tlmCapture` |
 | Yaw moves when tilting | wrong `MAG_AXIS_MAP` / hard-iron → §10 |
-| `iekfAttitude` not found | run `initPath.m` |
+| `iekfAttitude` not found | run `initPath.m` (in `01 - Tools/00 - Matlab`) |
+| Build errors with paths that no longer exist, after moving or re-cloning the project | stale makefiles in the local `Debug/` folder: delete it (or *Project → Clean*), re-import `00 - STM32_FW` and build again |
 | Comparison: "INIT of this boot was lost" | UART saturated during the capture; repeat |
 | Euler plots jump by 180° | gimbal lock (|pitch| ≈ 90°); use the quaternion figure |
 | `undefined reference to arm_mat_*` | CMSIS-DSP GCC library not linked (§8) |

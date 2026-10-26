@@ -20,7 +20,7 @@ function out = magCheck(logFile, hardIronFw)
 %
 %   out.verdict: 'ok', 'hard-iron-mismatch', 'no-data' or 'no-rotation'.
 %
-%   Requires expSO3.m (Matlab/FiltersComparison/IEKF_originalVersion, see Matlab/initPath.m).
+%   Requires expSO3.m (01 - Tools/00 - Matlab/FiltersComparison/IEKF_originalVersion, see initPath.m).
 
 if nargin < 2, hardIronFw = []; end
 S = load(logFile); L = S.L;

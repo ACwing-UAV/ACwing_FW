@@ -1,4 +1,4 @@
-"""Original IEKF (Python port of ``Matlab/FiltersComparison/IEKF_originalVersion``).
+"""Original IEKF (Python port of ``00 - Matlab/FiltersComparison/IEKF_originalVersion``).
 
 ``iekf_attitude`` is a line-by-line port of ``iekfAttitude.m``, the filter
 first developed and benchmarked in MATLAB and used as the reference for the

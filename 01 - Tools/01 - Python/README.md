@@ -1,6 +1,6 @@
 # iekf_tools — Python tools for the IEKF attitude firmware
 
-Python equivalents of the MATLAB tools in [`Matlab/`](../../Matlab), for users
+Python equivalents of the MATLAB tools in [`01 - Tools/00 - Matlab/`](../00%20-%20Matlab), for users
 without MATLAB. They cover:
 - telemetry decoding;
 - the live 3D viewer;
@@ -32,7 +32,7 @@ outputs computed by the MATLAB code itself (see [Tests](#tests)).
 
 ## Installation
 
-Python ≥ 3.9. From this folder (`Tools/Python`):
+Python ≥ 3.9. From this folder (`01 - Tools/01 - Python`; quote the path, it contains spaces):
 
 ```bash
 python -m venv .venv
@@ -51,7 +51,7 @@ The board appears as **"STMicroelectronics STLink Virtual COM Port"**:
 
 ## MATLAB ↔ Python map
 
-| MATLAB (`Matlab/`) | Python (`iekf_tools`) | Command line |
+| MATLAB (`00 - Matlab/`) | Python (`iekf_tools`) | Command line |
 |---|---|---|
 | `Viewer/iekfLiveViewer.m` | `viewer.live_viewer`, `viewer.LiveViewer` | `iekf-tools viewer COM6` |
 | `FiltersComparison/tlmCapture.m` | `capture.tlm_capture` | `iekf-tools capture COM6 --duration 60` |
@@ -226,14 +226,14 @@ Fixtures in `tests/data`:
 To regenerate the references after a change in the MATLAB filters:
 
 ```bash
-python tests/reference/make_inputs.py                  # from Tools/Python
+python tests/reference/make_inputs.py                  # from 01 - Tools/01 - Python
 cd tests/reference && matlab -batch make_reference     # or: octave-cli --eval make_reference
 ```
 
 ## Package layout
 
 ```
-Tools/Python/
+01 - Tools/01 - Python/
 ├── README.md, pyproject.toml, requirements.txt
 ├── iekf_tools/
 │   ├── __main__.py      command line (iekf-tools)

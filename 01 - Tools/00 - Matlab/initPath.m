@@ -1,6 +1,6 @@
 %INITPATH  Adds every folder of the MATLAB tools to the path.
 %   Run once per MATLAB session, from anywhere:
-%       run('<repo>/Matlab/initPath.m')
+%       run('<repo>/01 - Tools/00 - Matlab/initPath.m')
 %   Paths are resolved relative to this file, so the current folder does not matter.
 root = fileparts(mfilename('fullpath'));
 addpath(fullfile(root, 'Telemetry'));

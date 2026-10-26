@@ -1,4 +1,4 @@
-"""Magnetometer calibration from a viewer log (port of ``Matlab/MagCalib``).
+"""Magnetometer calibration from a viewer log (port of ``00 - Matlab/MagCalib``).
 
 ``calib_mag_axes`` (calibMagAxes.m) estimates the magnetometer axis map AND the
 hard-iron offset; ``fit_hard_iron`` (fitHardIron.m) is a plain sphere fit;

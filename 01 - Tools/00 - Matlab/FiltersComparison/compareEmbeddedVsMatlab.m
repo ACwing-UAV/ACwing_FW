@@ -33,7 +33,7 @@ function out = compareEmbeddedVsMatlab(captureFile, doPlot)
 %
 %   The .bin is the raw capture written by tlmCapture.m (or by iekfLiveViewer
 %   next to its .mat). Start the capture BEFORE resetting the board (window 0
-%   is needed). Path: run Matlab/initPath.m (the original
+%   is needed). Path: run 01 - Tools/00 - Matlab/initPath.m (the original
 %   iekfAttitude.m, expSO3.m, skewSym.m live in FiltersComparison/IEKF_originalVersion).
 if nargin < 2, doPlot = true; end
 
@@ -44,7 +44,7 @@ miss = need(cellfun(@(n) exist(n, 'file') ~= 2, need));
 if ~isempty(miss)
     error(['Not found on the path: %s.\nAdd the folder of the ORIGINAL MATLAB ' ...
            'implementation (the one with iekfAttitude.m, expSO3.m, skewSym.m), e.g. ' ...
-           'run Matlab/initPath.m.\n' ...
+           'run initPath.m (folder 01 - Tools/00 - Matlab).\n' ...
            'IEKF_embeddedVersion only contains iekfAttitudeEmb.m, the version ' ...
            'extended as in C.'], strjoin(miss, ', '));
 end

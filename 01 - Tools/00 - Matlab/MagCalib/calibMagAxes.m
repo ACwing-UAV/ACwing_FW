@@ -25,7 +25,7 @@ function out = calibMagAxes(logFile, gapSec, mapFw, hardIronFw)
 %   (Running it on a log of a calibrated firmware WITHOUT passing its values gives
 %   ~identity and ~0, i.e. the CORRECTION, not the calibration.)
 %
-%   Requires expSO3.m (Matlab/FiltersComparison/IEKF_originalVersion, see Matlab/initPath.m).
+%   Requires expSO3.m (01 - Tools/00 - Matlab/FiltersComparison/IEKF_originalVersion, see initPath.m).
 
 if nargin < 2 || isempty(gapSec), gapSec = 0.2; end
 if nargin < 3, mapFw = []; end

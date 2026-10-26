@@ -1,10 +1,10 @@
 %MAKE_REFERENCE  Reference outputs of the MATLAB filters for the Python parity tests.
-%   Run from Tools/Python/tests/reference in MATLAB or Octave, after
+%   Run from 01 - Tools/01 - Python/tests/reference in MATLAB or Octave, after
 %   make_inputs.py. Writes ../data/filter_reference.mat and
 %   ../data/compare_reference.mat. The three filter configurations below must
 %   be kept identical to tests/test_filters.py.
 here = fileparts(mfilename('fullpath'));
-run(fullfile(here, '..', '..', '..', '..', 'Matlab', 'initPath.m'));
+run(fullfile(here, '..', '..', '..', '00 - Matlab', 'initPath.m'));
 in = load(fullfile(here, '..', 'data', 'filter_inputs.mat'));
 gRef = [0;0;1]; mRef = [0.5;0;-0.85];
 o = struct('R0', quat2rotmLocal(in.q0), 'b0', in.b0(:), ...

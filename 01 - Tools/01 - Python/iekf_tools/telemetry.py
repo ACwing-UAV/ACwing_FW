@@ -1,6 +1,6 @@
 """Telemetry frames: CRC, stream parser, packet decoders, STATUS diagnosis.
 
-Python equivalent of ``Matlab/Telemetry`` (crc16ccitt.m, parseTelemetry.m,
+Python equivalent of ``00 - Matlab/Telemetry`` (crc16ccitt.m, parseTelemetry.m,
 decodeState.m, decodeInit.m, decodeStatus.m, decodeReplay.m,
 statusDiagnosis.m). Field names are those of the MATLAB structs.
 
