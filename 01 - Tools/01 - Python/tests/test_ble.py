@@ -22,9 +22,9 @@ def test_decode_status_both_lengths():
 
 
 def test_board_discovery():
-    devs = [("Phone", "AA:01", -40), ("STM32WB", "AA:02", -70), ("IEKF-WB55", "AA:03", -60),
+    devs = [("Phone", "AA:01", -40), ("STM32WB", "AA:02", -70), ("IEKF", "AA:03", -60),
             ("", "AA:04", -30)]
-    assert is_board_name("IEKF-WB55") and is_board_name("STM32WB") and not is_board_name("Phone")
+    assert is_board_name("IEKF") and is_board_name("STM32WB") and not is_board_name("Phone")
     assert pick_board(devs)[1] == "AA:03"                            # strongest board name
     assert pick_board(devs, "STM32WB")[1] == "AA:02"                  # by name
     assert pick_board(devs, "aa:01")[0] == "Phone"                    # by address
@@ -63,7 +63,7 @@ def test_viewer_over_ble_source(tmp_path):
     assert np.all(np.diff(L.seq) == 4) and L.init is not None
     assert open(v.bin_file, "rb").read() == stream
     txt = v.status_text()
-    assert "BLE: streaming  MTU 247  drop 0" in txt and "notifications" in txt
+    assert "BLE: streaming  MTU 247  drop 0" in txt and "notif." in txt
 
 
 def test_viewer_counts_real_gaps_on_decimated_stream(tmp_path):
@@ -81,3 +81,32 @@ def test_viewer_counts_real_gaps_on_decimated_stream(tmp_path):
                    stop_at_eof=True, show=False)
     v.run()
     assert v.n_lost == 1
+
+
+def test_viewer_over_ble_worker_process(tmp_path):
+    """Default reception path: a separate process (here with the radio replaced
+    by fake_stream) batches the notifications and hands them over a pipe."""
+    stream = synthetic_stream(duration=6.0, state_decim=4, ble=(3, 185, 0, 0))
+    src = BleSource(fake_stream=stream, fake_rate=0, verbose=False)
+    assert src.name == "FAKE" and src.mtu == 247
+    v = LiveViewer(src, log_dir=str(tmp_path), stop_at_eof=True, show=False)
+    L = v.run()
+    assert L.seq.size == 360 and v.n_lost == 0 and v.seq_step == 4
+    assert open(v.bin_file, "rb").read() == stream
+    assert src.n_bytes == len(stream) and src.n_notifications == -(-len(stream) // 244)
+    assert src._proc is None                                         # worker stopped by close()
+
+
+def test_ble_capture_headless(tmp_path, monkeypatch, capsys):
+    """capture --ble: rates printed, bytes written, worker stopped (fake radio)."""
+    import iekf_tools.ble_io as bio
+    from iekf_tools.capture import ble_capture
+    stream = synthetic_stream(duration=3.0, state_decim=4, ble=(3, 247, 0, 0))
+    real = bio.BleSource
+    monkeypatch.setattr(bio, "BleSource", lambda target, decim=4: real(
+        fake_stream=stream, fake_rate=5400, verbose=False))
+    path = ble_capture("", duration=8.0, decim=4, out_dir=str(tmp_path))
+    assert open(path, "rb").read() == stream
+    out = capsys.readouterr().out
+    assert "notif/s" in out and "STATE " in out and "lag" in out and "fw: streaming MTU 247 drop 0" in out
+    assert "Done:" in out and "expected 60" in out

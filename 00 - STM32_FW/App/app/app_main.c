@@ -53,6 +53,8 @@ static volatile uint32_t  s_irqCount, s_tlmDrop, s_busErr, s_fifoOvr;
 /* Bring-up diagnostics (Live Expressions in the debugger) */
 static volatile uint32_t  s_procCycMax, s_procCycLast;   /* CPU cycles of parse+est_process */
 static volatile uint32_t  s_wordsMax;
+static volatile uint32_t  s_drainReads;   /* immediate re-reads (INT1 edge recovery) */
+static volatile float     s_odrHz;        /* IMU sample rate measured against the MCU clock */
 static volatile int8_t    s_imuInit = 1;          /* 1 = in progress, 0 = OK, <0 error */
 static imu_parse_stats_t  s_psTot;                /* cumulative FIFO counters        */
 
@@ -197,38 +199,76 @@ static void ImuTask(void *arg)
     s_est.trace_enable = APP_TLM_REPLAY;
     ctrl_init();
 
+    /* Sample period of the IMU, measured against the MCU clock (HSE crystal).
+     * The LSM6DSV16X runs on its own RC oscillator, a few % off the nominal ODR
+     * (916 Hz measured on the board instead of 960): integrating the gyro with
+     * the nominal dt scales every rotation by that error. The period is the
+     * DWT time between two INT1 edges >= 2 s apart divided by the gyro samples
+     * read in between (counted from the FIFO tags), smoothed; until the first
+     * window the nominal value is used (static calibration, board still).
+     * A per-read measurement is not used: drain reads have no edge of their own
+     * and fell back to the nominal dt (filter time 1.3 % behind real time). */
     const float dtNom = 1.0f / s_imu.odr_hz;
     const float cyc2s = 1.0f / (float)SystemCoreClock;
-    uint32_t prevCyc = 0;
-    uint8_t  first = 1;
+    const uint32_t winCyc = 2u * SystemCoreClock;       /* 2 s, < 2^32 cycles */
+    float    dtEst = dtNom;
+    uint32_t refCyc = 0, refN = 0, lastCyc = 0;
+    uint8_t  haveRef = 0, haveEst = 0;
+    s_odrHz = s_imu.odr_hz;
 
+    /* INT1 is a LEVEL ("FIFO level >= watermark") while the EXTI fires on its
+     * RISING EDGE. If one read falls behind (start-up of the BLE stack, a bus
+     * retry, ...), the FIFO stays above the watermark after the read, INT1 never
+     * goes low again and no further edge arrives: the task would live on the
+     * 5 ms timeout, read big chunks, hit the DMA timeout and lose samples
+     * (seen with BLE: 0 IRQ/s, ~39 % of the gyro samples, ~50 bus errors/s).
+     * Hence: after a read that found much more than the watermark, or after a
+     * wake-up by timeout, read again at once; the FIFO drops below the
+     * watermark, INT1 goes low and the next sample produces an edge again. */
+    uint32_t wait_ms = 5u;
     for (;;) {
-        /* timeout = safety net in case an INT1 edge is missed */
-        (void)osThreadFlagsWait(FLAG_IMU_IRQ, osFlagsWaitAny, 5);
+        const uint32_t fl = osThreadFlagsWait(FLAG_IMU_IRQ, osFlagsWaitAny, wait_ms);
+        const int by_timeout = (fl & osFlagsError) != 0u;
         const uint32_t cyc = s_irqCyc;
 
         uint16_t words = 0;
-        if (imu_fifo_level(&s_imu, &words) != IMU_OK) { s_busErr++; continue; }
-        if (words == 0) continue;
+        if (imu_fifo_level(&s_imu, &words) != IMU_OK) { s_busErr++; wait_ms = 5u; continue; }
+        if (words == 0) { wait_ms = 5u; continue; }
         if (words > IMU_FIFO_MAX_WORDS) { words = IMU_FIFO_MAX_WORDS; s_fifoOvr++; }
 
+        /* timeout only for a stuck bus: 48 words = 336 bytes take ~8 ms at 400 kHz */
         if (imu_i2c_read_dma(IMU_FIFO_REG, s_fifo,
-                             (uint16_t)(words * IMU_FIFO_WORD_BYTES), 3) != 0) { s_busErr++; continue; }
+                             (uint16_t)(words * IMU_FIFO_WORD_BYTES), 12) != 0) { s_busErr++; wait_ms = 1u; continue; }
+        if (words >= 2u * APP_IMU_WATERMARK || (by_timeout && wait_ms != 0u)) {
+            wait_ms = 0u;                      /* drain now: let INT1 fall */
+            s_drainReads++;
+        } else {
+            wait_ms = 5u;
+        }
 
         imu_parse_stats_t ps = { 0 };
         const size_t n = imu_fifo_parse(&s_imu, s_fifo, words, s_ev, IMU_FIFO_MAX_WORDS, &ps);
         s_psTot.gyro += ps.gyro;  s_psTot.acc += ps.acc;  s_psTot.mag += ps.mag;
         s_psTot.mag_dup += ps.mag_dup;  s_psTot.sh_nack += ps.sh_nack;
 
-        /* measured sample period: time between two IRQs / gyro samples read.
-         * Absorbs the tolerance of the sensor's internal oscillator. */
-        float dt = dtNom;
-        if (!first && ps.gyro > 0) {
-            const float meas = (float)(cyc - prevCyc) * cyc2s / (float)ps.gyro;
-            if (meas > 0.8f*dtNom && meas < 1.25f*dtNom) dt = meas;
+        /* sample period estimate (see above) */
+        const uint8_t fresh = (cyc != lastCyc);           /* a new INT1 edge since the last read */
+        lastCyc = cyc;
+        if (haveRef) refN += ps.gyro;                     /* gyro samples read after the reference */
+        if (fresh) {
+            if (!haveRef) {
+                haveRef = 1; refCyc = cyc; refN = 0;
+            } else if ((uint32_t)(cyc - refCyc) >= winCyc && refN > 0u) {
+                const float meas = (float)(uint32_t)(cyc - refCyc) * cyc2s / (float)refN;
+                if (meas > 0.8f * dtNom && meas < 1.25f * dtNom) {
+                    dtEst = haveEst ? dtEst + 0.2f * (meas - dtEst) : meas;
+                    haveEst = 1;
+                    s_odrHz = 1.0f / dtEst;
+                }
+                refCyc = cyc; refN = 0;
+            }
         }
-        first = 0;
-        prevCyc = cyc;
+        const float dt = dtEst;
 
         const uint32_t c0 = DWT->CYCCNT;
         est_process(&s_est, s_ev, n, dt);

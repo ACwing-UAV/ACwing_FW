@@ -69,7 +69,7 @@ def synthetic_stream(duration=40.0, axis_map=None, hard_iron=(30.0, -12.0, 55.0)
     w = np.vstack([0.9 * np.sin(0.5 * t), 0.7 * np.cos(0.31 * t), 1.1 * np.sin(0.23 * t + 1)])
     w[:, t < 2.0] = 0.0                               # still for the static calibration
     out = bytearray()
-    out += encode_frame(TYPE_STATUS, pack_status(0, 0, running=0, calib=0, ble=ble))
+    out += encode_frame(TYPE_STATUS, pack_status(1990, 0, running=0, calib=0, ble=ble))
     out += encode_frame(TYPE_INIT, pack_init([1, 0, 0, 0], [0, 0, 1], B / np.linalg.norm(B), b))
     R = np.eye(3)
     for k in range(n):

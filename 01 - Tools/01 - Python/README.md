@@ -93,6 +93,7 @@ argument is taken as an option.
 | `viewer PORT [--baud 921600] [--log-dir DIR]` | Live 3D board + triad in the NWU frame. Text panel: roll/pitch/yaw, packet rate, lost packets, display lag, bias, flags, calibration. Writes `iekf_log_*.mat` (every 10 s and on exit) and the raw `iekf_log_*.bin`. Stop by closing the window or with Ctrl+C: the log is saved in both cases. |
 | `viewer --ble [NAME_OR_ADDRESS] [--decim 4]` | Same viewer over BLE (needs `bleak`). Without a name, the strongest board advertising `IEKF…` or `STM32WB` is used. `--decim N`: STATE every N acc updates (4 = 60 Hz, 8 = 30 Hz), written to the CMD characteristic. The panel adds a `BLE:` line (state, MTU, drops, notifications). |
 | `scan [--timeout 5]` | Lists the BLE devices advertising, IEKF boards marked. |
+| `capture --ble [NAME] [--duration 30] [--decim 4]` | Records the BLE stream to `iekf_ble_*.bin` without graphics and prints every 2 s the notifications/s, kB/s, STATE/s, lag and the firmware BLE fields. Use it to tell a slow link from a slow viewer. |
 | `viewer --replay FILE.bin [--rate B/s]` | Same viewer fed by a recorded capture (default 19 kB/s ≈ real time; `--rate 0` = as fast as possible). |
 | `capture PORT [--duration 60] [--out-dir DIR]` | Raw bytes to `iekf_cap_*.bin`, no decoding: for `APP_TLM_REPLAY = 1` (~44 kB/s). Reports the rate over the second half (~44 kB/s expected). |
 | `sniff PORT [--duration 3]` / `sniff --file FILE.bin` | Bytes → frames → STATUS → diagnosis of the first broken link (no bytes, stuck DMA, wrong baud rate, IMU, interrupt, FIFO, sensor hub, calibration). |
@@ -116,8 +117,14 @@ iekf-tools viewer COM6              # start, THEN reset the board and keep it st
 
 ```bash
 iekf-tools scan                     # the board must be listed (disconnect any phone first)
-iekf-tools viewer --ble             # or: --ble IEKF-WB55 --decim 8
+iekf-tools viewer --ble             # or: --ble IEKF --decim 8
 ```
+
+The BLE reception runs in a separate process. Bluetooth notifications arrive
+through Python callbacks, and in the viewer's own process the 3D redraw delayed
+them: on Windows the viewer showed 23 packets/s instead of 60 and a growing
+lag, with nothing lost. The panel's `BLE:` line shows the notifications/s
+actually received.
 
 The BLE link carries the same frames as USB, with STATE decimated and no
 REPLAY. Log and `.bin` have the same format as over USB, so every other tool
@@ -221,7 +228,7 @@ Next to every log, the viewer writes the raw byte stream (`.bin`), which
 
 ```bash
 pip install -e ".[test]"
-pytest                    # 24 tests, ~20 s
+pytest                    # 26 tests, ~25 s
 ```
 
 | Test file | Checks |
@@ -229,7 +236,7 @@ pytest                    # 24 tests, ~20 s
 | `test_telemetry.py` | CRC check value; parser on random chunks with garbage and false syncs; skip of REPLAY; decoding of every packet type; STATUS diagnosis |
 | `test_filters.py` | `iekf_attitude` and `iekf_attitude_emb` (three configurations, all extensions) vs the MATLAB outputs: attitude < 1e-11, bias < 1e-12, covariance < 1e-14; SO(3) maps |
 | `test_compare.py` | `compare_embedded` on a mode-1 and a mode-0 capture (stillness, NIS inflation, mag age, 1 lockout) vs the MATLAB `compareEmbeddedVsMatlab` figures; **negative control**: a 20 % change of the dip tolerance in INIT must give DIVERGE |
-| `test_ble.py` | STATUS of 54 and 62 bytes; board discovery by name/address/RSSI; a stream cut into 20-byte notifications reassembles exactly; viewer fed by notifications from another thread (4× decimated stream: 0 lost, BLE line in the panel, `.bin` identical); a real gap on a decimated stream counted once |
+| `test_ble.py` | STATUS of 54 and 62 bytes; board discovery by name/address/RSSI; a stream cut into 20-byte notifications reassembles exactly; viewer fed by notifications from another thread (4× decimated stream: 0 lost, BLE line in the panel, `.bin` identical); a real gap on a decimated stream counted once; reception through the worker process (radio replaced by a recorded stream); headless `capture --ble` |
 | `test_tools.py` | viewer replay (log, `.bin` identical to the stream), `.mat` round trip, `calib_mag_axes` recovers a known axis map and hard-iron, `fit_hard_iron`, `mag_check` finds a stale hard-iron and its absolute correction, sniffer diagnosis, CLI |
 
 Fixtures in `tests/data`:
@@ -265,7 +272,7 @@ cd tests/reference && matlab -batch make_reference     # or: octave-cli --eval m
 │   ├── magcalib.py      axis map + hard-iron, sphere fit, calibration check
 │   ├── logio.py         MATLAB-compatible .mat logs
 │   ├── serial_io.py     serial port / file replay sources
-│   ├── ble_io.py        BLE source (bleak): scan, discovery, TLM notifications, CMD
+│   ├── ble_io.py        BLE source (bleak, in a worker process): scan, discovery, TLM notifications, CMD
 │   └── simulate.py      synthetic telemetry stream (USB or BLE: decimated STATE,
 │                        62-byte STATUS, notification cutting)
 └── tests/               pytest suite, fixtures, MATLAB reference generators

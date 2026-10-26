@@ -35,7 +35,7 @@ Two things make the repository more than a firmware project:
 | **Target** | P-NUCLEO-WB55 (NUCLEO-WB55RG: Cortex-M4F @ 64 MHz + Cortex-M0+ radio core) |
 | **Sensors** | X-NUCLEO-IKS4A1 in **Mode 3**: LSM6DSV16X (gyro + acc) on the MCU I²C bus, LIS2MDL (mag) read through the LSM6DSV16X sensor hub |
 | **Software** | STM32CubeIDE / CubeMX, FreeRTOS (CMSIS-RTOS2), CMSIS-DSP; PC tools: MATLAB R2019b+ or Python ≥ 3.9 |
-| **Status** | **Phase 1 (attitude estimation) concluded.** Both validation tests passed **on the board**: base equations vs the original `iekfAttitude.m` (≤ 0.003 σ), full embedded filter vs `iekfAttitudeEmb.m` (≤ 0.002 σ), see §11.5. **Phase 2 (BLE telemetry)**: notifications working on the board; PC viewers over BLE ready, board test pending (§12). Motors disabled. |
+| **Status** | **Phase 1 (attitude estimation) concluded.** Both validation tests passed **on the board**: base equations vs the original `iekfAttitude.m` (≤ 0.003 σ), full embedded filter vs `iekfAttitudeEmb.m` (≤ 0.002 σ), see §11.5. **Phase 2 (BLE telemetry to the PC)**: working on the board, 57 STATE/s with no loss and no drift (§12.9). Motors disabled. |
 
 ---
 
@@ -73,7 +73,7 @@ The work is organised in phases:
 | Phase | Content | Status |
 |---|---|---|
 | 1 | Embedded attitude estimation: IEKF on SO(3), multi-rate FreeRTOS pipeline, telemetry, PC tools, validation against the reference filter | **concluded** |
-| 2 | Wireless telemetry (BLE on the Cortex-M0+ core) to the PC, then a mobile app | **in progress**: BLE link working on the board, PC tools ready (§12); mobile app planned |
+| 2 | Wireless telemetry (BLE on the Cortex-M0+ core) to the PC, then a mobile app | **BLE to the PC concluded** and validated on the board (§12); mobile app planned |
 | 3 | Control: rate loop at 960 Hz, attitude loop at 240 Hz, motor power stage, arming/fail-safe, thrust model in the estimator | planned |
 
 How to read this document:
@@ -114,8 +114,8 @@ stm32_iekf_attitude_fw/
 │   ├── STM32_WPAN/App/             CubeMX-generated BLE application (app_ble.c with our 3 hooks, §12.5)
 │   ├── Drivers/, Middlewares/      CubeMX-generated: STM32WB HAL, CMSIS, FreeRTOS, ST STM32_WPAN (BLE)
 │   ├── Utilities/                  CubeMX-generated: low-power manager used by STM32_WPAN
-│   ├── IEKFcfg.ioc                 CubeMX configuration (pins, clocks, DMA, FreeRTOS)
-│   ├── IEKFcfg.launch              STM32CubeIDE debug configuration (ST-LINK, SWD)
+│   ├── STM32_IEKF.ioc              CubeMX configuration (pins, clocks, DMA, FreeRTOS)
+│   ├── STM32_IEKF.launch           STM32CubeIDE debug configuration (ST-LINK, SWD)
 │   ├── .project, .cproject, .mxproject, .settings/   STM32CubeIDE project files
 │   └── STM32WB55RGVX_FLASH.ld, ..._RAM.ld   linker scripts
 ├── 01 - Tools/                     PC tools, in two equivalent flavours
@@ -143,7 +143,7 @@ belong to:
 
 | Paths like | Are relative to |
 |---|---|
-| `App/…`, `Core/…`, `IEKFcfg.ioc` | `00 - STM32_FW/` |
+| `App/…`, `Core/…`, `STM32_IEKF.ioc` | `00 - STM32_FW/` |
 | `Viewer/…`, `MagCalib/…`, `FiltersComparison/…`, `initPath.m` | `01 - Tools/00 - Matlab/` |
 | `iekf_tools/…`, `tests/…` | `01 - Tools/01 - Python/` |
 
@@ -796,7 +796,7 @@ still work.
 1. The folder `00 - STM32_FW` is an STM32CubeIDE project: *File → Import →
    General → Existing Projects into Workspace*, select `00 - STM32_FW`. Build
    outputs (`Debug/`) are not versioned: the first build regenerates them. To change
-   pins or clocks, open `IEKFcfg.ioc` in CubeMX and regenerate (user code is
+   pins or clocks, open `STM32_IEKF.ioc` in CubeMX and regenerate (user code is
    kept). Relevant settings already in the `.ioc`: SYSCLK 64 MHz; I2C1 on PB8/PB9 with
    DMA RX and event/error IRQs; USART1 921600 baud with DMA TX (**Memory increment
    enabled**) and global IRQ; PA15 EXTI rising edge (`IMU_INT1`); FreeRTOS
@@ -812,7 +812,7 @@ still work.
 4. `main.c` already calls `app_start()` and forwards the HAL callbacks
    (`HAL_GPIO_EXTI_Callback`, `HAL_I2C_MemRxCpltCallback`,
    `HAL_I2C_ErrorCallback`, `HAL_UART_TxCpltCallback`).
-5. Debug/flash: `IEKFcfg.launch` (ST-LINK GDB server, SWD, connect under reset).
+5. Debug/flash: `STM32_IEKF.launch` (ST-LINK GDB server, SWD, connect under reset).
 6. BLE: the wireless stack must be flashed once on the Cortex-M0+ (§12.6). Without
    it, the radio core never starts. Set `APP_TLM_BLE 0` to run on USB only.
 
@@ -864,7 +864,8 @@ L = iekfLiveViewer("ble");                            % BLE, board found automat
 
 1. Start the viewer, then reset the board and keep it **still for 2–4 s**
    (static calibration; it restarts if the board moves).
-2. The 3D triad follows the board in the levelled NWU frame. The text panel shows
+2. The 3D triad follows the board in the levelled NWU frame, seen with x (N)
+   to the right, y (W) into the screen and z up, slightly from above. The text panel shows
    roll/pitch/yaw, packet rate (~240 Hz), lost packets, **display lag** (warning
    above 0.5 s), gyro bias, flags (`ACC de-weighted`, `MAG de-weighted`, `STILL`)
    and the calibration result. Before the filter starts it shows the STATUS
@@ -1158,8 +1159,8 @@ app can use it as it is.
 | Item | State |
 |---|---|
 | Notifications on the board | **working**, checked with nRF Connect (frames starting with `A5 5A`) |
-| Firmware | compiles and links with the CubeIDE settings (§12.9) |
-| PC viewers over BLE (MATLAB and Python) | tested with simulated notifications; test on the board pending |
+| PC over BLE (Python) | **working on the board**: 57 STATE/s, lag flat within ±0.02 s over 30 s, 0 lost, 0 firmware drops (§12.9) |
+| PC over BLE (MATLAB) | same frame path; tested with simulated notifications |
 
 ### 12.1 Architecture
 
@@ -1239,15 +1240,22 @@ reference, and to check after a regeneration:
 1. **Clocks.**
    - HSE 32 MHz and LSE 32.768 kHz crystals on.
    - RTC clock and RF wake-up clock from **LSE**.
-   - SYSCLK 64 MHz.
+   - SYSCLK 64 MHz from the PLL fed by **HSE** (M = /2, N = ×8, R = /2). The
+     crystal also makes the UART baud rate accurate.
 2. **Peripherals.**
    - **HSEM** and **IPCC** activated, with the IPCC C1 RX/TX interrupts.
    - **RTC**: clock source activated, internal wake-up (timer server of the
      stack).
    - **RNG** and **RF** activated.
 3. **STM32_WPAN.**
-   - *BLE* enabled, server profile. The repository uses the Heart Rate
-     template: its service stays registered alongside ours and is unused.
+   - *BLE* enabled, server profile, **Heart Rate** template. It is kept
+     because, in the CubeMX version used, it is the template that exposes the
+     advertised name (`LOCAL_NAME`); with the Custom Template the field is not
+     available. The Heart Rate service stays registered alongside ours, unused.
+   - The generated `hrs_app.c` has three unused functions (compiler warnings).
+     They are outside USER CODE, so silence them for that file only:
+     *Properties → C/C++ Build → Settings → MCU GCC Compiler → Miscellaneous*,
+     add `-Wno-unused-function -Wno-unused-variable` (Debug and Release).
    - Our service is added in code (`ble_tlm_svc.c`), not in the *BLE GATT* tab.
    - Debug trace **off**: it would use USART1, our telemetry port.
    - Low power **off** (`CFG_LPM_SUPPORTED` = 0): stop mode would halt the
@@ -1257,12 +1265,15 @@ reference, and to check after a regeneration:
 5. **NVIC.** Every interrupt that calls RTOS functions needs priority ≥ 5
    (IMU EXTI, IPCC, HSEM, RTC wake-up).
 
-Settings to review in CubeMX. The repository still has the CubeMX defaults
-for:
-- the advertised **name**: `STM32WB` (set e.g. `IEKF-WB55`; the PC tools find
-  both);
-- `CFG_BLE_MAX_ATT_MTU`: **156** (247 gives fewer notifications on PCs);
-- the **PLL source**: MSI (HSE is preferable, for the UART baud accuracy too).
+6. **BLE parameters** (*STM32_WPAN → BLE → Configuration*).
+   - Advertised **name**: **`IEKF`**. CubeMX accepts only 5 characters here
+     because the name shares the 31-byte advertising packet with the
+     template's data. The PC tools recognise any name starting with `IEKF`,
+     and also `STM32WB` (the CubeMX default).
+   - `CFG_BLE_MAX_ATT_MTU`: **247**. It gives fewer and fuller notifications.
+
+The CubeIDE project is named `STM32_IEKF` (`STM32_IEKF.ioc`,
+`STM32_IEKF.launch`).
 
 ### 12.5 Firmware hooks
 
@@ -1336,7 +1347,7 @@ MATLAB (R2019b+, Windows 10+/macOS, Bluetooth 4.0+ adapter):
 
 ```matlab
 L = iekfLiveViewer("ble");                 % board found automatically, STATE 60 Hz
-L = iekfLiveViewer("ble", "IEKF-WB55", 8); % by name or address, STATE 30 Hz
+L = iekfLiveViewer("ble", "IEKF", 8); % by name or address, STATE 30 Hz
 blelist                                    % what is advertising
 ```
 
@@ -1346,7 +1357,8 @@ Linux/BlueZ):
 ```bash
 iekf-tools scan                            # boards advertising, marked "<-- IEKF board"
 iekf-tools viewer --ble                    # board found automatically, STATE 60 Hz
-iekf-tools viewer --ble IEKF-WB55 --decim 8
+iekf-tools viewer --ble IEKF --decim 8
+iekf-tools capture --ble --duration 30     # no graphics: received rates every 2 s
 ```
 
 How the tools behave:
@@ -1361,14 +1373,34 @@ How the tools behave:
 
 ### 12.9 Verification
 
+**On the board.** The link was measured with `iekf-tools capture --ble --duration 30` and
+`iekf-tools info`, on the P-NUCLEO-WB55, HSE clock, Windows PC:
+
+| Quantity | Measured |
+|---|---|
+| STATE received | 56.8/s; 916 Hz IMU / 16 (the LSM6DSV16X runs at 916 Hz, not 960) |
+| Notifications | ~62/s, ~5.2 kB/s, ATT MTU 247 |
+| Lag PC − firmware time | flat, −0.00 … +0.02 s over 30 s |
+| Lost STATE, firmware BLE drops | 0, 0 |
+| Firmware | 916 gyro samples/s, ~560 IMU interrupts/s, 0 FIFO overruns, 0 I²C errors; filter time 30.0 s over 29.9 s of uptime |
+
+Two firmware problems appeared only on the board, with the BLE stack running,
+and were fixed in `ImuTask` (§13):
+- **INT1 stuck high.** It caused 0 IRQ/s, 39 % of the samples and ~50 I²C
+  errors/s.
+- **Gyro integrated partly with the nominal period.** The filter time fell
+  1.3 % behind real time.
+
+**Off the board:**
+
 | Check | Result |
 |---|---|
 | Notifications on the board, nRF Connect | frames `A5 5A …` received |
-| Full firmware build with ARM GCC 13.3, include paths and defines read from `.cproject` (87 C files + startup, linked with `STM32WB55RGVX_FLASH.ld` and CMSIS-DSP) | 0 errors; only warnings: 3 unused functions in the generated `hrs_app.c`. Debug flags (`-O0 -g3`): 107 KB flash, 73 KB RAM; `-O2`: 66 KB flash |
+| Full firmware build with ARM GCC 13.3, include paths and defines read from `.cproject` (87 C files + startup, linked with `STM32WB55RGVX_FLASH.ld` and CMSIS-DSP) | 0 errors, 0 warnings (with the per-file flags of `hrs_app.c`, §12.4). HSE clock, MTU 247. Debug flags (`-O0 -g3`): 108 KB flash, 73 KB RAM; `-O2`: 66 KB flash |
 | `ble_tlm_svc.c` against the STM32_WPAN headers | all ACI/HCI functions, events and structs used exist with that signature |
 | Host test of the BLE queue: 60 s of frames, random MTU 23–247, 30 % refused sends | bytes received = frames queued; overload drops whole frames only |
 | MATLAB viewer, BLE path with simulated notifications (Octave) | 660 STATE at step 4, 0 lost, INIT/STATUS decoded, `.bin` identical, CMD `[2 4]` written |
-| Python: 5 BLE tests (`tests/test_ble.py`) | STATUS 54/62 B, board discovery, reassembly from 20-byte notifications, viewer on a decimated stream (0 lost, BLE line), a real gap counted once |
+| Python: 7 BLE tests (`tests/test_ble.py`, 26 in the whole suite) | STATUS 54/62 B, board discovery, reassembly from 20-byte notifications, viewer on a decimated stream (0 lost, BLE line), a real gap counted once, BLE worker process, headless `capture --ble` |
 
 ### 12.10 Troubleshooting (BLE)
 
@@ -1381,6 +1413,7 @@ How the tools behave:
 | HardFault / stack overflow at start-up | FreeRTOS heap too small |
 | `multiple definition of HAL_GPIO_EXTI_Callback` after a regeneration | keep a single definition, calling `app_exti(pin)` |
 | `ble_drop` grows | link slower than the data: decimation 8, larger MTU |
+| PC viewer over BLE: rate below 60 Hz, `lag` growing, `lost 0` and `drop 0` | the PC delivers the notifications late (nothing is lost on the link). The Python tools receive BLE in a separate process for this reason (since the BLE support was added); update them. The `BLE:` line shows the notifications/s actually received, `draw` the redraw time. `iekf-tools capture --ble` measures the link without graphics: if it shows 60 STATE/s and a stable lag, the limit is the viewer's redraw on that PC |
 | PC tools: board not found | it is connected to another central (phone): disconnect it. Python on Linux: `bluetoothd` running |
 
 ### 12.11 Towards a mobile app
@@ -1418,6 +1451,8 @@ CMD is the place for future commands: arming, gains, logging.
 | Build errors with paths that no longer exist, after moving or re-cloning the project | stale makefiles in the local `Debug/` folder: delete it (or *Project → Clean*), re-import `00 - STM32_FW` and build again |
 | Comparison: "INIT of this boot was lost" | UART saturated during the capture; repeat |
 | Euler plots jump by 180° | gimbal lock (|pitch| ≈ 90°); use the quaternion figure |
+| `iekf-tools info`: IMU interrupts 0/s, gyro far below 960/s, tens of I²C errors/s; viewer below its rate with a growing `lag` and `lost 0` | INT1 stuck high: it is a *level* (FIFO ≥ watermark) and the EXTI is on the *rising edge*. One late read leaves the FIFO above the watermark, so no edge arrives any more and the task lives on its 5 ms timeout, with big reads, DMA timeouts and lost samples. Fixed in `ImuTask`: immediate re-read after a large read or a timeout wake-up, and a 12 ms DMA timeout. `s_drainReads` in *Live Expressions* counts the recoveries |
+| `lag` grows slowly (about 1 %/s) with no loss; `iekf-tools info`: filter time behind the uptime | the gyro was integrated with the nominal 1/960 s for part of the samples, while the LSM6DSV16X runs on its own RC oscillator (916 Hz measured). Fixed: the sample period is measured over 2 s windows against the MCU clock and used for every sample. `s_odrHz` in *Live Expressions* shows it |
 | `undefined reference to arm_mat_*` | CMSIS-DSP GCC library not linked (§8) |
 
 ---
@@ -1435,6 +1470,15 @@ CMD is the place for future commands: arming, gains, logging.
   based on the innovation can lock the filter out of a true error; it needs a cap
   and an independent way to recognise a genuine error (here: world-frame
   persistence and stillness).
+- **A level interrupt on an edge-triggered EXTI needs a way out.** INT1 is high
+  while the FIFO is above the watermark. If a read ends with the FIFO still
+  above it, no new edge ever comes and the loop silently degrades to polling.
+  Phase 1 never hit it; enabling BLE, with a slower start-up, did. The reader
+  must drain the FIFO below the watermark.
+- **The sensor's clock is not the MCU's clock.** The IMU ODR comes from its
+  internal RC oscillator, ~5 % off on this board. The integration step must be
+  measured against the MCU crystal over long windows, not assumed and not
+  taken from single reads.
 - **Process noise is a model-error budget.** The gyro σ that worked was 150×
   the datasheet noise density because it also covers scale and alignment errors.
 
@@ -1452,8 +1496,11 @@ validation) is concluded. Open items for the next phases:
 - Verify the magnetometer latency $\bar\tau$ on the bench (constant-rate rotation
   about the vertical) — the LIS2MDL internal filter delay is not modelled.
 - I²C Fast-mode Plus and 1920 Hz sampling (check bus edges on a scope first).
-- Phase 2: test the PC viewers over BLE on the board (§12.7), set the advertised
-  name and the ATT MTU in CubeMX (§12.4), then the mobile app (§12.11).
+- Phase 2: the mobile app on the same GATT service (§12.11). Over BLE the PC
+  side is done.
+- Optionally read the LSM6DSV16X `INTERNAL_FREQ_FINE` register at start-up to
+  use the true ODR from the first sample, instead of the nominal value during
+  the first 2 s.
 - Phase 3: rate PID at 960 Hz with notch-filtered gyro, attitude loop at 240 Hz,
   motor power stage, arming and fail-safe, and a **thrust model** to reject
   sustained accelerations in the acc update.
