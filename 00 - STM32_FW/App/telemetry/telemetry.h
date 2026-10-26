@@ -1,6 +1,7 @@
 /**
  * @file  telemetry.h
- * @brief Telemetry packet format (shared with Matlab/.../Telemetry/parseTelemetry.m).
+ * @brief Telemetry packet format (shared with 01 - Tools/00 - Matlab/Telemetry/parseTelemetry.m
+ *        and 01 - Tools/01 - Python/iekf_tools/telemetry.py).
  *
  * Frame (little-endian):
  *   0xA5 0x5A | TYPE | LEN | PAYLOAD[LEN] | CRC16 (LSB, MSB)

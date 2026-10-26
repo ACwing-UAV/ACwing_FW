@@ -1,6 +1,6 @@
 """Python tools for the STM32WB55 IEKF attitude firmware.
 
-Python equivalents of the MATLAB tools in ``Matlab/``: telemetry parsing and
+Python equivalents of the MATLAB tools in ``01 - Tools/00 - Matlab/``: telemetry parsing and
 decoding, live 3D viewer, raw capture, byte-level sniffer, magnetometer
 calibration, and the comparison of the embedded filter with the original and
 the extended MATLAB filters (both ported here).

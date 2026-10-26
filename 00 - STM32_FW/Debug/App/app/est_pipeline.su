@@ -1,6 +1,0 @@
-../App/app/est_pipeline.c:10:13:trace_put	32	static
-../App/app/est_pipeline.c:23:6:est_init	24	static
-../App/app/est_pipeline.c:34:13:on_step	88	static
-../App/app/est_pipeline.c:62:13:on_acc_window	64	static
-../App/app/est_pipeline.c:105:13:on_mag	184	static
-../App/app/est_pipeline.c:153:6:est_process	40	static

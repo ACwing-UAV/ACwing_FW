@@ -1,4 +1,0 @@
-../App/telemetry/tlm_uart.c:16:5:tlm_uart_init	16	static
-../App/telemetry/tlm_uart.c:23:5:tlm_uart_send	24	static
-../App/telemetry/tlm_uart.c:36:6:tlm_uart_tx_cplt_isr	16	static
-../App/telemetry/tlm_uart.c:41:10:tlm_uart_dropped	4	static

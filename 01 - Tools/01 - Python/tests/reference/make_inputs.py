@@ -1,6 +1,6 @@
 """Generates tests/data/filter_inputs.mat: synthetic inputs for the filter parity test.
 
-Run from Tools/Python:  python tests/reference/make_inputs.py
+Run from 01 - Tools/01 - Python:  python tests/reference/make_inputs.py
 Then, in MATLAB or Octave, run tests/reference/make_reference.m to compute the
 reference outputs with the MATLAB filters (tests/data/filter_reference.mat).
 """

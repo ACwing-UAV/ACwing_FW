@@ -69,7 +69,7 @@ def test_sniffer_and_cli(tmp_path, capsys):
 def test_mag_check_detects_stale_hard_iron(tmp_path):
     """Log of a firmware whose MAG_HARD_IRON no longer matches: the residual offset
     must be found and the corrected value must be the absolute one. Same numbers as
-    Matlab/MagCalib/magCheck.m on the same log (checked in Octave)."""
+    00 - Matlab/MagCalib/magCheck.m on the same log (checked in Octave)."""
     from iekf_tools.magcalib import mag_check
     hi_true = np.array([30.0, -12.0, 55.0])
     _, L, _ = _replay_log(tmp_path, duration=40.0, axis_map=np.eye(3), hard_iron=tuple(hi_true))
