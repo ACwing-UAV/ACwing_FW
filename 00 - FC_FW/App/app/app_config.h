@@ -14,18 +14,16 @@
  * try it only after checking the bus edges with an oscilloscope: the IKS4A1 has
  * level translators and 4k7 pull-ups. The pipeline adapts automatically. */
 #define APP_IMU_ODR            IMU_ODR_960HZ
-#define APP_IMU_WATERMARK      4u      /* FIFO words: 2 gyro + 2 acc -> IRQ at 960 Hz */
-#define APP_GY_LPF1_BW         LSM6DSV16X_GY_LIGHT    /* gyro anti-alias filter: to be tuned */
+#define APP_IMU_WATERMARK      4u      /**< FIFO words: 2 gyro + 2 acc -> IRQ at 960 Hz */
+#define APP_GY_LPF1_BW         LSM6DSV16X_GY_LIGHT    /**< gyro anti-alias filter: to be tuned */
 #define APP_XL_LPF2_ENABLE     1
 #define APP_XL_LPF2_BW         LSM6DSV16X_XL_STRONG
-#define APP_MAG_FAST           1       /* LIS2MDL 100 Hz, hub 120 Hz: halves the age of mag data */
-
+#define APP_MAG_FAST           1       /**< LIS2MDL 100 Hz, hub 120 Hz: halves the age of mag data */
 /* ---------------- rates (derived) ---------------- */
-#define APP_STEP_HZ            960u    /* propagation + rate loop                */
-#define APP_STEPS_PER_ACC      4u      /* -> 240 Hz acc update + attitude loop   */
-
+#define APP_STEP_HZ            960u    /**< propagation + rate loop                */
+#define APP_STEPS_PER_ACC      4u      /**< -> 240 Hz acc update + attitude loop   */
 /* ---------------- static calibration ---------------- */
-#define APP_CALIB_SAMPLES      100u    /* mag samples at ~50 Hz -> ~2 s standing still */
+#define APP_CALIB_SAMPLES      100u    /**< mag samples at ~50 Hz -> ~2 s standing still */
 #define APP_CALIB_GYRO_STILL   (5.0f * DEG2RAD_F)
 
 /* ---------------- IEKF ----------------
@@ -36,7 +34,7 @@
  * acceleration sensitivity. In simulation with 1% scale error and 1 deg of
  * misalignment: sigma 0.1 -> RMSE 1.17 deg, sigma 0.5 -> 0.42 deg.
  * Hence 0.5: it can be lowered only after calibrating gyro scale and
- * misalignment (see README.md, "Embedded improvements"). */
+ * misalignment (see 03 - Docs/theory/iekf-embedded.md). */
 #define IEKF_SIGMA_GYRO        (0.5f * DEG2RAD_F)
 #define IEKF_SIGMA_BIAS        1e-4f
 #define IEKF_SIGMA_VEC_MIN     0.01f
@@ -57,10 +55,10 @@
  * recovery).
  * Stillness detector: board at rest -> the accelerometer is trusted again at once. */
 #define IEKF_ACC_NIS_GATE      4.0f
-#define IEKF_MAG_NIS_GATE      0.0f                  /* not recommended, see iekf.h */
+#define IEKF_MAG_NIS_GATE      0.0f                  /**< not recommended, see iekf.h */
 #define IEKF_INFL_TAU_S        0.5f
 #define IEKF_DIP_TOL           (5.0f * DEG2RAD_F)
-#define IEKF_DECOUPLE          0                     /* tried: does not help, see README */
+#define IEKF_DECOUPLE          0                     /**< tried: does not help, see 03 - Docs/theory/iekf-embedded.md */
 /* "Lockout" protection: without it, a true attitude error during motion inflates
  * R_acc forever (recovery > 20 s). The inflation is capped and, if the innovation
  * is persistent in the world frame (a true error, not shaking), after
@@ -105,20 +103,19 @@
  * Large hard-iron (~194 uT, ~4x the Earth field): recalibrate whenever anything
  * near the sensor changes (cables, battery, screws, motors). */
 #define MAG_AXIS_MAP   { 1.0f, 0.0f, 0.0f,   0.0f, -1.0f, 0.0f,   0.0f, 0.0f, -1.0f }
-#define MAG_HARD_IRON  { 31.61f, 16.44f, -26.23f }   /* uT, body frame */
-
+#define MAG_HARD_IRON  { 31.61f, 16.44f, -26.23f }   /**< uT, body frame */
 /* ---------------- telemetry (phase 1: ST-LINK virtual COM port) ---------------- */
-#define APP_TLM_DECIMATION     1u      /* 1 = every acc update (240 Hz), ~18.5 kB/s */
+#define APP_TLM_DECIMATION     1u      /**< 1 = every acc update (240 Hz), ~18.5 kB/s */
 #define APP_TLM_DECIM_REPLAY   8u      /* with REPLAY on, STATE drops to 30 Hz:
                                           REPLAY already carries q and bias at 240 Hz */
-#define APP_TLM_TX_TIMEOUT_MS  20u     /* max wait for the UART DMA before dropping */
-#define APP_INIT_EVERY_N       480u    /* repeat INIT ~once per second (2 frames per window) */
+#define APP_TLM_TX_TIMEOUT_MS  20u     /**< max wait for the UART DMA before dropping */
+#define APP_INIT_EVERY_N       480u    /**< repeat INIT ~once per second (2 frames per window) */
 #define APP_TLM_REPLAY         0       /* 1 only for the MATLAB comparison: raises the
                                           telemetry from ~19 to ~44 kB/s, too much for
                                           the real-time viewer -> record with
                                           tlmCapture.m and analyse offline */
 
-/* ---------------- telemetry over BLE (phase 2, see the README) ----------------
+/* ---------------- telemetry over BLE (phase 2, see 03 - Docs/firmware/ble.md) ----------------
  * Same frames as the UART, as a byte stream on a GATT notification. The UART
  * keeps working unchanged (REPLAY and comparison stay USB-only). */
 #define APP_TLM_BLE            1       /* 1 once STM32_WPAN (BLE) is enabled in CubeMX
@@ -128,12 +125,11 @@
                                           time with the CMD characteristic.            */
 #define APP_BLE_FLUSH_MS       10u     /* TX thread period: groups frames in one
                                           notification when the MTU allows it          */
-#define APP_BLE_CONN_INT_MIN   12u     /* x1.25 ms = 15 ms (iOS minimum)               */
-#define APP_BLE_CONN_INT_MAX   24u     /* x1.25 ms = 30 ms (iOS: max >= min + 15 ms)   */
-#define APP_BLE_SUPERV_TIMEOUT 400u    /* x10 ms   = 4 s                               */
-
+#define APP_BLE_CONN_INT_MIN   12u     /**< x1.25 ms = 15 ms (iOS minimum)               */
+#define APP_BLE_CONN_INT_MAX   24u     /**< x1.25 ms = 30 ms (iOS: max >= min + 15 ms)   */
+#define APP_BLE_SUPERV_TIMEOUT 400u    /**< x10 ms   = 4 s                               */
 /* ---------------- ACwing Pilot protocol v2 ---------------- */
-#define APP_HW_REV        'N'     /* CAPS hwRev: 'N' = NUCLEO-WB55 + IKS4A1 bench, 'A' = ACwing FC rev A */
+#define APP_HW_REV        'N'     /**< CAPS hwRev: 'N' = NUCLEO-WB55 + IKS4A1 bench, 'A' = ACwing FC rev A */
 /* ACwing Flow: PMW3901 counts -> body axes (frame C2: board t forward, s left).
  * To be confirmed on the first build (FLOW_TOF calibration, "match"). */
 #define APP_FLOW_SIGN_X   (1.0f)

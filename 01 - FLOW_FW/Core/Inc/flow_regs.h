@@ -29,8 +29,7 @@
 
 #define FLOW_I2C_ADDR       0x3Bu
 #define FLOW_WHO_AM_I_VAL   0xF1u
-#define FLOW_FW_VERSION     0x10u     /* 1.0 */
-
+#define FLOW_FW_VERSION     0x10u     /**< 1.0 */
 #define FLOW_R_WHO_AM_I     0x00u
 #define FLOW_R_VERSION      0x01u
 #define FLOW_R_STATUS       0x02u

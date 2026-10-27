@@ -1,6 +1,6 @@
 # ACwing – brand files
 
-**Project:** ACwing · **Author:** Andrea Cirillo · **Overview:** [repository README](../../README.md)
+**Project:** ACwing · **Author:** Andrea Cirillo · **Overview:** [documentation home](../index.md)
 
 <p>
   <img src="ACwing_logo_on_black.png" alt="ACwing logo on black" width="220">

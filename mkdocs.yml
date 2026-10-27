@@ -1,0 +1,118 @@
+# Documentation site of the ACwing firmware repository.
+#   pip install -r "03 - Docs/requirements.txt"
+#   mkdocs serve            # live preview on http://127.0.0.1:8000
+#   mkdocs build --strict   # what CI runs: any broken link or anchor fails the build
+# The pages are plain Markdown + $math$ + ```mermaid: GitHub renders them as well.
+site_name: ACwing firmware
+site_description: Flight-controller and ACwing Flow firmware, estimators, protocol and PC tools
+site_author: Andrea Cirillo
+repo_url: https://github.com/andrea-cirillo/ACwing_FlightController_FW
+repo_name: ACwing_FlightController_FW
+edit_uri: edit/main/03%20-%20Docs/
+docs_dir: "03 - Docs"
+site_dir: site
+# Doxygen main pages (used by Doxygen, not by the site); the generated HTML in
+# api/fc and api/flow is copied as is
+exclude_docs: |
+  api/doxygen/
+  api/*.log
+
+theme:
+  name: material
+  logo: 00 - Brand/ACwing_mark_white.png
+  favicon: 00 - Brand/ACwing_mark_black.png
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: black
+      accent: indigo
+      toggle: { icon: material/weather-night, name: Dark mode }
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: black
+      accent: indigo
+      toggle: { icon: material/weather-sunny, name: Light mode }
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - navigation.indexes
+    - navigation.top
+    - navigation.footer
+    - toc.follow
+    - search.suggest
+    - search.highlight
+    - content.code.copy
+    - content.action.edit
+
+nav:
+  - Home: index.md
+  - Overview:
+      - Repository structure: overview/repository.md
+  - Theory:
+      - Vehicle model and dynamics: theory/vehicle-model.md
+      - Attitude IEKF: theory/iekf.md
+      - IEKF on the microcontroller: theory/iekf-embedded.md
+      - Altitude Kalman filter: theory/altitude-kf.md
+  - Firmware:
+      - Architecture: firmware/architecture.md
+      - Flight core: firmware/flight-core.md
+      - Sensors and expansion boards: firmware/sensors.md
+      - Telemetry protocol: firmware/telemetry.md
+      - Building and flashing: firmware/build.md
+      - BLE telemetry: firmware/ble.md
+      - ACwing Pilot protocol v2: firmware/protocol-v2.md
+      - ACwing Flow bridge: firmware/flow-bridge.md
+      - Testing: firmware/testing.md
+      - API reference (Doxygen): api/index.md
+  - Tools:
+      - PC tools and live viewer: tools/pc-tools.md
+      - Magnetometer calibration: tools/mag-calibration.md
+      - Validation against the reference: tools/validation.md
+  - Guides:
+      - Troubleshooting: guides/troubleshooting.md
+  - Decisions:
+      - decisions/index.md
+      - decisions/0001-iekf-on-so3.md
+      - decisions/0002-multirate-pipeline.md
+      - decisions/0003-flight-core-in-imu-task.md
+      - decisions/0004-linear-altitude-kf.md
+      - decisions/0005-drivers-and-bsp.md
+      - decisions/0006-flow-bridge-mcu.md
+  - Project:
+      - Lessons learned: project/lessons-learned.md
+      - Roadmap: project/roadmap.md
+      - References: project/references.md
+      - Writing the documentation: project/documentation.md
+      - Brand files: 00 - Brand/README.md
+
+markdown_extensions:
+  # 2-space nested lists, as GitHub renders them
+  - mdx_truly_sane_lists: { nested_indent: 2, truly_sane: true }
+  - tables
+  - attr_list
+  - md_in_html
+  - footnotes
+  - def_list
+  - admonition
+  - toc:
+      permalink: true
+      slugify: !!python/object/apply:pymdownx.slugs.slugify { kwds: { case: lower } }
+  - pymdownx.arithmatex: { generic: true }
+  - pymdownx.highlight: { anchor_linenums: true }
+  - pymdownx.inlinehilite
+  - pymdownx.details
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+
+extra_javascript:
+  - assets/javascripts/mathjax.js
+  - https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js
+extra_css:
+  - assets/stylesheets/extra.css
+
+validation:
+  links: { not_found: warn, anchors: warn, absolute_links: warn, unrecognized_links: warn }
+  nav: { omitted_files: warn, not_found: warn }

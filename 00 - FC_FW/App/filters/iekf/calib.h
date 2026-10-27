@@ -29,14 +29,14 @@ typedef struct {
 
 typedef struct {
     iekf_seed_t seed;
-    float sigma_acc;        /* already lower-bounded by sigma_min     */
+    float sigma_acc;        /**< already lower-bounded by sigma_min     */
     float sigma_mag;
-    float sigma_acc_raw;    /* measured values, for diagnostics        */
+    float sigma_acc_raw;    /**< measured values, for diagnostics        */
     float sigma_mag_raw;
 } calib_result_t;
 
 void     calib_reset(calib_t *c);
-/* Returns 0 if the sample is compatible with "still", -1 if moving */
+/** Returns 0 if the sample is compatible with "still", -1 if moving */
 int      calib_add(calib_t *c, const float acc[3], const float gyro[3], const float mag[3],
                    float gyro_still_thr);
 uint32_t calib_count(const calib_t *c);

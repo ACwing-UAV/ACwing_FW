@@ -18,7 +18,7 @@
 #include "params.h"
 #include "calib_mgr.h"
 
-#define CFG_MAGIC     0x43574341u    /* "ACWC" */
+#define CFG_MAGIC     0x43574341u    /**< "ACWC" */
 #define CFG_VERSION   1u
 
 typedef struct {
@@ -28,22 +28,22 @@ typedef struct {
     uint32_t  seq;
     float     params[PARAM_COUNT];
     char      name[16];
-    cal_set_t cal;                   /* saved calibrations                       */
-    cal_set_t bak;                   /* previous set, per type (CAL_RESTORE)     */
-    uint32_t  bak_mask;              /* bit (type-1): bak holds a set for it      */
-    uint32_t  crc;                   /* CRC-32 of everything above               */
+    cal_set_t cal;                   /**< saved calibrations                       */
+    cal_set_t bak;                   /**< previous set, per type (CAL_RESTORE)     */
+    uint32_t  bak_mask;              /**< bit (type-1): bak holds a set for it      */
+    uint32_t  crc;                   /**< CRC-32 of everything above               */
 } cfg_image_t;
 
 /* ---- backend ---- */
 #define CFG_PAGES 2
-const void *cfg_flash_page(int page);                         /* memory-mapped page */
-int  cfg_flash_write(int page, const void *data, uint32_t len); /* erase + program; 0 = ok */
+const void *cfg_flash_page(int page);                         /**< memory-mapped page */
+int  cfg_flash_write(int page, const void *data, uint32_t len); /**< erase + program; 0 = ok */
 
 /* ---- store ---- */
 uint32_t cfg_crc32(const void *data, uint32_t len);
-/* latest valid image; returns 0 if found, -1 if none (out left untouched) */
+/** latest valid image; returns 0 if found, -1 if none (out left untouched) */
 int  cfg_load(cfg_image_t *out);
-/* writes img (seq and crc filled here) to the other page; 0 = ok */
+/** writes img (seq and crc filled here) to the other page; 0 = ok */
 int  cfg_save(cfg_image_t *img);
 
 #endif /* CFG_STORE_H */

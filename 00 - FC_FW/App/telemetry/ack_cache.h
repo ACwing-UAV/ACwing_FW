@@ -15,15 +15,14 @@
 
 #include <stdint.h>
 
-#define ACK_CACHE_LEN 32u     /* >= 16 required */
-
+#define ACK_CACHE_LEN 32u     /**< >= 16 required */
 enum { ACKC_NEW = 0, ACKC_PENDING = 1, ACKC_DONE = 2 };
 
 void    ackc_reset(void);
-/* Looks up (op, seq). ACKC_DONE: result/reason filled, re-send them.
+/** Looks up (op, seq). ACKC_DONE: result/reason filled, re-send them.
  * ACKC_PENDING: ignore. ACKC_NEW: a pending entry was created, execute it. */
 uint8_t ackc_begin(uint8_t op, uint8_t seq, uint8_t *result, uint8_t *reason);
-/* Completes the entry (or creates it if it was evicted meanwhile). */
+/** Completes the entry (or creates it if it was evicted meanwhile). */
 void    ackc_finish(uint8_t op, uint8_t seq, uint8_t result, uint8_t reason);
 
 #endif /* ACK_CACHE_H */

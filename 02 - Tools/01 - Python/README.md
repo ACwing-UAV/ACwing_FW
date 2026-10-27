@@ -7,7 +7,7 @@
 
 # ACwing FC – PC tools in Python (`acwing_tools`)
 
-**Project:** ACwing · **Author:** Andrea Cirillo · **Overview:** [repository README](../../README.md)
+**Project:** ACwing · **Author:** Andrea Cirillo · **Overview:** [repository README](../../README.md) · [documentation](../../03%20-%20Docs/index.md)
 
 Python equivalents of the MATLAB tools in [`02 - Tools/00 - Matlab/`](../00%20-%20Matlab), for users
 without MATLAB. They cover:
@@ -111,15 +111,15 @@ argument is taken as an option.
 | `viewer --replay FILE.bin [--rate B/s]` | Same viewer fed by a recorded capture (default 19 kB/s ≈ real time; `--rate 0` = as fast as possible). |
 | `capture PORT [--duration 60] [--out-dir DIR]` | Raw bytes to `acwing_cap_*.bin`, no decoding: for `APP_TLM_REPLAY = 1` (~44 kB/s). Reports the rate over the second half (~44 kB/s expected). |
 | `sniff PORT [--duration 3]` / `sniff --file FILE.bin` | Bytes → frames → STATUS → diagnosis of the first broken link (no bytes, stuck DMA, wrong baud rate, IMU, interrupt, FIFO, sensor hub, calibration). |
-| `compare FILE.bin [--no-plot]` | Embedded vs reference filters (README §11). Exit code 0 = MATCH, 1 = DIVERGE, 2 = unusable capture. |
-| `calib-mag LOG.mat [--gap 0.2] [--map M] [--hard-iron H]` | Magnetometer axis map + hard-iron (README §10); prints the two `#define` lines for `app_config.h`. `--map`/`--hard-iron`: values of the firmware that recorded the log (default identity / 0); the result is always absolute. |
+| `compare FILE.bin [--no-plot]` | Embedded vs reference filters ([validation](../../03%20-%20Docs/tools/validation.md)). Exit code 0 = MATCH, 1 = DIVERGE, 2 = unusable capture. |
+| `calib-mag LOG.mat [--gap 0.2] [--map M] [--hard-iron H]` | Magnetometer axis map + hard-iron ([magnetometer calibration](../../03%20-%20Docs/tools/mag-calibration.md)); prints the two `#define` lines for `app_config.h`. `--map`/`--hard-iron`: values of the firmware that recorded the log (default identity / 0); the result is always absolute. |
 | `mag-check LOG.mat [--hard-iron H]` | Is the current calibration still valid? Sphere fit of the logged field and rotation consistency with the gyro; prints the corrected `MAG_HARD_IRON` if needed. |
 | `fit-hard-iron LOG.mat [--no-plot]` | Sphere fit of the hard-iron offset, with a 3D plot. |
 | `info FILE` | Summary of a `.bin` (frames per type, last STATUS diagnosis) or a `.mat` log. |
 
 ## Typical workflows
 
-These follow README §9–§11 step by step; only the commands change.
+These follow the [PC tools](../../03%20-%20Docs/tools/pc-tools.md), [magnetometer calibration](../../03%20-%20Docs/tools/mag-calibration.md) and [validation](../../03%20-%20Docs/tools/validation.md) pages step by step; only the commands change.
 
 **Live view** (firmware with `APP_TLM_REPLAY = 0`):
 
@@ -127,7 +127,7 @@ These follow README §9–§11 step by step; only the commands change.
 acwing-tools viewer COM6              # start, THEN reset the board and keep it still 2-4 s
 ```
 
-**Live view over BLE** (firmware with `APP_TLM_BLE 1`, README §12):
+**Live view over BLE** (firmware with `APP_TLM_BLE 1`, see [BLE telemetry](../../03%20-%20Docs/firmware/ble.md)):
 
 ```bash
 acwing-tools scan                     # the board must be listed (disconnect any phone first)
@@ -144,7 +144,7 @@ The BLE link carries the same frames as USB, with STATE decimated and no
 REPLAY. Log and `.bin` have the same format as over USB, so every other tool
 works on them. Use USB for `capture` and `compare`.
 
-**Magnetometer calibration** (README §10):
+**Magnetometer calibration** ([page](../../03%20-%20Docs/tools/mag-calibration.md)):
 1. Record ~40 s of rotations about all axes with the viewer.
 2. Run, passing the values of the firmware that recorded the log:
    ```bash
@@ -158,7 +158,7 @@ works on them. Use USB for `capture` and `compare`.
    acwing-tools mag-check acwing_log_YYYYMMDD_HHMMSS.mat --hard-iron 100.31,-0.56,-166.07
    ```
 
-**Embedded-vs-reference validation** (README §11):
+**Embedded-vs-reference validation** ([page](../../03%20-%20Docs/tools/validation.md)):
 1. Flash with `APP_TLM_REPLAY 1`, and `APP_COMPARE_ORIGINAL` 1 or 0.
 2. Record and compare:
    ```bash

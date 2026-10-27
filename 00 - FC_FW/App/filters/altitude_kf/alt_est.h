@@ -27,46 +27,46 @@
 #include <stdint.h>
 
 typedef struct {
-    float sigma_acc;        /* m/s^2, vertical acceleration noise             */
-    float sigma_acc_bias;   /* m/s^2/sqrt(s), random walk                     */
-    float sigma_baro_bias;  /* m/sqrt(s), random walk (while ToF is valid)    */
-    float sigma_baro;       /* m, baro altitude noise                          */
-    float sigma_tof;        /* m, ToF noise at 0 m (+1 % of the range)         */
+    float sigma_acc;        /**< m/s^2, vertical acceleration noise             */
+    float sigma_acc_bias;   /**< m/s^2/sqrt(s), random walk                     */
+    float sigma_baro_bias;  /**< m/sqrt(s), random walk (while ToF is valid)    */
+    float sigma_baro;       /**< m, baro altitude noise                          */
+    float sigma_tof;        /**< m, ToF noise at 0 m (+1 % of the range)         */
     float tof_min_m, tof_max_m;
-    float tof_max_tilt_cos; /* cos of the largest usable tilt                 */
-    float tof_offset_m;     /* lens height above the floor when landed        */
+    float tof_max_tilt_cos; /**< cos of the largest usable tilt                 */
+    float tof_offset_m;     /**< lens height above the floor when landed        */
 } alt_est_cfg_t;
 
 typedef struct {
     alt_est_cfg_t c;
     float    x[4];
     float    P[4][4];
-    /* baro */
-    float    p_ref;          /* Pa at the reference                            */
+    /** baro */
+    float    p_ref;          /**< Pa at the reference                            */
     float    p_sum; uint16_t p_n;
     uint8_t  baro_ok;
-    float    baro_alt;       /* last baro altitude (m, p_ref based)            */
-    float    pressure;       /* last Pa                                        */
-    /* ToF */
-    float    ground;         /* floor level in the h frame                     */
-    float    tof_h;          /* last height above the floor (m)                */
-    uint8_t  tof_valid;      /* last ToF sample used                           */
-    uint8_t  tof_ground;     /* below the minimum range: on the floor          */
+    float    baro_alt;       /**< last baro altitude (m, p_ref based)            */
+    float    pressure;       /**< last Pa                                        */
+    /** ToF */
+    float    ground;         /**< floor level in the h frame                     */
+    float    tof_h;          /**< last height above the floor (m)                */
+    uint8_t  tof_valid;      /**< last ToF sample used                           */
+    uint8_t  tof_ground;     /**< below the minimum range: on the floor          */
     uint8_t  tof_rejects;
-    float    tof_age_s;      /* since the last valid ToF sample                */
-    uint8_t  have_tof;       /* a ToF sample was used at least once            */
-    uint8_t  valid;          /* an altitude source is initialised              */
+    float    tof_age_s;      /**< since the last valid ToF sample                */
+    uint8_t  have_tof;       /**< a ToF sample was used at least once            */
+    uint8_t  valid;          /**< an altitude source is initialised              */
 } alt_est_t;
 
 void alt_est_default_cfg(alt_est_cfg_t *c);
 void alt_est_init(alt_est_t *e, const alt_est_cfg_t *c);
 void alt_est_predict(alt_est_t *e, float a_up, float dt);
 void alt_est_baro(alt_est_t *e, float pa);
-/* range_m: raw ToF range; status_ok: range status valid; cos_tilt: R33 */
+/** range_m: raw ToF range; status_ok: range status valid; cos_tilt: R33 */
 void alt_est_tof(alt_est_t *e, float range_m, uint8_t status_ok, float cos_tilt);
 void alt_est_zero(alt_est_t *e);
 
-/* vertical acceleration (m/s^2, + up, gravity removed) from the attitude and the
+/** vertical acceleration (m/s^2, + up, gravity removed) from the attitude and the
  * specific force in body axes (g units, 1 g at rest = nom_g) */
 float alt_est_accel_up(const float q[4], const float f_body_g[3], float nom_g);
 

@@ -27,18 +27,17 @@
 #define TLM_SYNC1       0x5Au
 #define TLM_TYPE_STATE  0x01u
 #define TLM_TYPE_INIT   0x02u
-#define TLM_TYPE_STATUS 0x03u   /* 10 Hz diagnostics, ALWAYS sent (also during calibration) */
-#define TLM_TYPE_REPLAY 0x04u   /* trace of the filter calls + resulting state (parity)   */
+#define TLM_TYPE_STATUS 0x03u   /**< 10 Hz diagnostics, ALWAYS sent (also during calibration) */
+#define TLM_TYPE_REPLAY 0x04u   /**< trace of the filter calls + resulting state (parity)   */
 #define TLM_OVERHEAD    6u
 
 /* STATE packet flags */
 #define TLM_F_RUNNING    0x01u
-#define TLM_F_MAG_NEW    0x02u   /* magnetometer update performed on this sample     */
-#define TLM_F_ACC_GATED  0x04u   /* acc de-weighted (magnitude or NIS)                */
+#define TLM_F_MAG_NEW    0x02u   /**< magnetometer update performed on this sample     */
+#define TLM_F_ACC_GATED  0x04u   /**< acc de-weighted (magnitude or NIS)                */
 #define TLM_F_MAG_GATED  0x08u
-#define TLM_F_OVERRUN    0x10u   /* samples lost upstream (queue full)                */
-#define TLM_F_STILL      0x20u   /* stillness detector active                         */
-
+#define TLM_F_OVERRUN    0x10u   /**< samples lost upstream (queue full)                */
+#define TLM_F_STILL      0x20u   /**< stillness detector active                         */
 /* INIT packet flags */
 #define TLM_I_EST_BIAS   0x01u
 #define TLM_I_ADAPTIVE   0x02u
@@ -53,15 +52,15 @@
  * Always write into a local variable first, then copy with memcpy. */
 #pragma pack(push, 1)
 typedef struct {
-    uint16_t seq;        /* filter sample index (0 = initial state R0)         */
-    uint32_t t_us;       /* filter time: sum of the dt actually used          */
-    float    q[4];       /* body->world, [w x y z]                             */
-    float    bias[3];    /* rad/s                                              */
-    float    acc[3];     /* g,    body frame                                   */
-    float    gyro[3];    /* rad/s                                              */
-    float    mag[3];     /* uT,   body frame, hard-iron already removed        */
+    uint16_t seq;        /**< filter sample index (0 = initial state R0)         */
+    uint32_t t_us;       /**< filter time: sum of the dt actually used          */
+    float    q[4];       /**< body->world, [w x y z]                             */
+    float    bias[3];    /**< rad/s                                              */
+    float    acc[3];     /**< g,    body frame                                   */
+    float    gyro[3];    /**< rad/s                                              */
+    float    mag[3];     /**< uT,   body frame, hard-iron already removed        */
     uint8_t  flags;
-} tlm_state_t;           /* 71 bytes */
+} tlm_state_t;           /**< 71 bytes */
 
 typedef struct {
     float   q0[4];
@@ -77,28 +76,28 @@ typedef struct {
     float   infl_max, lockout_p_bump, persist_decay, persist_ratio, persist_min;
     uint16_t lockout_updates, grace_updates;
     uint8_t flags;
-} tlm_init_t;            /* 137 bytes */
+} tlm_init_t;            /**< 137 bytes */
 
 typedef struct {
     uint32_t uptime_ms;
-    uint32_t irq_count;      /* INT1 interrupts received                */
-    uint32_t bus_err;        /* I2C errors (FIFO status or DMA burst)   */
-    uint32_t fifo_ovr;       /* reads truncated to IMU_FIFO_MAX_WORDS   */
-    uint32_t tlm_drop;       /* frames lost on the telemetry queue     */
-    uint32_t uart_drop;      /* frames not sent (UART DMA busy)         */
-    uint32_t proc_cyc_max;   /* max CPU cycles of est_process           */
-    uint32_t n_gyro, n_acc, n_mag, n_mag_dup, n_sh_nack;   /* cumulative FIFO words */
-    uint16_t words_max;      /* max words read in one interrupt         */
-    uint16_t calib_count;    /* calibration samples collected           */
-    int8_t   imu_init;       /* 1 = in progress, 0 = OK, <0 = imu_status_t */
-    uint8_t  running;        /* 1 = filter running                      */
+    uint32_t irq_count;      /**< INT1 interrupts received                */
+    uint32_t bus_err;        /**< I2C errors (FIFO status or DMA burst)   */
+    uint32_t fifo_ovr;       /**< reads truncated to IMU_FIFO_MAX_WORDS   */
+    uint32_t tlm_drop;       /**< frames lost on the telemetry queue     */
+    uint32_t uart_drop;      /**< frames not sent (UART DMA busy)         */
+    uint32_t proc_cyc_max;   /**< max CPU cycles of est_process           */
+    uint32_t n_gyro, n_acc, n_mag, n_mag_dup, n_sh_nack;   /**< cumulative FIFO words */
+    uint16_t words_max;      /**< max words read in one interrupt         */
+    uint16_t calib_count;    /**< calibration samples collected           */
+    int8_t   imu_init;       /**< 1 = in progress, 0 = OK, <0 = imu_status_t */
+    uint8_t  running;        /**< 1 = filter running                      */
     /* ---- phase 2: BLE link (all 0 with APP_TLM_BLE = 0) ---- */
-    uint32_t ble_drop;       /* frames not queued for BLE (link too slow) */
-    uint16_t ble_mtu;        /* ATT_MTU in use                           */
+    uint32_t ble_drop;       /**< frames not queued for BLE (link too slow) */
+    uint16_t ble_mtu;        /**< ATT_MTU in use                           */
     uint8_t  ble_state;      /* tlm_ble_state_t: 0 off, 1 advertising,
                                 2 connected, 3 streaming                 */
-    uint8_t  ble_err;        /* last BLE stack error code (0 = none)     */
-} tlm_status_t;              /* 62 bytes (54 in phase 1) */
+    uint8_t  ble_err;        /**< last BLE stack error code (0 = none)     */
+} tlm_status_t;              /**< 62 bytes (54 in phase 1) */
 #pragma pack(pop)
 
 #if defined(__STDC_VERSION__) && (__STDC_VERSION__ >= 201112L)
@@ -116,7 +115,7 @@ _Static_assert(sizeof(tlm_status_t) == 62, "tlm_status_t layout");
 #define TLM_FRAME_MAX    (TLM_REPLAY_MAX + TLM_OVERHEAD)
 
 uint16_t tlm_crc16(const uint8_t *data, size_t len);
-/* Writes the complete frame into out; returns its length, 0 if cap is too small */
+/** Writes the complete frame into out; returns its length, 0 if cap is too small */
 size_t   tlm_encode(uint8_t type, const void *payload, uint8_t len, uint8_t *out, size_t cap);
 
 #endif /* TELEMETRY_H */

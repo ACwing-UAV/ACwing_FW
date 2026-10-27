@@ -30,7 +30,7 @@
 
 #if defined(__has_include)
 #if !__has_include("common_blesvc.h")
-#error "APP_TLM_BLE = 1 requires STM32_WPAN (BLE) enabled in CubeMX: see the README, section 'BLE telemetry (phase 2)'"
+#error "APP_TLM_BLE = 1 requires STM32_WPAN (BLE) enabled in CubeMX: see 03 - Docs/firmware/ble.md, CubeMX configuration"
 #endif
 #endif
 
