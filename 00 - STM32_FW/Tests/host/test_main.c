@@ -19,6 +19,7 @@
 #include "alt_ctrl.h"
 #include "vl53l1x.h"
 #include "flow_bridge.h"
+#include "checks.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -235,26 +236,34 @@ static void test_takeoff_tof(void)
         fc_setpoint_t sp; fc_setpoint(&sp);
         plant_step(&pl, sp.thrust, sp.armed, 0.004f);
         v.h = pl.h; v.vz = pl.vz;
-        v.tof_h = pl.h; v.tof_ground = pl.h < 0.03f; v.tof_valid = !v.tof_ground;
+        v.tof_h = pl.h; v.tof_ground = pl.h < 0.03f; v.tof_valid = !v.tof_ground; v.flow_usable = pl.h >= 0.08f;
         fc_service(now, 1, &v);
     }
     fc_snapshot(&s);
+    {
+        fc_setpoint_t sp; fc_setpoint(&sp);
+        CHECK(sp.pos_hold, "position hold on flow at 1.5 m");
+        CHECK(drain_events(PV2_E_FLOW_LOST) == 0, "no FLOW_LOST during the takeoff from the floor");
+    }
     CHECK(s.mode == PV2_MODE_POS_HOLD && s.autom == PV2_AUTO_NONE, "POS_HOLD after takeoff with FLOW (mode %d)", s.mode);
     CHECK(fabsf(pl.h - 1.5f) < 0.1f, "holds 1.5 m (%.2f)", pl.h);
     r = post(PV2_OP_LAND, 3, NULL, 0, &v);
     float vmin_low = 0, vmin_high = 0;
-    int landed = 0;
+    int landed = 0, flow_lost_land = 0, pos_hold_low = 0;
     for (int k = 0; k < 15000 / 4; ++k) {
         now += 4; if (k % 25 == 0) heartbeat();
         fc_setpoint_t sp; fc_setpoint(&sp);
         plant_step(&pl, sp.thrust, sp.armed, 0.004f);
         v.h = pl.h; v.vz = pl.vz;
-        v.tof_h = pl.h; v.tof_ground = pl.h < 0.03f; v.tof_valid = !v.tof_ground;
+        v.tof_h = pl.h; v.tof_ground = pl.h < 0.03f; v.tof_valid = !v.tof_ground; v.flow_usable = pl.h >= 0.08f;
         fc_service(now, 1, &v);
         if (pl.h < 0.8f && pl.h > 0.05f && pl.vz < vmin_low) vmin_low = pl.vz;
         if (pl.h > 1.1f && pl.vz < vmin_high) vmin_high = pl.vz;
-        fc_event_t e; while (fc_take_event(&e)) landed += (e.code == PV2_E_LANDED);
+        fc_event_t e; while (fc_take_event(&e)) { landed += (e.code == PV2_E_LANDED); flow_lost_land += (e.code == PV2_E_FLOW_LOST); }
+        if (pl.h < 0.07f && pl.h > 0.0f && sp.pos_hold) pos_hold_low++;
     }
+    CHECK(flow_lost_land == 0, "no FLOW_LOST while landing below 80 mm");
+    CHECK(pos_hold_low == 0, "no position hold on flow below 80 mm");
     CHECK(vmin_high < -0.5f, "landSpeed 0.7 m/s above 1 m (%.2f)", vmin_high);
     CHECK(vmin_low > -0.4f, "0.3 m/s below 1 m with ToF (%.2f)", vmin_low);
     CHECK(landed == 1, "landed indoor");
@@ -271,7 +280,7 @@ static void test_takeoff_tof(void)
         now += 4; if (k % 25 == 0) heartbeat();
         fc_setpoint_t sp; fc_setpoint(&sp);
         plant_step(&pl, sp.thrust, sp.armed, 0.004f);
-        v.h = pl.h; v.vz = pl.vz; v.tof_h = pl.h; v.tof_ground = pl.h < 0.03f; v.tof_valid = !v.tof_ground;
+        v.h = pl.h; v.vz = pl.vz; v.tof_h = pl.h; v.tof_ground = pl.h < 0.03f; v.tof_valid = !v.tof_ground; v.flow_usable = pl.h >= 0.08f; v.flow_usable = pl.h >= 0.08f;
         if (k > 8000 / 4) v.flow_q = 10;
         fc_service(now, 1, &v);
         fc_event_t e; while (fc_take_event(&e)) lost += (e.code == PV2_E_FLOW_LOST);
@@ -473,6 +482,25 @@ static void test_alt_est(void)
 static uint8_t s_vreg[0x200];
 static int32_t v_wr(void *h, uint16_t r, const uint8_t *d, uint16_t n) { memcpy(&s_vreg[r], d, n); if (r == 0x87 && d[0] == 0x40) s_vreg[0x31] = 0x01; if (r == 0x86) s_vreg[0x31] = 0x00; return 0; }
 static int32_t v_rd(void *h, uint16_t r, uint8_t *d, uint16_t n) { memcpy(d, &s_vreg[r], n); return 0; }
+static uint8_t flow_item(uint8_t ok, uint8_t in_air, uint8_t q)
+{
+    checks_in_t in; memset(&in, 0, sizeof in);
+    in.sensors = PV2_S_IMU | PV2_S_BARO | PV2_S_TOF | PV2_S_FLOW;
+    in.imu_ok = 1; in.est_running = 1; in.alt_valid = 1;
+    in.flow_ok = ok; in.in_air = in_air; in.flow_q = q;
+    pv2_check_t it[PV2_CHECKS_MAX]; uint8_t rdy, bf;
+    const uint8_t n = checks_build(&in, it, &rdy, &bf);
+    for (uint8_t i = 0; i < n; ++i) if (it[i].id == PV2_CHK_FLOW) return it[i].state;
+    return 0xFF;
+}
+
+static void test_checks_flow(void)
+{
+    CHECK(flow_item(1, 0, 5) == PV2_CK_OK, "on the ground: low quality is expected (below 80 mm)");
+    CHECK(flow_item(0, 0, 0) == PV2_CK_WARN, "on the ground: bridge / sensor not working -> WARN");
+    CHECK(flow_item(1, 1, 30) == PV2_CK_WARN && flow_item(1, 1, 80) == PV2_CK_OK, "in the air: WARN below 50 %%");
+}
+
 static void test_drivers(void)
 {
     memset(s_vreg, 0, sizeof s_vreg);
@@ -701,6 +729,7 @@ int main(void)
     test_app_link_failsafe();
     test_alt_est();
     test_drivers();
+    test_checks_flow();
     test_app();
     if (s_bin) fclose(s_bin);
     s_bin = NULL;

@@ -45,6 +45,8 @@
 #define FC_FLOW_LOST_Q       30u     /* flow quality below this ...              */
 #define FC_FLOW_BACK_Q       40u
 #define FC_FLOW_LOST_MS      500u
+#define FC_FLOW_CHECK_H      0.15f   /* m: FLOW_LOST is judged only above this height,
+                                        never on the ground, in TAKEOFF or LAND */
 
 /* internal opcodes (AppTask -> core), outside the v2 range */
 #define FC_OP_MOTOR_STOP     0xF0u   /* stop a running motor test               */
@@ -90,6 +92,8 @@ typedef struct {
     float   tof_h;                   /* m above the floor                        */
     float   cos_tilt;                /* R33 of the attitude                      */
     uint8_t flow_q;                  /* 0..100, 0xFF n/a                         */
+    uint8_t flow_usable;             /* flow valid: above the PMW3901 minimum
+                                        height (80 mm; landed it is ~11 mm)      */
 } fc_vert_t;
 
 /* setpoints for the attitude / rate loops (phase 3) and the motor mixer */
@@ -101,6 +105,9 @@ typedef struct {
     float   roll_rate, pitch_rate;   /* rad/s (ACRO)                             */
     float   yaw_rate;                /* rad/s                                    */
     float   h_sp, vz_sp;             /* m, m/s (when alt_ctrl)                   */
+    uint8_t pos_hold;                /* hold the horizontal position (POS_HOLD or HOLD with
+                                        a usable position source); 0 near the floor, where
+                                        the flow is below its minimum height: level attitude */
 } fc_setpoint_t;
 
 void    fc_init(const fc_config_t *cfg);

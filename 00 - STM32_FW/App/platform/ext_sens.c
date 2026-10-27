@@ -102,13 +102,15 @@ static void ExtTask(void *arg)
             const int32_t r = flow_read(&flow, &f);
             if (r < 0) { s_err++; if (++flow_err > EXT_ERR_LIMIT) flow.ok = 0; }
             else {
+                /* every frame goes up, also without new motion: the FC needs the
+                 * sensor status and SQUAL on the ground too (below the PMW3901
+                 * minimum height every sample is rejected by the bridge) */
                 flow_err = 0;
-                if (r > 0) {
-                    const ext_sample_t s = { .kind = EXT_FLOW, .status = f.status, .dx = f.dx, .dy = f.dy,
-                                             .squal = f.squal, .dt_s = f.dt_s,
-                                             .t_ms = osKernelGetTickCount() };
-                    (void)spsc_push(&s_q, &s);
-                }
+                const ext_sample_t s = { .kind = EXT_FLOW, .status = f.status,
+                                         .dx = r > 0 ? f.dx : 0, .dy = r > 0 ? f.dy : 0,
+                                         .squal = f.squal, .dt_s = r > 0 ? f.dt_s : 0.0f,
+                                         .t_ms = osKernelGetTickCount() };
+                (void)spsc_push(&s_q, &s);
             }
         }
         s_sens = (uint16_t)((tof.ok ? PV2_S_TOF : 0u) | (flow.ok ? PV2_S_FLOW : 0u));

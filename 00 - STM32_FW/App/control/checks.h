@@ -25,6 +25,8 @@ typedef struct {
     float    gf_max_dist;      /* param gfMaxDist                               */
     uint8_t  alt_valid;        /* vertical estimate running (baro / ToF)         */
     uint8_t  flow_q;           /* 0..100, 0xFF n/a                              */
+    uint8_t  flow_ok;          /* bridge alive, PMW3901 OK                       */
+    uint8_t  in_air;
 } checks_in_t;
 
 /* fills items (PV2_CHECKS_MAX), returns the count; *ready = no FAIL;

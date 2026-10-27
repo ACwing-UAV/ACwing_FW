@@ -102,7 +102,9 @@ static volatile uint8_t s_est_restart;
 static alt_est_t s_alt;
 static uint8_t   s_flow_q = 0xFFu;
 static float     s_flow_v[2];
-static uint32_t  s_flow_ms;
+static uint32_t  s_flow_ms;                  /* last frame from the bridge            */
+static uint8_t   s_flow_ok;                  /* bridge alive and PMW3901 OK           */
+static uint8_t   s_flow_usable;              /* above the PMW3901 minimum height      */
 static uint16_t  s_tof_mm = 0xFFFFu;
 static uint32_t  s_tof_ms;
 static float     s_vib2;                     /* EMA of (|a| - 1 g)^2, g^2 */
@@ -289,7 +291,18 @@ static void take_ext(uint32_t now, float cos_tilt, const float omega[3])
             alt_est_tof(&s_alt, (float)x.tof_mm * 1e-3f, (uint8_t)(x.status == 0u), cos_tilt);
             s_tof_mm = (x.status == 0u) ? x.tof_mm : 0xFFFFu;
             s_tof_ms = now;
-        } else if (x.kind == EXT_FLOW && x.dt_s > 1e-3f) {
+        } else if (x.kind == EXT_FLOW) {
+            s_flow_ms = now;
+            s_flow_ok = (uint8_t)((x.status & 0x01u) != 0u);
+            uint32_t q = (uint32_t)x.squal * 100u / 120u;              /* SQUAL ~120 on a good floor */
+            if (!s_flow_ok) q = 0u;
+            s_flow_q = (uint8_t)(q > 100u ? 100u : q);
+            /* height gate: the PMW3901 works from 80 mm; the ToF gives the height
+             * above the floor (no valid ToF = no height = flow not usable) */
+            if (!s_flow_ok || !s_alt.tof_valid || s_alt.tof_ground || s_alt.tof_h < APP_FLOW_MIN_H) s_flow_usable = 0u;
+            else if (s_alt.tof_h >= APP_FLOW_MIN_H + 0.02f) s_flow_usable = s_flow_ok;
+            if (!s_flow_usable) { s_flow_v[0] = s_flow_v[1] = 0.0f; continue; }
+            if (x.dt_s <= 1e-3f) continue;                              /* status only */
             /* PMW3901: ~0.0205 rad per count (42 deg / 35 px). Flow rate minus the
              * body rotation, times the height, is the ground speed. Axis signs
              * (APP_FLOW_SIGN_*) follow the frame-C2 mounting and are checked by
@@ -297,17 +310,16 @@ static void take_ext(uint32_t now, float cos_tilt, const float omega[3])
             const float k = 0.0205f / x.dt_s;
             const float fx = APP_FLOW_SIGN_X * (float)x.dy * k;      /* about body y -> x motion */
             const float fy = APP_FLOW_SIGN_Y * (float)x.dx * k;
-            const float h  = s_alt.tof_valid ? s_alt.tof_h : 0.0f;
+            const float h  = s_alt.tof_h;
             float v[2] = { (fx - omega[1]) * h, (fy + omega[0]) * h };
             for (int i = 0; i < 2; ++i) s_flow_v[i] += 0.3f * (v[i] - s_flow_v[i]);
-            uint32_t q = (uint32_t)x.squal * 100u / 120u;              /* SQUAL ~120 on a good floor */
-            if (!(x.status & 0x01u)) q = 0u;                            /* PMW3901 not OK */
-            s_flow_q = (uint8_t)(q > 100u ? 100u : q);
-            s_flow_ms = now;
         }
     }
-    if (s_flow_ms && (now - s_flow_ms) > 200u) s_flow_q = 0u;              /* stream stopped */
-    if (!(ext_sensors() & PV2_S_FLOW)) s_flow_q = 0xFFu;
+    if (s_flow_ms && (now - s_flow_ms) > 200u) {                       /* bridge silent */
+        s_flow_q = 0u; s_flow_ok = 0u; s_flow_usable = 0u;
+        s_flow_v[0] = s_flow_v[1] = 0.0f;
+    }
+    if (!(ext_sensors() & PV2_S_FLOW)) { s_flow_q = 0xFFu; s_flow_ok = 0u; s_flow_usable = 0u; }
     if (s_tof_ms && (now - s_tof_ms) > 200u) s_tof_mm = 0xFFFFu;
 }
 
@@ -357,6 +369,8 @@ static void publish_est(uint32_t now)
     o.tof_h = s_alt.tof_h;
     o.tof_mm = s_tof_mm;
     o.flow_q = s_flow_q;
+    o.flow_ok = s_flow_ok;
+    o.flow_usable = s_flow_usable;
     o.vel_body[0] = s_flow_v[0]; o.vel_body[1] = s_flow_v[1];
     o.baro_pa = s_alt.baro_ok ? (uint32_t)(s_alt.pressure + 0.5f) : 0u;
     o.sensors = s_imu_sensors;
@@ -388,6 +402,7 @@ static void flight_service(uint32_t *lastSvc)
     v.tof_h = s_alt.tof_h;
     v.cos_tilt = ct;
     v.flow_q = s_flow_q;
+    v.flow_usable = s_flow_usable;
     fc_service(now, est_ok, &v);
     {
         static uint8_t wasArmed;

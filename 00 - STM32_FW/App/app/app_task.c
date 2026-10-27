@@ -193,7 +193,7 @@ static void send_flight(void)
     m.flight_time_s = f.flight_time_s;
     m.alt_rel_cm = f.alt_rel_cm;
     m.vz_cms = f.vz_cms;
-    if (e.flow_q != 0xFFu) {
+    if (e.flow_usable) {
         const float gs = sqrtf(e.vel_body[0]*e.vel_body[0] + e.vel_body[1]*e.vel_body[1]) * 100.0f;
         m.ground_speed_cms = (uint16_t)(gs > 65535.0f ? 65535.0f : gs);
     }
@@ -222,7 +222,7 @@ static void send_nav(void)
     {
         const float psi = -yaw_heading_deg(e.q) * 0.01745329f;      /* NWU yaw */
         float vn = 0.0f, ve = 0.0f;
-        if (e.flow_q != 0xFFu) {
+        if (e.flow_usable) {
             const float vx = e.vel_body[0], vy = e.vel_body[1];       /* body x fwd, y left */
             vn = cosf(psi) * vx - sinf(psi) * vy;
             ve = -(sinf(psi) * vx + cosf(psi) * vy);                  /* E = -W */
@@ -296,6 +296,8 @@ static void build_checks(pv2_check_t *it, uint8_t *n)
     in.gf_max_dist = PARAM(P_GF_MAX_DIST);
     in.alt_valid = e.alt_valid;
     in.flow_q = e.flow_q;
+    in.flow_ok = e.flow_ok;
+    in.in_air = f.in_air;
     *n = checks_build(&in, it, &s_ready, &s_batt_fail);
 }
 

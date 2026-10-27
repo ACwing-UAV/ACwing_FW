@@ -1582,6 +1582,23 @@ How it behaves:
 - **Below the ToF minimum range** (about 40 mm; landed, the lens is 11 mm above
   the floor) the reading means "on the ground".
 
+**PMW3901 below its minimum height.** The flow sensor works from 80 mm
+(`APP_FLOW_MIN_H`). With the drone on the ground the lens is about 11 mm
+above the floor, so on the ground, at lift-off and in the last centimetres of
+a landing the bridge rejects every sample (no surface features) and the flow
+is invalid by design. Below that height the FC:
+- marks the flow **not usable**: no velocity, so NAV `vel` and the ground
+  speed read 0, and `fc_setpoint().pos_hold` = 0 (level attitude, no
+  position hold);
+- judges **FLOW_LOST only** in the air, above 0.15 m on the ToF, and never
+  during TAKEOFF or LAND;
+- in CHECKS, **on the ground**, checks only that the bridge and the sensor
+  answer (OK, with the quality as value). The quality rule (WARN < 50 %)
+  applies in the air.
+
+The height comes from the ToF. The flow becomes usable again 20 mm above the
+limit; without a valid ToF reading the flow is not used.
+
 The same logic runs on the **models with and without GNSS**. Only the mode
 entered at the end of the takeoff changes (POS_HOLD with GNSS or FLOW,
 ALT_HOLD otherwise).
@@ -1631,12 +1648,14 @@ Without any altitude sensor, `g_fc_dbg_in_air` (Live Expressions) still forces
 
 ### 13.5 Verification
 
-- `00 - STM32_FW/Tests/host` (`make`): **86 checks**, with
+- `00 - STM32_FW/Tests/host` (`make`): **93 checks**, with
   AddressSanitizer and UBSan. They cover:
   - the ACK cache;
   - TAKEOFF rules;
   - TAKEOFF → hold 1 m → LAND → auto-disarm, against a simple vertical plant;
-  - the indoor model (POS_HOLD, slow landing, flow lost, ceiling);
+  - the indoor model (POS_HOLD, slow landing, flow lost, ceiling; no FLOW_LOST
+    and no position hold below 80 mm at take-off and landing; CHECKS on the
+    ground);
   - app-link failsafe timings, also with BLE silent, and the GAP disconnect;
   - the vertical estimator (baro only, baro + ToF with drift, re-anchoring);
   - the VL53L1X and flow-bridge drivers;

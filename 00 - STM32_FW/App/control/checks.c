@@ -53,11 +53,17 @@ uint8_t checks_build(const checks_in_t *in, pv2_check_t *it, uint8_t *ready, uin
         put(&it[n++], PV2_CHK_FAILSAFE, alt ? PV2_CK_OK : PV2_CK_WARN, v);
     }
 
-    /* 9 optical flow: WARN below 50 % quality */
+    /* 9 optical flow. On the ground the sensor is below its 80 mm minimum
+     * height, so the quality is low by design: only the sensor is checked.
+     * In the air: WARN below 50 % quality. */
     if (!(S & PV2_S_FLOW)) put(&it[n++], PV2_CHK_FLOW, PV2_CK_NA, 0);
     else {
-        const uint8_t q = in->flow_q;
-        put(&it[n++], PV2_CHK_FLOW, (q == 0xFFu || q < 50u) ? PV2_CK_WARN : PV2_CK_OK, q == 0xFFu ? 0 : q);
+        const uint8_t q = (in->flow_q == 0xFFu) ? 0u : in->flow_q;
+        uint8_t st;
+        if (!in->flow_ok)    st = PV2_CK_WARN;
+        else if (!in->in_air) st = PV2_CK_OK;
+        else                 st = (q < 50u) ? PV2_CK_WARN : PV2_CK_OK;
+        put(&it[n++], PV2_CHK_FLOW, st, q);
     }
 
     /* 10 throttle low on the active input (§7.1) */

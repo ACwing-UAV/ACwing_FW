@@ -462,8 +462,12 @@ static void flow_failsafe(uint32_t dt)
 {
     if (!has(PV2_S_FLOW) || gnss()) { s_failsafe &= (uint8_t)~PV2_FS_FLOW; return; }
     const uint8_t q = s_have_v ? s_v.flow_q : 0xFFu;
-    const uint8_t bad = (uint8_t)(q == 0xFFu || q < FC_FLOW_LOST_Q);
-    if (s_armed && s_in_air && s_mode == PV2_MODE_POS_HOLD && bad) {
+    const uint8_t bad = (uint8_t)(q == 0xFFu || q < FC_FLOW_LOST_Q || !s_v.flow_usable);
+    /* below the PMW3901 minimum height (on the floor, lift-off, last centimetres of
+     * a landing) the flow is invalid by design: not a failure */
+    const uint8_t low = (uint8_t)(s_v.tof_ground || (s_v.tof_valid && s_v.tof_h < FC_FLOW_CHECK_H));
+    const uint8_t judged = (uint8_t)(s_auto != PV2_AUTO_TAKEOFF && s_auto != PV2_AUTO_LAND && !low);
+    if (s_armed && s_in_air && s_mode == PV2_MODE_POS_HOLD && judged && bad) {
         s_flow_bad_ms += dt;
         if (s_flow_bad_ms > FC_FLOW_LOST_MS && !(s_failsafe & PV2_FS_FLOW)) {
             s_failsafe |= PV2_FS_FLOW;
@@ -502,6 +506,8 @@ static void setpoints(uint32_t now, uint32_t dt_ms)
     sp.yaw_rate   = s_stick[1] * yawr;
 
     if (!s_armed) { s_sp = sp; return; }
+    sp.pos_hold = (uint8_t)(s_in_air && (s_mode == PV2_MODE_POS_HOLD || s_auto == PV2_AUTO_HOLD) &&
+                            s_have_v && s_v.flow_usable && !(s_failsafe & PV2_FS_FLOW));
 
     const uint8_t vert = (uint8_t)(s_in_air && alt_ok() &&
                                    (s_auto != PV2_AUTO_NONE || hold_mode()));

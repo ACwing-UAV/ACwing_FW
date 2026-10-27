@@ -138,5 +138,9 @@
  * To be confirmed on the first build (FLOW_TOF calibration, "match"). */
 #define APP_FLOW_SIGN_X   (1.0f)
 #define APP_FLOW_SIGN_Y   (1.0f)
+/* PMW3901 minimum working distance (datasheet: 80 mm). Landed, the lens is
+ * ~11 mm above the floor (frame C2): below this height the flow is not used
+ * (no velocity, no POS_HOLD, no FLOW_LOST failsafe); usable again 20 mm above. */
+#define APP_FLOW_MIN_H    0.08f
 
 #endif /* APP_CONFIG_H */

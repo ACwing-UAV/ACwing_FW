@@ -27,7 +27,9 @@ typedef struct {
     float    h, vz, tof_h;
     uint16_t tof_mm;             /* raw, 0xFFFF n/a                         */
     uint8_t  flow_q;             /* 0..100, 0xFF n/a                        */
-    float    vel_body[2];        /* m/s from flow x height (x fwd, y left)  */
+    uint8_t  flow_ok;            /* bridge alive, PMW3901 OK                */
+    uint8_t  flow_usable;        /* above the PMW3901 minimum height (80 mm) */
+    float    vel_body[2];        /* m/s from flow x height (x fwd, y left); 0 when not usable */
     uint32_t baro_pa;            /* 0 n/a                                   */
     uint16_t sensors;            /* IMU / MAG_FC / BARO found by the IMU init */
 } fsh_est_t;
