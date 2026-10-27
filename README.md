@@ -158,7 +158,7 @@ ACwing_FlightController_FW/
 │   ├── ACwing_FC_FW.launch         STM32CubeIDE debug configuration (ST-LINK, SWD)
 │   ├── .project, .cproject, .mxproject, .settings/   STM32CubeIDE project files
 │   └── STM32WB55RGVX_FLASH.ld, ..._RAM.ld   linker scripts
-├── 01 - Tools/                     PC tools, in two equivalent flavours
+├── 01 - Tools/                     PC tools (MATLAB and Python, equivalent) and the ACwing Pilot app
 │   ├── 00 - Matlab/                MATLAB tools (R2019b+)
 │   │   ├── initPath.m              adds every folder below to the path
 │   │   ├── Viewer/                 acwingLiveViewer.m (live 3D triad + logging, USB or BLE), quat2rotmLocal.m
@@ -167,17 +167,17 @@ ACwing_FlightController_FW/
 │   │   └── FiltersComparison/      tlmCapture, tlmSniffer, compareEmbeddedVsMatlab
 │   │       ├── IEKF_originalVersion/   ORIGINAL filter developed in MATLAB: iekfAttitude.m, expSO3, logSO3, skewSym
 │   │       └── IEKF_embeddedVersion/   EXTENDED filter: iekfAttitudeEmb.m + iekfCore*.m (MATLAB mirror of the C code)
-│   └── 01 - Python/                Python equivalents of the MATLAB tools (package acwing_tools, CLI acwing-tools)
-│       ├── acwing_tools/           viewer, capture + sniffer, compare, magcalib, telemetry,
-│       │                           ble_io (BLE link, bleak), filters/ (original + embedded mirror),
-│       │                           logio (.mat logs), simulate
-│       ├── tests/                  pytest suite: parity with the MATLAB outputs, recorded captures
-│       ├── pyproject.toml, requirements.txt
-│       └── README.md               installation, MATLAB ↔ Python map, commands
-|   └── 02 - App/                   ACwing Pilot: flight/telemetry/settings/calibration app (web/PWA, iOS, Android)
-│           ├── src/                    React + TypeScript; protocol/ (v2 frames and commands), sim/ (reference drone)
-│           ├── HANDOVER_FW.md          drone ↔ app protocol v2: what the firmware must implement
-│           └── README.md               run, simulator, native builds
+│   ├── 01 - Python/                Python equivalents of the MATLAB tools (package acwing_tools, CLI acwing-tools)
+│   │   ├── acwing_tools/           viewer, capture + sniffer, compare, magcalib, telemetry,
+│   │   │                           ble_io (BLE link, bleak), filters/ (original + embedded mirror),
+│   │   │                           logio (.mat logs), simulate
+│   │   ├── tests/                  pytest suite: parity with the MATLAB outputs, recorded captures
+│   │   ├── pyproject.toml, requirements.txt
+│   │   └── README.md               installation, MATLAB ↔ Python map, commands
+│   └── 02 - App/                   ACwing Pilot: flight/telemetry/settings/calibration app (web/PWA, iOS, Android)
+│       ├── src/                    React + TypeScript; protocol/ (v2 frames and commands), sim/ (reference drone)
+│       ├── HANDOVER_FW.md          drone ↔ app protocol v2: what the firmware must implement
+│       └── README.md               run, simulator, native builds
 ├── 02 - Docs/
 │   └── 00 - Brand/                 ACwing logos (SVG/PNG), copied from the hardware repository
 ├── .gitignore                      build outputs (Debug/, Release/) are not versioned
