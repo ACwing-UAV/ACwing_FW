@@ -1,7 +1,7 @@
 <p align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="02%20-%20Docs/00%20-%20Brand/ACwing_logo_white.png">
-    <img alt="ACwing" src="02%20-%20Docs/00%20-%20Brand/ACwing_logo_black.png" width="260">
+    <source media="(prefers-color-scheme: dark)" srcset="03%20-%20Docs/00%20-%20Brand/ACwing_logo_white.png">
+    <img alt="ACwing" src="03%20-%20Docs/00%20-%20Brand/ACwing_logo_black.png" width="260">
   </picture>
 </p>
 
@@ -45,9 +45,9 @@ Two things make the repository more than a firmware project:
   *exact* inputs of every filter call. The PC replays them through the
   reference filter and checks that the embedded estimate is the same, up to
   float32 vs double. This was done on the board for the original equations
-  and for every embedded improvement (§11).
+  and for every embedded improvement (§12).
 - **Two equivalent toolchains.** All PC tools exist in **MATLAB**
-  (`01 - Tools/00 - Matlab/`) and in **Python** (`01 - Tools/01 - Python/`, for
+  (`02 - Tools/00 - Matlab/`) and in **Python** (`02 - Tools/01 - Python/`, for
   users without MATLAB).
   The two give the same numbers on the same data, and their logs are
   interchangeable.
@@ -59,7 +59,7 @@ Two things make the repository more than a firmware project:
 | **Target** | today the P-NUCLEO-WB55 (NUCLEO-WB55RG: Cortex-M4F @ 64 MHz + Cortex-M0+ radio core); next, the ACwing FC (STM32WB55CGU6, same cores) |
 | **Sensors** | X-NUCLEO-IKS4A1 in **Mode 3**: LSM6DSV16X (gyro + acc) on the MCU I²C bus, LIS2MDL (mag) read through the LSM6DSV16X sensor hub |
 | **Software** | STM32CubeIDE / CubeMX (project `ACwing_FC_FW`), FreeRTOS (CMSIS-RTOS2), CMSIS-DSP; PC tools: MATLAB R2019b+ or Python ≥ 3.9 (`acwing-tools`) |
-| **Status** | **Phase 1 (attitude estimation) concluded.** Both validation tests passed **on the board**: base equations vs the original `iekfAttitude.m` (≤ 0.003 σ), full embedded filter vs `iekfAttitudeEmb.m` (≤ 0.002 σ), see §11.5. **Phase 2 (BLE telemetry to the PC)**: working on the board, 57 STATE/s with no loss and no drift (§12.9). Motors disabled. |
+| **Status** | **Phase 1 (attitude estimation) concluded.** Both validation tests passed **on the board**: base equations vs the original `iekfAttitude.m` (≤ 0.003 σ), full embedded filter vs `iekfAttitudeEmb.m` (≤ 0.002 σ), see §12.5. **Phase 2 (BLE telemetry to the PC)**: working on the board, 57 STATE/s with no loss and no drift (§13.9). Motors disabled. |
 
 ---
 
@@ -70,18 +70,19 @@ Two things make the repository more than a firmware project:
 3. [Vehicle model and dynamics](#3-vehicle-model-and-dynamics)
 4. [Theory: the original IEKF](#4-theory-the-original-iekf)
 5. [From MATLAB to embedded: improvements](#5-from-matlab-to-embedded-improvements)
-6. [Firmware architecture](#6-firmware-architecture)
-7. [Telemetry protocol](#7-telemetry-protocol)
-8. [Building and flashing](#8-building-and-flashing)
-9. [PC tools (MATLAB and Python): setup and live viewer](#9-pc-tools-matlab-and-python-setup-and-live-viewer)
-10. [Magnetometer calibration](#10-magnetometer-calibration)
-11. [Telemetry capture and embedded-vs-reference comparison](#11-telemetry-capture-and-embedded-vs-reference-comparison)
-12. [BLE telemetry (phase 2)](#12-ble-telemetry-phase-2)
-13. [ACwing Pilot protocol v2, failsafes and automatic flight](#13-acwing-pilot-protocol-v2-failsafes-and-automatic-flight)
-14. [Troubleshooting](#14-troubleshooting)
-15. [Lessons learned](#15-lessons-learned)
-16. [Next steps](#16-next-steps)
-17. [References](#17-references)
+6. [Theory: the altitude Kalman filter](#6-theory-the-altitude-kalman-filter)
+7. [Firmware architecture](#7-firmware-architecture)
+8. [Telemetry protocol](#8-telemetry-protocol)
+9. [Building and flashing](#9-building-and-flashing)
+10. [PC tools (MATLAB and Python): setup and live viewer](#10-pc-tools-matlab-and-python-setup-and-live-viewer)
+11. [Magnetometer calibration](#11-magnetometer-calibration)
+12. [Telemetry capture and embedded-vs-reference comparison](#12-telemetry-capture-and-embedded-vs-reference-comparison)
+13. [BLE telemetry (phase 2)](#13-ble-telemetry-phase-2)
+14. [ACwing Pilot protocol v2, failsafes and automatic flight](#14-acwing-pilot-protocol-v2-failsafes-and-automatic-flight)
+15. [Troubleshooting](#15-troubleshooting)
+16. [Lessons learned](#16-lessons-learned)
+17. [Next steps](#17-next-steps)
+18. [References](#18-references)
 
 ---
 
@@ -97,8 +98,8 @@ drone** (4 × brushed coreless 8520 motors, 1S), and its first milestone is
 | ACwing FC | flight controller: STM32WB55, LSM6DSV16X IMU, barometer, compass, BLE, two 4-in-1 ESC links | [hardware repository](https://github.com/andrea-cirillo/ACwing_FlightController_HW) |
 | ACwing ESC 1S | 1S power board: 4 brushed motor stages, current sensor, USB-C charger | hardware repository |
 | ACwing GPS, ACwing Flow | expansions: GNSS + compass (outdoor), optical flow + ToF height (indoor) | hardware repository |
-| ACwing FC firmware | attitude estimation, telemetry (USB, BLE), then control | **this repository** (`00 - STM32_FW`) |
-| ACwing PC tools | live viewer, capture, calibration, validation, in MATLAB and Python | **this repository** (`01 - Tools`) |
+| ACwing FC firmware | attitude estimation, telemetry (USB, BLE), then control | **this repository** (`00 - FC_FW`) |
+| ACwing PC tools | live viewer, capture, calibration, validation, in MATLAB and Python | **this repository** (`02 - Tools`) |
 
 Position and trajectory are out of scope for now: the estimator has to
 provide only the **attitude** (and the gyroscope bias), from a gyroscope, an
@@ -110,16 +111,18 @@ The work is organised in phases:
 | Phase | Content | Status |
 |---|---|---|
 | 1 | Embedded attitude estimation: IEKF on SO(3), multi-rate FreeRTOS pipeline, telemetry, PC tools, validation against the reference filter | **concluded** |
-| 2 | Wireless telemetry (BLE on the Cortex-M0+ core) to the PC, then a mobile app | **BLE to the PC concluded** and validated on the board (§12); app protocol v2 in firmware (§13): commands, parameters, calibrations, checks, app-link failsafe, TAKEOFF/LAND/HOLD logic with baro + ToF |
+| 2 | Wireless telemetry (BLE on the Cortex-M0+ core) to the PC, then a mobile app | **BLE to the PC concluded** and validated on the board (§13); app protocol v2 in firmware (§14): commands, parameters, calibrations, checks, app-link failsafe, TAKEOFF/LAND/HOLD logic with baro + ToF |
 | 3 | Control: rate loop at 960 Hz, attitude loop at 240 Hz, motor power stage, arming/fail-safe, thrust model in the estimator | planned |
 
 How to read this document:
 
 | Sections | Content |
 |---|---|
-| §3–§4 | the physics: the vehicle, its sensors, the filter |
-| §5–§8 | how the filter was made to work on the microcontroller, and how to build it |
-| §9–§11 | how to use the PC tools to see, calibrate and validate the estimate |
+| §3–§4 | the physics: the vehicle, its sensors, the attitude filter |
+| §5 | how the attitude filter was made to work on the microcontroller |
+| §6 | the altitude filter: theory and tuning |
+| §7–§9 | firmware architecture, telemetry, build |
+| §10–§12 | how to use the PC tools to see, calibrate and validate the estimate |
 
 The theory sections give each equation in the form used by the code, with the
 name of the file that implements it.
@@ -128,9 +131,9 @@ name of the file that implements it.
 
 ## 2. Repository structure
 
-The repository has four numbered top-level folders: the flight-controller
-firmware, the PC tools, the documentation assets and the firmware of the
-ACwing Flow bridge. Names follow the ACwing convention of the
+The repository has four numbered top-level folders: the two firmwares
+(flight controller, ACwing Flow bridge), the PC tools and the documentation
+assets. Names follow the ACwing convention of the
 hardware repository: `ACwing_<part>_<what>` (CubeIDE project `ACwing_FC_FW`,
 Python package `acwing_tools`, MATLAB viewer `acwingLiveViewer`, logs
 `acwing_log_*`). Names of the filter itself (`iekf.c`, `iekfAttitude.m`, …)
@@ -138,38 +141,46 @@ keep the name of the algorithm.
 
 ```
 ACwing_FlightController_FW/
-├── 00 - STM32_FW/                  STM32CubeIDE project of the firmware (import this folder)
+├── 00 - FC_FW/                     STM32CubeIDE project of the flight-controller firmware (import this folder)
 │   ├── App/                        application code, hardware-independent where possible
 │   │   ├── app/                    app_main (FreeRTOS tasks, IRQ glue), app_config.h (ALL parameters),
-│   │   │                           est_pipeline (multi-rate estimation), tlm_build (telemetry frames)
-│   │   ├── iekf/                   IEKF on SO(3): so3 (Exp/Log, orthonormalisation), iekf (filter),
-│   │   │                           accwin (rotation-compensated acc mean), calib (static calibration window)
+│   │   │                           est_pipeline (multi-rate attitude estimation), tlm_build (telemetry frames),
 │   │   │                           app_task (protocol v2: commands, params, flash, v2 frames), params,
-│   │   │                           cfg_store (A/B flash image), fc_shared (ImuTask <-> AppTask data)
-│   │   ├── drivers/                sensor_bus.h (abstract bus) + imu_lsm6dsv16x (IMU, sensor hub with compass
-│   │   │                           and barometer, FIFO parser), vl53l1x (ToF), flow_bridge (ACwing Flow)
-│   │   ├── platform/               imu_i2c: STM32 HAL I²C + DMA binding of the sensor bus (bus lock);
-│   │   │                           ble_tlm_svc: GATT service + TX thread on STM32_WPAN (BLE);
-│   │   │                           cfg_flash_wb: flash pages shared with CPU2; ext_sens: Qwiic ToF/flow task
+│   │   │                           cfg_store (A/B flash image), fc_shared (ImuTask <-> AppTask data),
+│   │   │                           ext_sens (ExtTask: probe/poll the Qwiic ToF and flow, host-tested)
+│   │   ├── filters/                state estimators (no HAL, no RTOS, host-testable)
+│   │   │   ├── iekf/               attitude IEKF on SO(3): so3 (Exp/Log, orthonormalisation), iekf (filter),
+│   │   │   │                       accwin (rotation-compensated acc mean), calib (static calibration window)
+│   │   │   └── altitude_kf/        altitude Kalman filter (alt_est): height, climb rate, baro and acc bias
+│   │   ├── control/                fc_core (arming, modes, TAKEOFF/LAND/HOLD, failsafes), alt_ctrl (height
+│   │   │                           loop), calib_mgr (calibrations), checks (pre-flight), control hooks (weak,
+│   │   │                           empty), motor PWM (disabled)
+│   │   ├── drivers/                chip drivers, portable (bus given as function pointers, host-testable):
+│   │   │                           sensor_bus.h, imu_lsm6dsv16x (IMU, sensor hub with compass and barometer,
+│   │   │                           FIFO parser), vl53l1x (ToF), flow_bridge (ACwing Flow)
+│   │   ├── bsp/                    board support, tied to the STM32WB55 + HAL/RTOS: imu_i2c (HAL I²C + DMA
+│   │   │                           binding, bus lock), ble_tlm_svc (GATT service + TX thread on STM32_WPAN),
+│   │   │                           cfg_flash_wb (flash pages shared with CPU2), ext_i2c (HAL binding of the
+│   │   │                           Qwiic devices for the vl53l1x / flow_bridge drivers)
 │   │   ├── telemetry/              frame format and CRC (telemetry.h), UART + DMA transport;
 │   │   │                           tlm_ble: BLE queues HI/LO + link state; proto_v2 (app protocol ids and
 │   │   │                           layouts), app_link (CMD receive side), ack_cache, spsc (all host-testable)
-│   │   ├── control/                fc_core (arming, modes, TAKEOFF/LAND/HOLD, failsafes), alt_est (vertical
-│   │   │                           Kalman), alt_ctrl, calib_mgr (calibrations), checks (pre-flight),
-│   │   │                           control hooks (weak, empty), motor PWM (disabled)
 │   │   └── third_party/            ST lsm6dsv16x-pid driver (BSD-3), CMSIS-DSP headers and library
 │   ├── Core/                       CubeMX-generated: main.c, interrupts, HAL MSP, FreeRTOS config, startup,
 │   │                               radio-core infrastructure (app_entry, hw_timerserver, app_conf.h)
-│   ├── Tests/host/                 host tests of the protocol-v2 modules (make): flight core, failsafes,
-│   │                               TAKEOFF/LAND, vertical estimator, drivers, AppTask protocol, BLE rings
-│   ├── STM32_WPAN/App/             CubeMX-generated BLE application (app_ble.c with our 3 hooks, §12.5)
+│   ├── Tests/host/                 host tests (make): flight core, failsafes, TAKEOFF/LAND, altitude filter,
+│   │                               drivers, AppTask protocol, BLE rings; ExtTask end to end with the Flow
+│   │                               bridge logic of 01 - FLOW_FW
+│   ├── STM32_WPAN/App/             CubeMX-generated BLE application (app_ble.c with our 3 hooks, §13.5)
 │   ├── Drivers/, Middlewares/      CubeMX-generated: STM32WB HAL, CMSIS, FreeRTOS, ST STM32_WPAN (BLE)
 │   ├── Utilities/                  CubeMX-generated: low-power manager used by STM32_WPAN
 │   ├── ACwing_FC_FW.ioc            CubeMX configuration (pins, clocks, DMA, FreeRTOS, BLE)
 │   ├── ACwing_FC_FW.launch         STM32CubeIDE debug configuration (ST-LINK, SWD)
 │   ├── .project, .cproject, .mxproject, .settings/   STM32CubeIDE project files
 │   └── STM32WB55RGVX_FLASH.ld, ..._RAM.ld   linker scripts
-├── 01 - Tools/                     PC tools (MATLAB and Python, equivalent) and the ACwing Pilot app
+├── 01 - FLOW_FW/                   ACwing Flow bridge firmware (STM32C011F4U6): PMW3901 over SPI -> I²C target
+│                                   0x3B; Makefile, CMSIS only, host tests; see its README
+├── 02 - Tools/                     PC tools (MATLAB and Python, equivalent) and the ACwing Pilot app
 │   ├── 00 - Matlab/                MATLAB tools (R2019b+)
 │   │   ├── initPath.m              adds every folder below to the path
 │   │   ├── Viewer/                 acwingLiveViewer.m (live 3D triad + logging, USB or BLE), quat2rotmLocal.m
@@ -189,10 +200,8 @@ ACwing_FlightController_FW/
 │       ├── src/                    React + TypeScript; protocol/ (v2 frames and commands), sim/ (reference drone)
 │       ├── HANDOVER_FW.md          drone ↔ app protocol v2: what the firmware must implement
 │       └── README.md               run, simulator, native builds
-├── 02 - Docs/
+├── 03 - Docs/
 │   └── 00 - Brand/                 ACwing logos (SVG/PNG), copied from the hardware repository
-├── 03 - FLOW_FW/                   ACwing Flow bridge firmware (STM32C011F4U6): PMW3901 over SPI -> I²C target
-│                                   0x3B; Makefile, CMSIS only, host tests; see its README
 ├── .gitignore                      build outputs (Debug/, Release/) are not versioned
 └── README.md                       this file: theory, firmware, procedures, results
 ```
@@ -202,15 +211,15 @@ belong to:
 
 | Paths like | Are relative to |
 |---|---|
-| `App/…`, `Core/…`, `ACwing_FC_FW.ioc` | `00 - STM32_FW/` |
-| `Viewer/…`, `MagCalib/…`, `FiltersComparison/…`, `initPath.m` | `01 - Tools/00 - Matlab/` |
-| `acwing_tools/…`, `tests/…` | `01 - Tools/01 - Python/` |
+| `App/…`, `Core/…`, `ACwing_FC_FW.ioc` | `00 - FC_FW/` |
+| `Viewer/…`, `MagCalib/…`, `FiltersComparison/…`, `initPath.m` | `02 - Tools/00 - Matlab/` |
+| `acwing_tools/…`, `tests/…` | `02 - Tools/01 - Python/` |
 
 **Three implementations of the same filter**, each with its role:
 
 | Implementation | Role |
 |---|---|
-| `App/iekf/` (C, float32) | what flies |
+| `App/filters/iekf/` (C, float32) | what flies |
 | `FiltersComparison/IEKF_originalVersion/` (MATLAB) | the filter as first designed, kept **unchanged** as the reference of the equations |
 | `FiltersComparison/IEKF_embeddedVersion/` (MATLAB) | MATLAB mirror of the C code, written line by line after `iekf.c`, with every improvement of §5 |
 
@@ -222,15 +231,15 @@ belong to:
 | I want to... | Where |
 |---|---|
 | understand the vehicle and its sensors | §3 |
-| understand the filter | §4 (original IEKF), §5 (embedded improvements) |
-| build and flash the firmware | §6 (architecture), §8 (build), `App/app/app_config.h` (parameters) |
-| see the attitude live / record logs | §9: MATLAB `acwingLiveViewer`, Python `acwing-tools viewer` |
-| calibrate or check the magnetometer | §10: MATLAB `calibMagAxes` / `magCheck`, Python `acwing-tools calib-mag` / `mag-check` |
-| validate the embedded filter | §11: MATLAB `compareEmbeddedVsMatlab`, Python `acwing-tools compare` |
-| use the BLE link | §12: MATLAB `acwingLiveViewer("ble")`, Python `acwing-tools viewer --ble` |
-| use the tools without MATLAB | [`01 - Tools/01 - Python/README.md`](01%20-%20Tools/01%20-%20Python/README.md) |
-| fly from the ACwing Pilot app / implement the app protocol | [`01 - Tools/02 - App/README.md`](01%20-%20Tools/02%20-%20App/README.md), [`HANDOVER_FW.md`](01%20-%20Tools/02%20-%20App/HANDOVER_FW.md) |
-| fix a problem | §14 (troubleshooting) |
+| understand the filters | §4 (original IEKF), §5 (embedded improvements), §6 (altitude Kalman filter) |
+| build and flash the firmware | §7 (architecture), §9 (build), `App/app/app_config.h` (parameters) |
+| see the attitude live / record logs | §10: MATLAB `acwingLiveViewer`, Python `acwing-tools viewer` |
+| calibrate or check the magnetometer | §11: MATLAB `calibMagAxes` / `magCheck`, Python `acwing-tools calib-mag` / `mag-check` |
+| validate the embedded filter | §12: MATLAB `compareEmbeddedVsMatlab`, Python `acwing-tools compare` |
+| use the BLE link | §13: MATLAB `acwingLiveViewer("ble")`, Python `acwing-tools viewer --ble` |
+| use the tools without MATLAB | [`02 - Tools/01 - Python/README.md`](02%20-%20Tools/01%20-%20Python/README.md) |
+| fly from the ACwing Pilot app / implement the app protocol | [`02 - Tools/02 - App/README.md`](02%20-%20Tools/02%20-%20App/README.md), [`HANDOVER_FW.md`](02%20-%20Tools/02%20-%20App/HANDOVER_FW.md) |
+| fix a problem | §15 (troubleshooting) |
 
 ---
 
@@ -375,7 +384,7 @@ disturbances, which the filter has to tolerate.
 |---|---|---|
 | Gyroscope | $\omega_m = \omega + b + n_g$, $\dot b = n_b$ | bias $b$: static calibration (§5.3) + online in the filter state (§4) |
 | Accelerometer | $a_m = R^\top(\ddot p + g\,e_3) + n_a = \dfrac{1}{m}\begin{bmatrix}0\\0\\T\end{bmatrix} + \dfrac{1}{m}R^\top f_{drag} + n_a$ | scale via nominal magnitude at rest (§5.3) |
-| Magnetometer | $m_m = M_{map}^{-1}\big(R^\top m_{\mathcal W} + h + d(t)\big) + n_m$ | axis map $M_{map}$ and hard-iron $h$: §10; disturbances $d(t)$: dip check (§5.7) |
+| Magnetometer | $m_m = M_{map}^{-1}\big(R^\top m_{\mathcal W} + h + d(t)\big) + n_m$ | axis map $M_{map}$ and hard-iron $h$: §11; disturbances $d(t)$: dip check (§5.7) |
 
 The accelerometer measures the **specific force**, not gravity:
 - at rest or in steady hover, $\ddot p = 0$ and $a_m = R^\top g\,e_3$, the
@@ -391,11 +400,11 @@ The firmware handles this in two ways. It de-weights the accelerometer when
 the measured magnitude or the innovation are inconsistent with gravity
 (adaptive noise and NIS inflation, §5.7). It also trusts it fully only when the
 vehicle is detected still (§5.7). A thrust/drag model in the measurement
-equation is a phase-3 item (§16).
+equation is a phase-3 item (§17).
 
 The magnetometer sees, besides the Earth field:
 - the constant field of the board and of the nearby parts (the **hard-iron**
-  $h$, ~4× the Earth field on this board, §10);
+  $h$, ~4× the Earth field on this board, §11);
 - in flight, the field of the **motor currents**, which grows with thrust.
 
 The dip check (angle between measured field and measured gravity) de-weights
@@ -775,12 +784,204 @@ original within 10⁻¹² deg.
 
 ---
 
-## 6. Firmware architecture
+## 6. Theory: the altitude Kalman filter
+
+The IEKF of §4–§5 estimates only the attitude. Takeoff, landing, the hold
+modes and the ceiling also need the **height** and the **vertical speed**. A
+second, independent filter estimates them: `App/filters/altitude_kf/alt_est.c`.
+
+### 6.1 Why a separate, linear filter
+
+- **Cascade on the attitude.** The altitude filter takes the attitude from
+  the IEKF as an input; it does not feed back into it. The IEKF stays exactly
+  the filter validated against the MATLAB reference (§12). Height errors cannot
+  disturb the attitude, which is the quantity the drone needs most.
+- **A linear Kalman filter, not an EKF.** The non-linear parts sit outside the
+  filter, where they cost nothing in accuracy:
+  - the pressure is converted into an altitude before the update;
+  - the ToF range is multiplied by $\cos$ of the tilt before the update;
+  - the specific force is rotated into the world frame with the IEKF
+    attitude before the prediction.
+
+  What enters the filter is linear in the state, so there are no Jacobians
+  and no linearisation error. It would become an EKF only if the raw pressure,
+  or the attitude itself, were part of the state or of the measurement model.
+- **Small.** It has 4 states and scalar updates, about 150 multiply-adds per
+  prediction, with nothing to invert.
+
+### 6.2 State and process model
+
+World frame NWU ($z$ up), heights in metres:
+
+$$
+x = \begin{bmatrix} h & v & b_b & b_a \end{bmatrix}^\top
+$$
+
+| State | Meaning |
+|---|---|
+| $h$ | height above the reference (the first baro samples, or the floor below the drone at the first ToF reading) |
+| $v$ | vertical speed, + up |
+| $b_b$ | barometer bias: what the baro reads in excess of $h$ (weather, temperature drift, prop wash) |
+| $b_a$ | bias of the vertical acceleration (accelerometer offset along $z$ and residual tilt error) |
+
+**Input: vertical acceleration.** The accelerometer measures the specific
+force $f = R^\top (a - g)$ in body axes, with $g = (0, 0, -g_0)$. In the
+world frame,
+
+$$
+a_z = \left( \frac{e_3^\top R\, f}{\|f_0\|} - 1 \right) g_0,
+\qquad e_3^\top R = \begin{bmatrix} 2(xz - wy) & 2(yz + wx) & 1 - 2(x^2 + y^2) \end{bmatrix}
+$$
+
+where $q = [w, x, y, z]$ is the IEKF quaternion. $f$ is the calibrated,
+rotation-compensated window mean `acc_mean` (§5.2), in g. $\|f_0\|$ is the
+magnitude measured at rest during the static calibration (`nom_acc`), so the
+input is zero at rest even with a small residual scale error. The function is
+`alt_est_accel_up()`.
+
+**Continuous model:**
+
+$$
+\dot h = v, \qquad \dot v = a_z - b_a + w_a, \qquad \dot b_b = w_b, \qquad \dot b_a = w_{ba}
+$$
+
+Here $w_a$ is the acceleration noise (sensor noise plus vibration), and
+$b_b$ and $b_a$ are random walks.
+
+**Discrete model** with step $\Delta t$ (one acc window, 1/240 s):
+
+$$
+x_{k+1} = F x_k + B\,a_{z,k}, \qquad
+F = \begin{bmatrix} 1 & \Delta t & 0 & -\tfrac{\Delta t^2}{2} \\ 0 & 1 & 0 & -\Delta t \\ 0 & 0 & 1 & 0 \\ 0 & 0 & 0 & 1 \end{bmatrix}, \qquad
+B = \begin{bmatrix} \tfrac{\Delta t^2}{2} \\ \Delta t \\ 0 \\ 0 \end{bmatrix}
+$$
+
+$$
+P_{k+1} = F P_k F^\top + Q, \qquad
+Q = \sigma_a^2\, G G^\top + \mathrm{diag}\!\left(0,\ 0,\ \sigma_{bb}^2 \Delta t,\ \sigma_{ba}^2 \Delta t\right), \qquad
+G = \begin{bmatrix} \tfrac{\Delta t^2}{2} & \Delta t & 0 & 0 \end{bmatrix}^\top
+$$
+
+$P$ is symmetrised after every step, in single precision as in the IEKF.
+
+### 6.3 Measurements
+
+All updates are scalar, $z = H x + n$, with
+$K = P H^\top / S$, $S = H P H^\top + r$, $x \leftarrow x + K (z - Hx)$ and
+$P \leftarrow P - K H P$.
+
+**Barometer**, 50 Hz. It is read through the IMU sensor hub and arrives in
+the same FIFO, so it shares the IMU time base.
+
+$$
+z_b = 44330 \left[ 1 - \left( \frac{p}{p_0} \right)^{0.190295} \right] = h + b_b + n_b, \qquad H_b = \begin{bmatrix} 1 & 0 & 1 & 0 \end{bmatrix}, \quad r_b = \sigma_b^2
+$$
+
+This is the ISA altitude relative to $p_0$, the mean of the first 25 samples
+(0.5 s). At that moment $b_b$ is set so that the baro agrees with the current
+$h$. Absolute altitude does not matter: FLIGHT `altRel` is measured from the
+take-off point, captured at ARM.
+
+**ToF height**, 30 Hz (VL53L1X, ACwing Flow). The range $\rho$ is measured
+along the board normal, so the height of the lens above the floor is
+$\rho \cos\theta$, with $\cos\theta = R_{33}$ from the IEKF:
+
+$$
+z_t = \rho \cos\theta - d_{lens} = h - g + n_t, \qquad H_t = \begin{bmatrix} 1 & 0 & 0 & 0 \end{bmatrix}, \quad r_t = (\sigma_t + 0.01\,\rho)^2
+$$
+
+- $d_{lens}$ = 11.3 mm is the lens height when landed (frame C2).
+- $g$ is the floor level in the $h$ frame. It is a parameter, not a state: it
+  is set at the first ToF reading and moved only by the re-anchoring below.
+- Rejected outright: a reading out of range ($\rho$ > 4 m), a range status
+  that is not valid, or a tilt above 30°.
+
+**On the floor.** The VL53L1X reads short or nothing below about 40 mm, and
+the lens is 11 mm above the floor when landed. A reading below
+$\rho_{min}$ + 20 mm, or no return right after a height below 0.15 m, means
+"on the floor":
+- the filter applies $z_t = 0$ with $\sigma$ = 3 cm;
+- `tof_ground` is reported, which the take-off and touchdown logic use (§14.4).
+
+### 6.4 Gating and re-anchoring
+
+A ToF reading is **gated** when its normalised innovation exceeds 3σ:
+
+$$
+\frac{(z_t - (h - g))^2}{S} > 3^2
+$$
+
+This happens when an object passes under the drone, or when the drone flies
+over the edge of a table. After **15 consecutive rejections** (0.5 s) the
+step is taken as real and the floor is re-anchored, $g \leftarrow h - z_t$.
+The height above the new floor is then right at once, while $h$ (and with it
+`altRel`) stays continuous.
+
+### 6.5 Observability
+
+| Sensors | What is observable | What the filter does |
+|---|---|---|
+| baro only | $h + b_b$ only: the two cannot be separated. $b_a$ is observable from the second derivative of the baro | $\sigma_{bb}$ is set to 0, so $b_b$ is frozen (no process noise) and its variance does not grow without limit. $h$ follows the baro, drift included: barometric weather drift, ~0.1 m/min, is not corrected |
+| baro + ToF | everything: the ToF fixes $h - g$, the baro difference gives $b_b$ | $\sigma_{bb}$ is enabled while a ToF sample was used in the last 1 s. The baro bridges ToF gaps (out of range, tilt, gating) with the bias it has just learned |
+| ToF only | $h$, $v$, $b_a$ | works the same way, but without a fallback during ToF gaps |
+
+This is why both models use the same filter. With GNSS outdoors the baro is
+the reference. Indoors the ToF dominates near the floor, and the baro takes
+over above 4 m or over gaps.
+
+### 6.6 Tuning (`alt_est_default_cfg()`)
+
+| Parameter | Value | Note |
+|---|---|---|
+| $\sigma_a$ | 0.5 m/s² | vibration in flight dominates; to be tuned on the first flights from the vibration level in SYSTEM |
+| $\sigma_{ba}$ | 0.01 m/s²/√s | slow accelerometer drift |
+| $\sigma_{bb}$ | 0.05 m/√s | only with ToF |
+| $\sigma_b$ | 0.30 m | LPS22 noise is a few cm at 50 Hz with averaging; the margin covers prop wash |
+| $\sigma_t$ | 0.02 m + 1 % of the range | VL53L1X long mode |
+| ToF range | 0.04–4 m, tilt ≤ 30° | |
+| Gate, re-anchor | 3σ, 15 rejects | |
+| $P_0$ | diag(0.01, 0.01, 1, 0.04) | |
+
+Rates: prediction 240 Hz in the ImuTask, right after the IEKF accelerometer
+update (`on_state`); baro 50 Hz (`correct_events`); ToF 30 Hz (`take_ext`, from
+the ExtTask queue). Everything runs in the ImuTask, the only owner of the
+state, so there are no locks.
+
+**Host tests** (`00 - FC_FW/Tests/host`):
+- a 60 s profile with 0.5 m/s² steps, accelerometer noise and bias, and a
+  baro with 0.25 m noise and drift. The height RMS stays below 0.15 m with
+  the baro alone and below 0.03 m with ToF, while the baro drifts at
+  0.1 m/s; the vertical speed RMS stays below 0.08 m/s;
+- re-anchoring on a 0.7 m step;
+- `tof_ground` with a short reading;
+- $a_z$ = 0 at rest and at 30° of tilt.
+
+### 6.7 Limits and next steps
+
+- **Not tuned on hardware yet.** $\sigma_a$, $\sigma_b$ and the gate come
+  from the datasheets and from simulation.
+- **Prop wash and ground effect** bias the baro near the floor and during fast
+  climbs. With ToF this ends up in $b_b$; without ToF it is height error. A
+  thrust-dependent baro correction is a phase-3 item.
+- **Vibration.** The input is the 4-sample window mean at 240 Hz, so motor
+  vibration above ~100 Hz aliases into $a_z$. The FC damping mounts
+  (isolation band ~90–120 Hz, mechanical handoff in the hardware repository)
+  and the SYSTEM vibration figure on the first flights decide whether a
+  dedicated low-pass is needed.
+- **Floor model.** The ToF assumes a flat floor under the drone. Slopes and
+  stairs show up as re-anchoring steps.
+- The filter is linear on purpose. Should the thrust model of phase 3 enter
+  the prediction (thrust divided by mass instead of the accelerometer, or both
+  fused), the state stays the same and only $B$ and $Q$ change.
+
+---
+
+## 7. Firmware architecture
 
 ```
 INT1 LSM6DSV16X (FIFO threshold, 960 Hz) ── EXTI ISR: DWT timestamp, thread flag ──┐
                                                                                    v
-ImuTask        osPriorityRealtime, 3 KB stack (+ flight core, alt_est, IWDG: §13)
+ImuTask        osPriorityRealtime, 3 KB stack (+ flight core, alt_est, IWDG: §14)
    FIFO status (2 B) → I²C DMA burst N×7 B → imu_fifo_parse → est_process():
    propagation → ctrl_rate_step → [÷4] acc update → ctrl_attitude_step → telemetry frame
    [mag update whenever a new sample arrives]
@@ -792,7 +993,7 @@ TelemetryTask  osPriorityBelowNormal, 1 KB stack     UART1 DMA → ST-LINK VCP (
 
 - A single high-priority task owns the filter state. The I²C bus has a mutex with
   priority inheritance only because the ACwing Flow board shares it on the bench
-  (§13); the ImuTask waits at most for one short expansion transaction.
+  (§14); the ImuTask waits at most for one short expansion transaction.
 - `ctrl_rate_step()` runs right after the propagation, **before** the Kalman
   corrections, to minimise gyro → motor latency.
 - `est_pipeline.c`, `iekf.c`, `accwin.c`, `calib.c`, the FIFO parser and the
@@ -825,7 +1026,7 @@ are to be chosen together with the power stage.
 
 ---
 
-## 7. Telemetry protocol
+## 8. Telemetry protocol
 
 Frame (little-endian): `A5 5A | TYPE | LEN | PAYLOAD[LEN] | CRC16 (LSB, MSB)`,
 CRC-16/CCITT-FALSE (poly 0x1021, init 0xFFFF) over TYPE..PAYLOAD.
@@ -842,12 +1043,12 @@ REPLAY operations: `'P' dθ[3] h` (propagation), `'A' acc[3] trusted`
 
 Bandwidth: ~19 kB/s normally, ~44 kB/s with REPLAY (921600 baud ≈ 92 kB/s).
 The same frames travel over BLE as a byte stream, STATE decimated and no
-REPLAY (§12). The decoders read both STATUS lengths, so phase-1 captures
+REPLAY (§13). The decoders read both STATUS lengths, so phase-1 captures
 still work.
 
 Frame types `0x05…0x0F` (CAPS, FLIGHT, POWER, NAV, MOTORS, SYSTEM, EVENT,
 PARAM, CALIB, ACK, CHECKS) belong to the app protocol v2, specified in
-`01 - Tools/02 - App/HANDOVER_FW.md` and implemented in §13. They are sent over
+`02 - Tools/02 - App/HANDOVER_FW.md` and implemented in §14. They are sent over
 BLE only; the PC tools ignore them.
 
 > **Pitfall.** Telemetry structs are `packed`: float fields are not 4-byte
@@ -857,20 +1058,20 @@ BLE only; the PC tools ignore them.
 
 ---
 
-## 8. Building and flashing
+## 9. Building and flashing
 
-1. The folder `00 - STM32_FW` is an STM32CubeIDE project: *File → Import →
-   General → Existing Projects into Workspace*, select `00 - STM32_FW`. Build
+1. The folder `00 - FC_FW` is an STM32CubeIDE project: *File → Import →
+   General → Existing Projects into Workspace*, select `00 - FC_FW`. Build
    outputs (`Debug/`) are not versioned: the first build regenerates them. To change
    pins or clocks, open `ACwing_FC_FW.ioc` in CubeMX and regenerate (user code is
    kept). Relevant settings already in the `.ioc`: SYSCLK 64 MHz; I2C1 on PB8/PB9 with
    DMA RX and event/error IRQs; USART1 921600 baud with DMA TX (**Memory increment
    enabled**) and global IRQ; PA15 EXTI rising edge (`IMU_INT1`); FreeRTOS
    CMSIS_V2, 1 kHz tick, 52 KB heap; HAL timebase on a TIM; Serial Wire debug;
-   STM32_WPAN (BLE) with HSEM, IPCC, RTC, RNG, RF (§12.4).
+   STM32_WPAN (BLE) with HSEM, IPCC, RTC, RNG, RF (§13.4).
    Interrupts that call RTOS functions need priority ≥ 5.
-2. Include paths (all configurations): `App/app`, `App/iekf`, `App/telemetry`,
-   `App/platform`, `App/control`, `App/drivers/common`,
+2. Include paths (all configurations): `App/app`, `App/filters/iekf`, `App/telemetry`,
+   `App/bsp`, `App/control`, `App/drivers/common`,
    `App/drivers/imu_lsm6dsv16x`, `App/third_party/st_lsm6dsv16x`,
    `App/third_party/cmsis_dsp/Include`.
 3. Linker: library `arm_cortexM4lf_math` from `App/third_party/cmsis_dsp/Lib`
@@ -879,7 +1080,7 @@ BLE only; the PC tools ignore them.
    (`HAL_GPIO_EXTI_Callback`, `HAL_I2C_MemRxCpltCallback`,
    `HAL_I2C_ErrorCallback`, `HAL_UART_TxCpltCallback`).
 5. Debug/flash: `ACwing_FC_FW.launch` (ST-LINK GDB server, SWD, connect under reset).
-6. BLE: the wireless stack must be flashed once on the Cortex-M0+ (§12.6). Without
+6. BLE: the wireless stack must be flashed once on the Cortex-M0+ (§13.6). Without
    it, the radio core never starts. Set `APP_TLM_BLE 0` to run on USB only.
 
 Bring-up check in *Live Expressions*: `s_irqCount` grows by ~480/s at 960 Hz,
@@ -893,25 +1094,25 @@ procedures below:
 |---|---|---|
 | `APP_TLM_REPLAY` | 0 | 1 |
 | `APP_COMPARE_ORIGINAL` | 0 | 1 (base-equation test vs original) or 0 (extended-filter test) |
-| `MAG_AXIS_MAP`, `MAG_HARD_IRON` | from §10 | unchanged |
+| `MAG_AXIS_MAP`, `MAG_HARD_IRON` | from §11 | unchanged |
 | `APP_TLM_BLE` | 1 (BLE + USB) or 0 (USB only) | unchanged (REPLAY is USB-only) |
 | `APP_BLE_STATE_DECIM` | 4 (STATE at 60 Hz over BLE) | — |
 
 ---
 
-## 9. PC tools (MATLAB and Python): setup and live viewer
+## 10. PC tools (MATLAB and Python): setup and live viewer
 
 Every tool exists in MATLAB and in Python, with the same options and outputs.
 MATLAB setup:
 
 ```matlab
-run('<repo>/01 - Tools/00 - Matlab/initPath.m')   % once per session
+run('<repo>/02 - Tools/00 - Matlab/initPath.m')   % once per session
 ```
 
-Python setup (details in [`01 - Tools/01 - Python/README.md`](01%20-%20Tools/01%20-%20Python/README.md)):
+Python setup (details in [`02 - Tools/01 - Python/README.md`](02%20-%20Tools/01%20-%20Python/README.md)):
 
 ```bash
-cd "01 - Tools/01 - Python"
+cd "02 - Tools/01 - Python"
 python -m pip install -e .        # installs the acwing-tools command
 ```
 
@@ -925,7 +1126,7 @@ another copy shadows it).
 ```matlab
 L = acwingLiveViewer("serial", "COM6");                 % 921600 baud by default
 L = acwingLiveViewer("serial", "COM6", 921600, "C:\logs") % choose the log folder
-L = acwingLiveViewer("ble");                            % BLE, board found automatically (§12.8)
+L = acwingLiveViewer("ble");                            % BLE, board found automatically (§13.8)
 ```
 
 1. Start the viewer, then reset the board and keep it **still for 2–4 s**
@@ -946,12 +1147,12 @@ L = acwingLiveViewer("ble");                            % BLE, board found autom
 tlmSniffer("COM6")      % bytes -> frames -> STATUS -> diagnosis
 ```
 
-**Python equivalents** (installation in [`01 - Tools/01 - Python/README.md`](01%20-%20Tools/01%20-%20Python/README.md)):
+**Python equivalents** (installation in [`02 - Tools/01 - Python/README.md`](02%20-%20Tools/01%20-%20Python/README.md)):
 
 ```bash
 acwing-tools viewer COM6                  # live viewer; --log-dir DIR, --baud B
 acwing-tools viewer --replay file.bin     # replay a recorded session (no board needed)
-acwing-tools viewer --ble                 # BLE (pip install bleak), board found automatically (§12.8)
+acwing-tools viewer --ble                 # BLE (pip install bleak), board found automatically (§13.8)
 acwing-tools sniff COM6                   # byte-level link check
 ```
 
@@ -960,7 +1161,7 @@ The Python viewer shows the same panel and writes the same `.mat` log (variable
 
 ---
 
-## 10. Magnetometer calibration
+## 11. Magnetometer calibration
 
 On the IKS4A1 the LIS2MDL axes are **not** aligned with the LSM6DSV16X axes, and
 the board carries a large hard-iron offset. Both are estimated from data by
@@ -1055,9 +1256,9 @@ acwing-tools mag-check acwing_log_....mat --hard-iron 100.31,-0.56,-166.07
 
 ---
 
-## 11. Telemetry capture and embedded-vs-reference comparison
+## 12. Telemetry capture and embedded-vs-reference comparison
 
-### 11.1 Principle
+### 12.1 Principle
 
 The firmware records, for every 240 Hz window, the **exact arguments** of every
 filter call (960 Hz angle increments, rotated acc mean, latency-compensated mag)
@@ -1077,14 +1278,14 @@ expected by the **unmodified** MATLAB filters (`iekfAttitude.m` and
 
 Inputs are identical bit for bit: any difference comes from the filter.
 
-### 11.2 Two validation tests
+### 12.2 Two validation tests
 
 | `APP_COMPARE_ORIGINAL` | Firmware behaviour | Reference filter | Meaning of the test |
 |---|---|---|---|
 | **1** | extensions of §5.4–4.7 that the original lacks are disabled | original `iekfAttitude.m` | **base equations**: the C port of the original filter is exact → MATCH / DIVERGE |
 | **0** | full configuration (as flown) | extended `iekfAttitudeEmb.m` | **every improvement**: NIS inflation and memory, dip check, stillness detector, mag-age variance, error reset, lockout protection → MATCH / DIVERGE. The original is also run, to show how much the extensions change the estimate. |
 
-### 11.3 Procedure
+### 12.3 Procedure
 
 1. `app_config.h`: `APP_TLM_REPLAY 1`, `APP_COMPARE_ORIGINAL 1`; build and flash.
 2. Record **without the viewer** (it cannot keep up with ~44 kB/s):
@@ -1116,9 +1317,9 @@ acwing-tools compare acwing_cap_YYYYMMDD_HHMMSS.bin
 
 The Python port of both filters matches the MATLAB code to ~1e-14, and
 `compare` reproduces the figures of `compareEmbeddedVsMatlab` on the same
-captures (`01 - Tools/01 - Python/tests`).
+captures (`02 - Tools/01 - Python/tests`).
 
-### 11.4 Reading the result
+### 12.4 Reading the result
 
 Console report:
 
@@ -1161,7 +1362,7 @@ The output struct contains `t`, `eulEmb`, `eulMatlab` (original), `eulRef`
 (reference of the mode), `dAng`, `dBias`, `dP` (vs original), `extended`
 (metrics vs the extended filter, mode 0), `ok`, `adapted`, `init`.
 
-### 11.5 Results
+### 12.5 Results
 
 | Data | Attitude diff. | Bias diff. | diag P (rel.) | Verdict |
 |---|---|---|---|---|
@@ -1209,7 +1410,7 @@ In both tests the only residual is float32 vs double.
 
 ---
 
-## 12. BLE telemetry (phase 2)
+## 13. BLE telemetry (phase 2)
 
 **Goal.** Same behaviour as the USB link, over Bluetooth Low Energy:
 - the PC receives the same STATE, INIT and STATUS frames;
@@ -1217,7 +1418,7 @@ In both tests the only residual is float32 vs double.
 - the same `.mat` and `.bin` logs are written.
 
 The USB link keeps working unchanged. REPLAY and the embedded-vs-reference
-comparison (§11) stay USB-only. The GATT service is designed so that a mobile
+comparison (§12) stay USB-only. The GATT service is designed so that a mobile
 app can use it as it is.
 
 **Status:**
@@ -1225,10 +1426,10 @@ app can use it as it is.
 | Item | State |
 |---|---|
 | Notifications on the board | **working**, checked with nRF Connect (frames starting with `A5 5A`) |
-| PC over BLE (Python) | **working on the board**: 57 STATE/s, lag flat within ±0.02 s over 30 s, 0 lost, 0 firmware drops (§12.9) |
+| PC over BLE (Python) | **working on the board**: 57 STATE/s, lag flat within ±0.02 s over 30 s, 0 lost, 0 firmware drops (§13.9) |
 | PC over BLE (MATLAB) | same frame path; tested with simulated notifications |
 
-### 12.1 Architecture
+### 13.1 Architecture
 
 ```
 ImuTask (Realtime, unchanged)
@@ -1246,8 +1447,8 @@ BleTxThread (ble_tlm_svc.c, BelowNormal)
 | File | Role |
 |---|---|
 | `App/telemetry/tlm_ble.c/.h` | BLE queue (lock-free ring), link state, STATE decimation, commands. No HAL, no BLE stack: host-testable |
-| `App/platform/ble_tlm_svc.c/.h` | GATT service on STM32_WPAN, event handler, TX thread |
-| `STM32_WPAN/App/app_ble.c` | CubeMX-generated BLE application; three one-line hooks in USER CODE sections (§12.5) |
+| `App/bsp/ble_tlm_svc.c/.h` | GATT service on STM32_WPAN, event handler, TX thread |
+| `STM32_WPAN/App/app_ble.c` | CubeMX-generated BLE application; three one-line hooks in USER CODE sections (§13.5) |
 | `Core/Src/app_entry.c`, `hw_timerserver.c`, … | CubeMX-generated infrastructure of the radio core (IPCC, timer server, system commands) |
 
 Design choices:
@@ -1268,7 +1469,7 @@ Design choices:
   serialised with the stack's. The GATT event handler, which runs in the
   stack's thread, only sets flags.
 
-### 12.2 GATT service
+### 13.2 GATT service
 
 | Item | UUID | Properties | Content |
 |---|---|---|---|
@@ -1285,7 +1486,7 @@ When a client enables notifications, the board:
 These values are within the iOS rules and are accepted by Windows, macOS and
 Linux. The central has the last word.
 
-### 12.3 Bandwidth
+### 13.3 Bandwidth
 
 | Frame | Size on air | Rate over BLE | Bytes/s |
 |---|---|---|---|
@@ -1298,7 +1499,7 @@ Linux. The central has the last word.
   grows, use decimation 8 (30 Hz).
 - With MTU ≥ 185, one notification carries 2–3 frames.
 
-### 12.4 CubeMX configuration
+### 13.4 CubeMX configuration
 
 The `.ioc` in the repository already has the BLE middleware enabled. For
 reference, and to check after a regeneration:
@@ -1342,7 +1543,7 @@ reference, and to check after a regeneration:
 The CubeIDE project is named `ACwing_FC_FW` (`ACwing_FC_FW.ioc`,
 `ACwing_FC_FW.launch`).
 
-### 12.5 Firmware hooks
+### 13.5 Firmware hooks
 
 `STM32_WPAN/App/app_ble.c` has three calls, all in USER CODE sections, so they
 survive regeneration:
@@ -1369,7 +1570,7 @@ survive regeneration:
 - **0**: everything compiles without using the stack, and STATUS reports
   `ble_state` = 0.
 
-### 12.6 Wireless stack on the Cortex-M0+
+### 13.6 Wireless stack on the Cortex-M0+
 
 The radio core runs a binary from ST that is flashed separately with
 STM32CubeProgrammer:
@@ -1390,11 +1591,11 @@ STM32CubeProgrammer:
 4. The application uses at most 512 KB of flash (`STM32WB55RGVX_FLASH.ld`),
    below the stack.
 
-### 12.7 Bring-up checklist
+### 13.7 Bring-up checklist
 
 1. **USB viewer first.** The text panel shows `BLE: advertising`: the service
    is registered and the stack is running.
-   - No `BLE` line: the stack did not start. Check the CPU2 firmware (§12.6).
+   - No `BLE` line: the stack did not start. Check the CPU2 firmware (§13.6).
    - `err 0x..`: last stack error. `0x64`/`0x98` at start-up means too little
      GATT attribute space.
 2. **Phone, with nRF Connect or LightBlue.**
@@ -1405,10 +1606,10 @@ STM32CubeProgrammer:
    3. The USB viewer now shows `BLE: streaming`, the MTU and `drop 0`.
 3. **960 Hz loop.** `s_irqCount` (~480/s) and `s_procCycMax` in *Live
    Expressions* must behave as without BLE.
-4. **Disconnect the phone**, then connect from the PC (§12.8). A peripheral
+4. **Disconnect the phone**, then connect from the PC (§13.8). A peripheral
    accepts one central at a time.
 
-### 12.8 PC tools over BLE
+### 13.8 PC tools over BLE
 
 MATLAB (R2019b+, Windows 10+/macOS, Bluetooth 4.0+ adapter):
 
@@ -1439,7 +1640,7 @@ How the tools behave:
   panel adds a `BLE:` line with state, MTU, drops and notifications received.
 - **`lost`.** It counts only real gaps of the decimated stream.
 
-### 12.9 Verification
+### 13.9 Verification
 
 **On the board.** The link was measured with `acwing-tools capture --ble --duration 30` and
 `acwing-tools info`, on the P-NUCLEO-WB55, HSE clock, Windows PC:
@@ -1453,7 +1654,7 @@ How the tools behave:
 | Firmware | 916 gyro samples/s, ~560 IMU interrupts/s, 0 FIFO overruns, 0 I²C errors; filter time 30.0 s over 29.9 s of uptime |
 
 Two firmware problems appeared only on the board, with the BLE stack running,
-and were fixed in `ImuTask` (§14):
+and were fixed in `ImuTask` (§15):
 - **INT1 stuck high.** It caused 0 IRQ/s, 39 % of the samples and ~50 I²C
   errors/s.
 - **Gyro integrated partly with the nominal period.** The filter time fell
@@ -1464,18 +1665,18 @@ and were fixed in `ImuTask` (§14):
 | Check | Result |
 |---|---|
 | Notifications on the board, nRF Connect | frames `A5 5A …` received |
-| Full firmware build with ARM GCC 13.3, include paths and defines read from `.cproject` (87 C files + startup, linked with `STM32WB55RGVX_FLASH.ld` and CMSIS-DSP) | 0 errors, 0 warnings (with the per-file flags of `hrs_app.c`, §12.4). HSE clock, MTU 247. Debug flags (`-O0 -g3`): 108 KB flash, 73 KB RAM; `-O2`: 66 KB flash |
+| Full firmware build with ARM GCC 13.3, include paths and defines read from `.cproject` (87 C files + startup, linked with `STM32WB55RGVX_FLASH.ld` and CMSIS-DSP) | 0 errors, 0 warnings (with the per-file flags of `hrs_app.c`, §13.4). HSE clock, MTU 247. Debug flags (`-O0 -g3`): 108 KB flash, 73 KB RAM; `-O2`: 66 KB flash |
 | `ble_tlm_svc.c` against the STM32_WPAN headers | all ACI/HCI functions, events and structs used exist with that signature |
 | Host test of the BLE queue: 60 s of frames, random MTU 23–247, 30 % refused sends | bytes received = frames queued; overload drops whole frames only |
 | MATLAB viewer, BLE path with simulated notifications (Octave) | 660 STATE at step 4, 0 lost, INIT/STATUS decoded, `.bin` identical, CMD `[2 4]` written |
 | Python: 7 BLE tests (`tests/test_ble.py`, 26 in the whole suite) | STATUS 54/62 B, board discovery, reassembly from 20-byte notifications, viewer on a decimated stream (0 lost, BLE line), a real gap counted once, BLE worker process, headless `capture --ble` |
 
-### 12.10 Troubleshooting (BLE)
+### 13.10 Troubleshooting (BLE)
 
 | Symptom | Cause / action |
 |---|---|
-| The phone does not list the board | scanner filter on data: remove it (§12.7); reset the board (after 60 s the advertising interval grows to 1–2.5 s) |
-| No `BLE` line in the USB viewer | CPU2 stack missing or not matching the CubeWB package (§12.6) |
+| The phone does not list the board | scanner filter on data: remove it (§13.7); reset the board (after 60 s the advertising interval grows to 1–2.5 s) |
+| No `BLE` line in the USB viewer | CPU2 stack missing or not matching the CubeWB package (§13.6) |
 | USB telemetry garbled after enabling BLE | stack debug trace on USART1: trace off |
 | SWD lost, IMU stops | low power on: `CFG_LPM_SUPPORTED` = 0, tickless idle off |
 | HardFault / stack overflow at start-up | FreeRTOS heap too small |
@@ -1484,7 +1685,7 @@ and were fixed in `ImuTask` (§14):
 | PC viewer over BLE: rate below 60 Hz, `lag` growing, `lost 0` and `drop 0` | the PC delivers the notifications late (nothing is lost on the link). The Python tools receive BLE in a separate process for this reason (since the BLE support was added); update them. The `BLE:` line shows the notifications/s actually received, `draw` the redraw time. `acwing-tools capture --ble` measures the link without graphics: if it shows 60 STATE/s and a stable lag, the limit is the viewer's redraw on that PC |
 | PC tools: board not found | it is connected to another central (phone): disconnect it. Python on Linux: `bluetoothd` running |
 
-### 12.11 Towards a mobile app
+### 13.11 Towards a mobile app
 
 The service is already what an iOS/Android app needs:
 - 128-bit UUIDs;
@@ -1502,16 +1703,16 @@ CMD is the place for future commands: arming, gains, logging.
 
 ---
 
-## 13. ACwing Pilot protocol v2, failsafes and automatic flight
+## 14. ACwing Pilot protocol v2, failsafes and automatic flight
 
-The **ACwing Pilot** app (`01 - Tools/02 - App/`) talks to the drone with
+The **ACwing Pilot** app (`02 - Tools/02 - App/`) talks to the drone with
 protocol v2. The contract is
-[`HANDOVER_FW.md`](01%20-%20Tools/02%20-%20App/HANDOVER_FW.md), and the app
+[`HANDOVER_FW.md`](02%20-%20Tools/02%20-%20App/HANDOVER_FW.md), and the app
 simulator `src/sim/simDrone.ts` is the reference for behaviour. Protocol v2 only
 **adds** frames `0x05…0x0F` and commands `≥ 0x10` on the same GATT service.
 Phase-2 frames, legacy commands and the PC tools are unchanged.
 
-### 13.1 Tasks and safety isolation
+### 14.1 Tasks and safety isolation
 
 ```
 BLE CMD write (HCI thread) ── app_link: time stamp (atomic) + RC seqlock + command SPSC queue
@@ -1544,7 +1745,7 @@ ExtTask (BelowNormal)        VL53L1X + flow bridge on Qwiic, 10 ms, I²C lock wi
   events always find room. On a new subscription the AppTask queues CAPS, then
   INIT, then CHECKS, and only then opens the periodic streams.
 
-### 13.2 What is implemented, and what is reported as missing
+### 14.2 What is implemented, and what is reported as missing
 
 | Area | Implemented | Reported honestly as missing (as §15 of the handover asks) |
 |---|---|---|
@@ -1554,18 +1755,18 @@ ExtTask (BelowNormal)        VL53L1X + flow bridge on Qwiic, 10 ms, I²C lock wi
 | Calibrations | ACCEL (6 positions), LEVEL, GYRO, COMPASS (ellipsoid fit, 36-sector coverage), each with one backup per type (CAL_RESTORE) | FLOW_TOF → `UNSUPPORTED` while the board is present. BATTERY, STICKS, MOTORS → `SENSOR_MISSING` |
 | Failsafes | app link (RC stale 0.25 s, short 1 s, long 3 s with EVENT 20, link back 0.5 s, ground disarm 3 s), geofence ceiling (gfMaxAlt, gfCeiling with ToF), flow lost in POS_HOLD | radio, battery, GNSS: no hardware yet |
 
-### 13.3 Altitude: barometer, ToF, optical flow
+### 14.3 Altitude: barometer, ToF, optical flow
 
 | Source | Part, bus | Driver | Available on |
 |---|---|---|---|
 | Barometer | LPS22DF (X-NUCLEO-IKS4A1) or LPS22HB (ACwing FC rev A), slave 1 of the LSM6DSV16X **sensor hub**, 50 Hz, in the same FIFO | `imu_lsm6dsv16x.c`, model from WHO_AM_I. Optional: if it is missing, the IMU starts without it | bench and FC |
 | ToF height | VL53L1X at 0x29 on the Qwiic bus (ACwing Flow), long mode, 33 ms (30 Hz) | `vl53l1x.c` (from ST's ULD, BSD-3) | ACwing Flow |
-| Optical flow | PMW3901 behind the STM32C011 bridge at 0x3B, 100 Hz motion burst | `flow_bridge.c` on the FC; bridge firmware in [`03 - FLOW_FW`](03%20-%20FLOW_FW/README.md), same register map (checked by its host test). An unprogrammed bridge leaves FLOW at 0 in CAPS | ACwing Flow |
+| Optical flow | PMW3901 behind the STM32C011 bridge at 0x3B, 100 Hz motion burst | `flow_bridge.c` on the FC; bridge firmware in [`01 - FLOW_FW`](01%20-%20FLOW_FW/README.md), same register map (checked by its host test). An unprogrammed bridge leaves FLOW at 0 in CAPS | ACwing Flow |
 
 `ExtTask` probes the Qwiic devices at boot and every 5 s, so the board can be
 plugged in later. A new sensor bit makes the AppTask send CAPS again.
 
-**Vertical estimator** (`alt_est.c`). A Kalman filter with the state
+**Vertical estimator** (`filters/altitude_kf/alt_est.c`, theory in §6). A Kalman filter with the state
 `[h, v, b_baro, b_acc]`:
 - Prediction: the vertical acceleration from the IEKF attitude and the
   calibrated accelerometer, at 240 Hz.
@@ -1603,7 +1804,7 @@ The same logic runs on the **models with and without GNSS**. Only the mode
 entered at the end of the takeoff changes (POS_HOLD with GNSS or FLOW,
 ALT_HOLD otherwise).
 
-### 13.4 TAKEOFF, LAND, HOLD (§7 of the handover)
+### 14.4 TAKEOFF, LAND, HOLD (§7 of the handover)
 
 - **TAKEOFF** needs `BARO` or `TOF` in CAPS (else `UNSUPPORTED/SENSOR_MISSING`),
   an altitude estimate that is ready, and the drone armed and on the ground.
@@ -1646,9 +1847,9 @@ accelerometer first), then send TAKEOFF:
 Without any altitude sensor, `g_fc_dbg_in_air` (Live Expressions) still forces
 "in the air" for the failsafe tests.
 
-### 13.5 Verification
+### 14.5 Verification
 
-- `00 - STM32_FW/Tests/host` (`make`): **93 checks**, with
+- `00 - FC_FW/Tests/host` (`make`): **93 + 12 checks** (two binaries), with
   AddressSanitizer and UBSan. They cover:
   - the ACK cache;
   - TAKEOFF rules;
@@ -1662,7 +1863,11 @@ Without any altitude sensor, `g_fc_dbg_in_air` (Live Expressions) still forces
   - the AppTask protocol: subscribe order, rates, PARAM_SET repeat with the
     same seq, save and reload, ARM blocked by CHECKS, KILL ×3, a flash error
     reported;
-  - HI/LO ring priority.
+  - HI/LO ring priority;
+  - the ExtTask (`ext_test`): probing every 5 s, a board plugged in late,
+    polling, a ToF lost after 50 errors and found again. The flow side runs
+    end to end, through the FC `flow_bridge` driver and the real bridge
+    logic of `01 - FLOW_FW`.
 - Every frame of that test is written to `frames.bin`. Decoding it with the
   app's own `StreamParser` and `decode*()`, then re-encoding it with
   `encode*()`, gives **identical bytes** for all v2 frame types (0 CRC
@@ -1672,7 +1877,7 @@ Without any altitude sensor, `g_fc_dbg_in_air` (Live Expressions) still forces
 
 ---
 
-## 14. Troubleshooting
+## 15. Troubleshooting
 
 | Symptom | Cause / action |
 |---|---|
@@ -1682,20 +1887,20 @@ Without any altitude sensor, `g_fc_dbg_in_air` (Live Expressions) still forces
 | Bytes but no valid frame | baud mismatch or SYSCLK ≠ 64 MHz |
 | One frame, then nothing | UART TX-complete callback not wired / USART1 IRQ disabled |
 | Only STATUS frames | filter never started: `statusDiagnosis` (IMU init, no INT1, no mag from hub, board moving during calibration) |
-| HardFault ~2 s after reset | unaligned float write into a packed telemetry struct (§7) |
+| HardFault ~2 s after reset | unaligned float write into a packed telemetry struct (§8) |
 | Attitude "converges slowly" in the viewer | viewer lagging: check the *lag* field; disable REPLAY or use `tlmCapture` |
-| Yaw moves when tilting | wrong `MAG_AXIS_MAP` / hard-iron → §10 |
-| `iekfAttitude` not found | run `initPath.m` (in `01 - Tools/00 - Matlab`) |
-| Build errors with paths that no longer exist, after moving or re-cloning the project | stale makefiles in the local `Debug/` folder: delete it (or *Project → Clean*), re-import `00 - STM32_FW` and build again |
+| Yaw moves when tilting | wrong `MAG_AXIS_MAP` / hard-iron → §11 |
+| `iekfAttitude` not found | run `initPath.m` (in `02 - Tools/00 - Matlab`) |
+| Build errors with paths that no longer exist, after moving or re-cloning the project | stale makefiles in the local `Debug/` folder: delete it (or *Project → Clean*), re-import `00 - FC_FW` and build again |
 | Comparison: "INIT of this boot was lost" | UART saturated during the capture; repeat |
 | Euler plots jump by 180° | gimbal lock (|pitch| ≈ 90°); use the quaternion figure |
 | `acwing-tools info`: IMU interrupts 0/s, gyro far below 960/s, tens of I²C errors/s; viewer below its rate with a growing `lag` and `lost 0` | INT1 stuck high: it is a *level* (FIFO ≥ watermark) and the EXTI is on the *rising edge*. One late read leaves the FIFO above the watermark, so no edge arrives any more and the task lives on its 5 ms timeout, with big reads, DMA timeouts and lost samples. Fixed in `ImuTask`: immediate re-read after a large read or a timeout wake-up, and a 12 ms DMA timeout. `s_drainReads` in *Live Expressions* counts the recoveries |
 | `lag` grows slowly (about 1 %/s) with no loss; `acwing-tools info`: filter time behind the uptime | the gyro was integrated with the nominal 1/960 s for part of the samples, while the LSM6DSV16X runs on its own RC oscillator (916 Hz measured). Fixed: the sample period is measured over 2 s windows against the MCU clock and used for every sample. `s_odrHz` in *Live Expressions* shows it |
-| `undefined reference to arm_mat_*` | CMSIS-DSP GCC library not linked (§8) |
+| `undefined reference to arm_mat_*` | CMSIS-DSP GCC library not linked (§9) |
 
 ---
 
-## 15. Lessons learned
+## 16. Lessons learned
 
 - **Validate on identical inputs, judge in sigma.** Comparing filters on
   separately acquired data mixes sensor and algorithm differences; replaying the
@@ -1722,7 +1927,7 @@ Without any altitude sensor, `g_fc_dbg_in_air` (Live Expressions) still forces
 
 ---
 
-## 16. Next steps
+## 17. Next steps
 
 Phase 1 (embedded attitude estimation, telemetry, MATLAB tools and
 validation) is concluded. Open items for the next phases:
@@ -1734,11 +1939,11 @@ validation) is concluded. Open items for the next phases:
 - Verify the magnetometer latency $\bar\tau$ on the bench (constant-rate rotation
   about the vertical) — the LIS2MDL internal filter delay is not modelled.
 - I²C Fast-mode Plus and 1920 Hz sampling (check bus edges on a scope first).
-- Protocol v2 (§13) on the board: run the acceptance tests of
+- Protocol v2 (§14) on the board: run the acceptance tests of
   `HANDOVER_FW.md` §16 with the app; tune the vertical estimator and the
   altitude loop on the first flights (`alt_est.c`, `alt_ctrl.c`).
 - ACwing Flow: program and check the bridge on the first board
-  (`03 - FLOW_FW/README.md`), FLOW_TOF calibration (ToF offset, flow scale,
+  (`01 - FLOW_FW/README.md`), FLOW_TOF calibration (ToF offset, flow scale,
   axis signs `APP_FLOW_SIGN_*`), then POS_HOLD on the flow velocity.
 - POWER frame and battery failsafes once the ADC (VBAT, current) is read;
   BATTERY calibration.
@@ -1755,7 +1960,7 @@ validation) is concluded. Open items for the next phases:
 
 ---
 
-## 17. References
+## 18. References
 
 - A. Barrau, S. Bonnabel, *The Invariant Extended Kalman Filter as a Stable
   Observer*, IEEE TAC, 2017.
