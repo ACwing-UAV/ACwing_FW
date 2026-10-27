@@ -1,7 +1,8 @@
 /**
  * @file  imu_lsm6dsv16x.h
- * @brief IMU library: LSM6DSV16X (gyro + acc) with the LIS2MDL read by the internal
- *        sensor hub and placed in the same FIFO (X-NUCLEO-IKS4A1 in Mode 3).
+ * @brief IMU library: LSM6DSV16X (gyro + acc) with the LIS2MDL and the barometer
+ *        (LPS22DF on the X-NUCLEO-IKS4A1 in Mode 3, LPS22HB on the ACwing FC rev A)
+ *        read by the internal sensor hub and placed in the same FIFO.
  *
  * Built on top of the official ST driver lsm6dsv16x-pid (third_party/), which
  * provides register access; this library adds:
@@ -36,7 +37,11 @@ typedef struct {
     uint8_t   xl_lpf2_bw;       /* lsm6dsv16x_filt_xl_lp2_bandwidth_t                */
     uint8_t   mag_enable;       /* LIS2MDL via sensor hub (requires IKS4A1 Mode 3)   */
     uint8_t   mag_fast;         /* 0: LIS2MDL 50 Hz / hub 60 Hz; 1: 100 Hz / 120 Hz   */
+    uint8_t   baro_enable;      /* LPS22DF/LPS22HB via sensor hub, optional: a missing
+                                   part leaves baro_enabled = 0 and is not an error   */
 } imu_config_t;
+
+typedef enum { IMU_BARO_NONE = 0, IMU_BARO_LPS22DF = 1, IMU_BARO_LPS22HB = 2 } imu_baro_t;
 
 /* Sensor-hub re-read rate, used to compute the age of the mag sample */
 #define IMU_SH_HZ(fast)   ((fast) ? 120.0f : 60.0f)
@@ -46,15 +51,17 @@ typedef enum {
     IMU_ERR_SH_TIMEOUT = -4, IMU_ERR_ARG = -5
 } imu_status_t;
 
-typedef enum { IMU_EV_GYRO = 1, IMU_EV_ACC = 2, IMU_EV_MAG = 3 } imu_ev_type_t;
+typedef enum { IMU_EV_GYRO = 1, IMU_EV_ACC = 2, IMU_EV_MAG = 3, IMU_EV_BARO = 4 } imu_ev_type_t;
 
 typedef struct {
     uint8_t type;      /* imu_ev_type_t                               */
-    float   v[3];      /* gyro rad/s, acc g, mag uT (sensor frame)      */
+    float   v[3];      /* gyro rad/s, acc g, mag uT (sensor frame);
+                          baro: v[0] Pa, v[1] degC                      */
 } imu_event_t;
 
 typedef struct {
     uint32_t words, gyro, acc, mag, mag_dup, sh_nack, empty, unknown;
+    uint32_t baro, baro_dup;
 } imu_parse_stats_t;
 
 typedef struct {
@@ -64,6 +71,9 @@ typedef struct {
     uint8_t      mag_enabled;
     uint8_t      last_mag_raw[6];   /* to discard sensor-hub duplicates       */
     uint8_t      have_mag;
+    uint8_t      baro_enabled, baro_model, baro_addr8, baro_slot;
+    uint8_t      last_baro_raw[5];
+    uint8_t      have_baro;
 } imu_t;
 
 int32_t imu_init(imu_t *imu, const sensor_bus_t *bus, const imu_config_t *cfg);

@@ -19,5 +19,8 @@
 void motors_init(void);
 void motors_arm(uint8_t armed);              /* disarmed: duty forced to 0   */
 void motors_set(const float duty[4]);        /* 0..1, saturated              */
+/* MOTOR_TEST (props off, disarmed): motor 1..4 at duty, the others off;
+ * motor 0 = all off. Does nothing with MOTORS_ENABLE = 0. */
+void motors_test(uint8_t motor, float duty);
 
 #endif /* MOTORS_H */

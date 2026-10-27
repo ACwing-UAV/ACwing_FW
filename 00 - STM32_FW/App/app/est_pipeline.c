@@ -105,9 +105,11 @@ static void on_acc_window(est_t *e, float h_win)
 static void on_mag(est_t *e, const float m_sensor[3])
 {
     const float *M = e->cfg.mag_map;
-    for (int i = 0; i < 3; ++i)
-        e->mag[i] = M[3*i]*m_sensor[0] + M[3*i + 1]*m_sensor[1] + M[3*i + 2]*m_sensor[2]
-                    - e->cfg.mag_hard_iron[i];
+    for (int i = 0; i < 3; ++i) {
+        const float k = (e->cfg.mag_scale[i] > 0.0f) ? e->cfg.mag_scale[i] : 1.0f;
+        e->mag[i] = k * (M[3*i]*m_sensor[0] + M[3*i + 1]*m_sensor[1] + M[3*i + 2]*m_sensor[2]
+                         - e->cfg.mag_hard_iron[i]);
+    }
 
     if (e->running) {
         /* A world-fixed vector seen from the body evolves as v' = -omega x v:

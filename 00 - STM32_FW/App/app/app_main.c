@@ -18,6 +18,14 @@
  *                     (BLE stack on the Cortex-M0+, IPCC)
  *
  * ImuTask remains the only high-priority task: BLE never touches it.
+ *
+ * Protocol v2 (ACwing Pilot app, HANDOVER_FW.md):
+ *   ImuTask also runs the flight core (fc_core: arming, modes, TAKEOFF/LAND/
+ *   HOLD, failsafes) at ~250 Hz and the vertical estimator (alt_est: baro on
+ *   the sensor hub, ToF from the ExtTask), and it is the only task that feeds
+ *   the independent watchdog. AppTask (app_task.c) handles commands,
+ *   parameters, flash, calibrations and the v2 frames. ExtTask (ext_sens.c)
+ *   polls the ACwing Flow board on the Qwiic bus.
  */
 #include "app_main.h"
 #include "app_config.h"
@@ -32,6 +40,12 @@
 #include "tlm_ble.h"
 #include "so3.h"
 #include "tlm_build.h"
+#include "fc_core.h"
+#include "fc_shared.h"
+#include "app_task.h"
+#include "alt_est.h"
+#include "ext_sens.h"
+#include "proto_v2.h"
 #include <string.h>
 #include <math.h>
 
@@ -44,6 +58,13 @@ extern UART_HandleTypeDef huart1;    /* PB6/PB7 -> ST-LINK virtual COM port     
 #endif
 
 #define FLAG_IMU_IRQ 0x0001u
+
+/* ---- watchdog: LSI 32 kHz / 32 = 1 kHz, reload 500 -> 0.5 s ----
+ * Fed ONLY by the ImuTask (the control loop). A stalled BLE stack, CPU2,
+ * AppTask or flash write cannot keep it alive; a stalled control loop resets
+ * the MCU (motors off at reset). Frozen while the debugger halts the core. */
+#define APP_IWDG_RELOAD   500u
+#define FC_SERVICE_MS     4u        /* flight core ~250 Hz */
 
 /* ------------------------------------------------------------------ */
 static osThreadId_t       s_imuTask;
@@ -68,8 +89,30 @@ typedef struct {
     uint8_t  bytes[TLM_FRAME_MAX];
 } tlm_msg_t;
 
-static uint8_t          g_initFrame[TLM_FRAME_MAX];
-static volatile uint16_t g_initLen;
+uint8_t                  g_initFrame[TLM_FRAME_MAX];
+volatile uint16_t        g_initLen;
+
+/* ---- calibration in effect (ImuTask copy, applied at event level) ---- */
+static cal_set_t      s_calset;
+static est_config_t   s_ec;                  /* estimator config (restart after a calibration) */
+static volatile float g_level_trim_deg[2];   /* LEVEL: roll, pitch trim for the attitude loop */
+static volatile uint8_t s_est_restart;
+
+/* ---- vertical estimate, flow, statistics ---- */
+static alt_est_t s_alt;
+static uint8_t   s_flow_q = 0xFFu;
+static float     s_flow_v[2];
+static uint32_t  s_flow_ms;
+static uint16_t  s_tof_mm = 0xFFFFu;
+static uint32_t  s_tof_ms;
+static float     s_vib2;                     /* EMA of (|a| - 1 g)^2, g^2 */
+static uint16_t  s_acc_clip;
+static float     s_loop_hz, s_jitter_us, s_cpu_pct;
+static uint32_t  s_cpu_cyc;
+static float     s_baro_temp;
+static uint16_t  s_imu_sensors;
+static volatile uint32_t s_lastGyroMs;       /* last FIFO read with gyro samples */
+#define IMU_STALE_MS 50u                     /* no gyro for 50 ms: estimate not usable */
 
 /* ------------------------------------------------------------------ */
 static void dwt_init(void)
@@ -105,6 +148,33 @@ static void on_state(const est_t *e, void *user)
 {
     (void)user;
     static uint32_t n;
+    {
+        float q[4];
+        iekf_get_quat(&e->f, q);
+        const float hwin = (float)APP_STEPS_PER_ACC / (float)APP_STEP_HZ;
+        alt_est_predict(&s_alt, alt_est_accel_up(q, e->acc_mean, e->f.nom_acc), hwin);
+        const float am = sqrtf(e->acc_mean[0]*e->acc_mean[0] + e->acc_mean[1]*e->acc_mean[1] +
+                               e->acc_mean[2]*e->acc_mean[2]);
+        const float d = am - (e->f.nom_acc > 0.5f ? e->f.nom_acc : 1.0f);
+        s_vib2 += 0.004f * (d*d - s_vib2);            /* ~1 s at 240 Hz */
+
+        /* raw samples for a calibration in progress (~48 Hz) */
+        static uint8_t k;
+        if (g_fsh_cal_want && (++k % 5u) == 0u) {
+            cal_sample_t c;
+            for (int i = 0; i < 3; ++i) {
+                const float sc = (s_calset.accel.scale[i] > 0.0f) ? s_calset.accel.scale[i] : 1.0f;
+                c.acc[i]  = e->acc_mean[i] / sc + s_calset.accel.off[i];
+                c.gyro[i] = e->gyro_mean[i] + s_calset.gyro.bias[i];
+                const float ms = (s_calset.compass.scale[i] > 0.0f) ? s_calset.compass.scale[i] : 1.0f;
+                c.mag[i]  = e->mag[i] / ms + s_calset.compass.hi[i];
+            }
+            memcpy(c.q, q, sizeof q);
+            c.mag_new = (uint8_t)((e->flags & EST_F_MAG_NEW) != 0u);
+            c.running = e->running;
+            (void)fsh_cal_push(&c);
+        }
+    }
 #if APP_TLM_REPLAY
     const uint32_t dec = APP_TLM_DECIM_REPLAY;
 #else
@@ -128,6 +198,209 @@ static void on_init(const est_t *e, void *user)
 }
 
 /* ================================================================== */
+static void iwdg_start(void)
+{
+    DBGMCU->APB1FZR1 |= DBGMCU_APB1FZR1_DBG_IWDG_STOP;   /* halted by the debugger: no reset */
+    IWDG->KR  = 0xCCCCu;                                  /* start (LSI forced on)             */
+    IWDG->KR  = 0x5555u;                                  /* unlock PR / RLR                    */
+    IWDG->PR  = 3u;                                       /* /32 -> 1 kHz                       */
+    IWDG->RLR = APP_IWDG_RELOAD;
+    uint32_t t = 0;
+    while (IWDG->SR != 0u && ++t < 100000u) { }           /* registers updated                  */
+    IWDG->KR  = 0xAAAAu;
+}
+
+/* Calibration in effect, applied to the raw events before the estimator:
+ * gyro bias, accelerometer offset/scale (the compass is applied by the
+ * estimator: hard iron + scale). Also counts accelerometer clipping. */
+static void correct_events(imu_event_t *ev, size_t n)
+{
+    for (size_t j = 0; j < n; ++j) {
+        float *v = ev[j].v;
+        switch (ev[j].type) {
+        case IMU_EV_GYRO:
+            for (int i = 0; i < 3; ++i) v[i] -= s_calset.gyro.bias[i];
+            break;
+        case IMU_EV_ACC:
+            if (fabsf(v[0]) > 15.9f || fabsf(v[1]) > 15.9f || fabsf(v[2]) > 15.9f) {
+                if (s_acc_clip < 0xFFFFu) s_acc_clip++;
+            }
+            for (int i = 0; i < 3; ++i) {
+                const float sc = (s_calset.accel.scale[i] > 0.0f) ? s_calset.accel.scale[i] : 1.0f;
+                v[i] = sc * (v[i] - s_calset.accel.off[i]);
+            }
+            break;
+        case IMU_EV_BARO:
+            alt_est_baro(&s_alt, v[0]);
+            s_baro_temp = v[1];
+            break;
+        default:
+            break;
+        }
+    }
+}
+
+/* A calibration from the AppTask (DONE or RESTORE): takes effect here. */
+static void take_calibrations(void)
+{
+    fsh_apply_t a;
+    while (fsh_apply_take(&a)) {
+        switch (a.type) {
+        case PV2_CAL_GYRO: {
+            /* the corrected gyro changes by -delta: move the IEKF bias with it */
+            for (int i = 0; i < 3; ++i) s_est.f.b[i] -= a.set.gyro.bias[i] - s_calset.gyro.bias[i];
+            s_calset.gyro = a.set.gyro;
+            break;
+        }
+        case PV2_CAL_ACCEL:
+            s_calset.accel = a.set.accel;
+            s_est_restart = 1u;                  /* gravity reference changes */
+            break;
+        case PV2_CAL_COMPASS:
+            s_calset.compass = a.set.compass;
+            memcpy(s_ec.mag_hard_iron, a.set.compass.hi, sizeof s_ec.mag_hard_iron);
+            memcpy(s_ec.mag_scale, a.set.compass.scale, sizeof s_ec.mag_scale);
+            s_est_restart = 1u;                  /* magnetic reference changes */
+            break;
+        case PV2_CAL_LEVEL:
+            s_calset.level = a.set.level;
+            g_level_trim_deg[0] = a.set.level.roll_deg;
+            g_level_trim_deg[1] = a.set.level.pitch_deg;
+            break;
+        default:
+            cal_copy_type(&s_calset, &a.set, a.type);
+            break;
+        }
+    }
+    if (s_est_restart) {
+        /* only reachable while disarmed (calibrations are refused when armed) */
+        s_est_restart = 0u;
+        est_init(&s_est, &s_ec, on_state, on_init, NULL);
+        s_est.trace_enable = APP_TLM_REPLAY;
+    }
+}
+
+/* ToF and flow samples from the ExtTask */
+static void take_ext(uint32_t now, float cos_tilt, const float omega[3])
+{
+    ext_sample_t x;
+    while (ext_take(&x)) {
+        if (x.kind == EXT_TOF) {
+            alt_est_tof(&s_alt, (float)x.tof_mm * 1e-3f, (uint8_t)(x.status == 0u), cos_tilt);
+            s_tof_mm = (x.status == 0u) ? x.tof_mm : 0xFFFFu;
+            s_tof_ms = now;
+        } else if (x.kind == EXT_FLOW && x.dt_s > 1e-3f) {
+            /* PMW3901: ~0.0205 rad per count (42 deg / 35 px). Flow rate minus the
+             * body rotation, times the height, is the ground speed. Axis signs
+             * (APP_FLOW_SIGN_*) follow the frame-C2 mounting and are checked by
+             * the FLOW_TOF calibration (match %). */
+            const float k = 0.0205f / x.dt_s;
+            const float fx = APP_FLOW_SIGN_X * (float)x.dy * k;      /* about body y -> x motion */
+            const float fy = APP_FLOW_SIGN_Y * (float)x.dx * k;
+            const float h  = s_alt.tof_valid ? s_alt.tof_h : 0.0f;
+            float v[2] = { (fx - omega[1]) * h, (fy + omega[0]) * h };
+            for (int i = 0; i < 2; ++i) s_flow_v[i] += 0.3f * (v[i] - s_flow_v[i]);
+            uint32_t q = (uint32_t)x.squal * 100u / 120u;              /* SQUAL ~120 on a good floor */
+            if (!(x.status & 0x01u)) q = 0u;                            /* PMW3901 not OK */
+            s_flow_q = (uint8_t)(q > 100u ? 100u : q);
+            s_flow_ms = now;
+        }
+    }
+    if (s_flow_ms && (now - s_flow_ms) > 200u) s_flow_q = 0u;              /* stream stopped */
+    if (!(ext_sensors() & PV2_S_FLOW)) s_flow_q = 0xFFu;
+    if (s_tof_ms && (now - s_tof_ms) > 200u) s_tof_mm = 0xFFFFu;
+}
+
+static void publish_est(uint32_t now)
+{
+    static uint32_t last, lastWin, winN;
+    static uint32_t lastIrq;
+    if ((now - last) < 20u) return;                 /* 50 Hz */
+    last = now;
+
+    /* loop rate, jitter, CPU over 1 s windows */
+    if ((now - lastWin) >= 1000u) {
+        const uint32_t dtw = now - lastWin;
+        const uint32_t irqs = s_irqCount - lastIrq;
+        s_loop_hz = (float)(s_est.win_count - winN) * 1000.0f / (float)dtw;
+        s_cpu_pct = (float)s_cpu_cyc * 100.0f / ((float)SystemCoreClock * (float)dtw * 1e-3f);
+        (void)irqs;
+        winN = s_est.win_count; lastIrq = s_irqCount; lastWin = now; s_cpu_cyc = 0;
+    }
+
+    fsh_est_t o;
+    memset(&o, 0, sizeof o);
+    o.imu_ok = (uint8_t)(s_imuInit == 0);
+    o.running = s_est.running;
+    o.acc_gated = (uint8_t)(s_est.f.acc_infl > 2.0f);
+    o.mag_gated = (uint8_t)(s_est.f.mag_infl > 2.0f);
+    iekf_get_quat(&s_est.f, o.q);
+    {
+        const float *P = s_est.f.P;
+        float m = P[0];
+        if (P[IEKF_NX + 1] > m) m = P[IEKF_NX + 1];
+        if (P[2 * IEKF_NX + 2] > m) m = P[2 * IEKF_NX + 2];
+        o.att_unc_deg = s_est.running ? sqrtf(m > 0.0f ? m : 0.0f) * 57.29578f : 180.0f;
+    }
+    o.mag_interf_pct = fabsf(s_est.f.last_mag_dev) * 100.0f;
+    o.vib_mg = sqrtf(s_vib2) * 1000.0f;
+    o.acc_clip = s_acc_clip;
+    o.loop_hz = s_loop_hz;
+    o.jitter_us = s_jitter_us;
+    o.cpu_pct = s_cpu_pct;
+    o.imu_temp_c = s_baro_temp;                     /* the board temperature next to the IMU */
+    o.alt_valid = s_alt.valid;
+    o.tof_valid = s_alt.tof_valid;
+    o.tof_ground = s_alt.tof_ground;
+    o.h = alt_est_h(&s_alt);
+    o.vz = alt_est_vz(&s_alt);
+    o.tof_h = s_alt.tof_h;
+    o.tof_mm = s_tof_mm;
+    o.flow_q = s_flow_q;
+    o.vel_body[0] = s_flow_v[0]; o.vel_body[1] = s_flow_v[1];
+    o.baro_pa = s_alt.baro_ok ? (uint32_t)(s_alt.pressure + 0.5f) : 0u;
+    o.sensors = s_imu_sensors;
+    fsh_est_write(&o);
+}
+
+/* flight core + vertical sources, ~250 Hz from the ImuTask loop */
+static void flight_service(uint32_t *lastSvc)
+{
+    const uint32_t now = osKernelGetTickCount();
+    if ((now - *lastSvc) < FC_SERVICE_MS) return;
+    *lastSvc = now;
+
+    take_calibrations();
+
+    float q[4];
+    iekf_get_quat(&s_est.f, q);
+    const float ct = 1.0f - 2.0f * (q[1]*q[1] + q[2]*q[2]);         /* R33 */
+    take_ext(now, ct, s_est.omega);
+
+    /* a stalled IMU (bus error, sensor reset) makes the estimate unusable at once */
+    const uint8_t est_ok = (uint8_t)(s_est.running && (now - s_lastGyroMs) < IMU_STALE_MS);
+    fc_vert_t v;
+    v.valid = s_alt.valid && est_ok;
+    v.h = alt_est_h(&s_alt);
+    v.vz = alt_est_vz(&s_alt);
+    v.tof_valid = s_alt.tof_valid;
+    v.tof_ground = s_alt.tof_ground;
+    v.tof_h = s_alt.tof_h;
+    v.cos_tilt = ct;
+    v.flow_q = s_flow_q;
+    fc_service(now, est_ok, &v);
+    {
+        static uint8_t wasArmed;
+        fc_setpoint_t sp;
+        fc_setpoint(&sp);
+        if (sp.armed && !wasArmed) s_acc_clip = 0u;     /* SYSTEM.accClip counts since arm */
+        wasArmed = sp.armed;
+        /* sp goes to the attitude / rate loops and the mixer in phase 3 */
+    }
+    publish_est(now);
+}
+
+/* ================================================================== */
 static void ImuTask(void *arg)
 {
     (void)arg;
@@ -137,7 +410,8 @@ static void ImuTask(void *arg)
     const imu_config_t icfg = {
         .odr = APP_IMU_ODR, .watermark_words = APP_IMU_WATERMARK,
         .gy_lpf1_bw = APP_GY_LPF1_BW, .xl_lpf2_enable = APP_XL_LPF2_ENABLE,
-        .xl_lpf2_bw = APP_XL_LPF2_BW, .mag_enable = 1, .mag_fast = APP_MAG_FAST
+        .xl_lpf2_bw = APP_XL_LPF2_BW, .mag_enable = 1, .mag_fast = APP_MAG_FAST,
+        .baro_enable = 1
     };
     for (;;) {
         const int32_t st = imu_init(&s_imu, &bus, &icfg);
@@ -146,7 +420,16 @@ static void ImuTask(void *arg)
 #ifdef LED1_GPIO_Port
         HAL_GPIO_TogglePin(LED1_GPIO_Port, LED1_Pin);
 #endif
+        /* no estimate: the core cannot arm, but it answers commands */
+        fc_service(osKernelGetTickCount(), 0u, NULL);
         osDelay(200);
+    }
+    s_imu_sensors = (uint16_t)(PV2_S_IMU | (s_imu.mag_enabled ? PV2_S_MAG_FC : 0u) |
+                               (s_imu.baro_enabled ? PV2_S_BARO : 0u));
+    {
+        alt_est_cfg_t ac;
+        alt_est_default_cfg(&ac);
+        alt_est_init(&s_alt, &ac);
     }
 
     est_config_t ec;
@@ -182,9 +465,17 @@ static void ImuTask(void *arg)
     ec.still_gyro_thr    = APP_STILL_GYRO_THR;
     ec.still_time_s      = APP_STILL_TIME_S;
     ec.ekf.reset_jacobian = IEKF_RESET_JACOBIAN;
-    static const float M[9] = MAG_AXIS_MAP, H[3] = MAG_HARD_IRON;
+    static const float M[9] = MAG_AXIS_MAP;
     memcpy(ec.mag_map, M, sizeof M);
-    memcpy(ec.mag_hard_iron, H, sizeof H);
+    /* saved calibrations (posted by app_task_boot) */
+    {
+        fsh_apply_t a;
+        while (fsh_apply_take(&a)) cal_copy_type(&s_calset, &a.set, a.type);
+        g_level_trim_deg[0] = s_calset.level.roll_deg;
+        g_level_trim_deg[1] = s_calset.level.pitch_deg;
+    }
+    memcpy(ec.mag_hard_iron, s_calset.compass.hi, sizeof ec.mag_hard_iron);
+    memcpy(ec.mag_scale, s_calset.compass.scale, sizeof ec.mag_scale);
     const float tsh = 1.0f / IMU_SH_HZ(APP_MAG_FAST);
     ec.mag_latency_s     = 0.5f * tsh;
     ec.mag_latency_std_s = tsh * 0.288675f;            /* 1/sqrt(12) */
@@ -195,6 +486,7 @@ static void ImuTask(void *arg)
     ec.ekf.lockout_updates = 0;
     ec.mag_latency_std_s  = 0.0f;   /* the MEAN-latency compensation stays: it is an input */
 #endif
+    s_ec = ec;
     est_init(&s_est, &ec, on_state, on_init, NULL);
     s_est.trace_enable = APP_TLM_REPLAY;
     ctrl_init();
@@ -225,8 +517,12 @@ static void ImuTask(void *arg)
      * Hence: after a read that found much more than the watermark, or after a
      * wake-up by timeout, read again at once; the FIFO drops below the
      * watermark, INT1 goes low and the next sample produces an edge again. */
+    iwdg_start();
     uint32_t wait_ms = 5u;
+    uint32_t lastSvc = osKernelGetTickCount();
     for (;;) {
+        IWDG->KR = 0xAAAAu;                    /* feed: the control loop is alive */
+        flight_service(&lastSvc);
         const uint32_t fl = osThreadFlagsWait(FLAG_IMU_IRQ, osFlagsWaitAny, wait_ms);
         const int by_timeout = (fl & osFlagsError) != 0u;
         const uint32_t cyc = s_irqCyc;
@@ -248,6 +544,8 @@ static void ImuTask(void *arg)
 
         imu_parse_stats_t ps = { 0 };
         const size_t n = imu_fifo_parse(&s_imu, s_fifo, words, s_ev, IMU_FIFO_MAX_WORDS, &ps);
+        correct_events(s_ev, n);
+        if (ps.gyro) s_lastGyroMs = osKernelGetTickCount();
         s_psTot.gyro += ps.gyro;  s_psTot.acc += ps.acc;  s_psTot.mag += ps.mag;
         s_psTot.mag_dup += ps.mag_dup;  s_psTot.sh_nack += ps.sh_nack;
 
@@ -256,6 +554,13 @@ static void ImuTask(void *arg)
         lastCyc = cyc;
         if (haveRef) refN += ps.gyro;                     /* gyro samples read after the reference */
         if (fresh) {
+            /* INT1 period jitter (SYSTEM.jitter): edges one watermark apart */
+            static uint32_t prevEdge;
+            const float expP = dtEst * (float)(APP_IMU_WATERMARK / 2u);
+            const float per  = (float)(uint32_t)(cyc - prevEdge) * cyc2s;
+            if (prevEdge && per < 1.5f * expP)
+                s_jitter_us += 0.05f * (fabsf(per - expP) * 1e6f - s_jitter_us);
+            prevEdge = cyc;
             if (!haveRef) {
                 haveRef = 1; refCyc = cyc; refN = 0;
             } else if ((uint32_t)(cyc - refCyc) >= winCyc && refN > 0u) {
@@ -273,6 +578,7 @@ static void ImuTask(void *arg)
         const uint32_t c0 = DWT->CYCCNT;
         est_process(&s_est, s_ev, n, dt);
         s_procCycLast = DWT->CYCCNT - c0;
+        s_cpu_cyc += s_procCycLast;
         if (s_procCycLast > s_procCycMax) s_procCycMax = s_procCycLast;
         if (words > s_wordsMax) s_wordsMax = words;
     }
@@ -358,16 +664,49 @@ static void TelemetryTask(void *arg)
 }
 
 /* ================================================================== */
+static size_t get_init(uint8_t *dst, size_t cap)
+{
+    const uint16_t n = g_initLen;
+    if (!n || n > cap) return 0;
+    memcpy(dst, g_initFrame, n);
+    return n;
+}
+
+static void motor_test_hook(uint8_t m, float duty) { motors_test(m, duty); }
+
 void app_start(void)
 {
     dwt_init();
     motors_init();                       /* disarmed, MOTORS_ENABLE = 0 in phase 1 */
     qTlm = osMessageQueueNew(16, sizeof(tlm_msg_t), NULL);
+    imu_i2c_bus_init(&hi2c1);
+
+    /* flash image: parameters, name, calibrations (posted to the ImuTask) */
+    {
+        static const float H[3] = MAG_HARD_IRON;
+        (void)app_task_boot(H);
+    }
+    {
+        const fc_config_t fc = { .sensors = 0u, .n_motors = 4u, .motors_built = MOTORS_ENABLE,
+                                 .motors_arm = motors_arm, .motor_test = motor_test_hook };
+        fc_init(&fc);
+    }
 
     static const osThreadAttr_t aI = { .name = "imu", .priority = osPriorityRealtime,
-                                       .stack_size = 2048 };
+                                       .stack_size = 3072 };
     static const osThreadAttr_t aT = { .name = "tlm", .priority = osPriorityBelowNormal,
                                        .stack_size = 1024 };
     s_imuTask = osThreadNew(ImuTask, NULL, &aI);
     (void)osThreadNew(TelemetryTask, NULL, &aT);
+    {
+        app_task_cfg_t ac;
+        memset(&ac, 0, sizeof ac);
+        ac.hw_rev = APP_HW_REV;
+        ac.n_motors = 4u;
+        ac.motors_built = MOTORS_ENABLE;
+        ac.uid[0] = HAL_GetUIDw0(); ac.uid[1] = HAL_GetUIDw1(); ac.uid[2] = HAL_GetUIDw2();
+        ac.get_init = get_init;
+        app_task_start(&ac);
+    }
+    ext_sens_start();
 }

@@ -18,6 +18,16 @@
 #define LIS2MDL_OUTX_L      0x68u
 #define LIS2MDL_UT_PER_LSB  0.15f
 
+/* ---- LPS22DF (IKS4A1) / LPS22HB (ACwing FC rev A), behind the same hub ---- */
+#define LPS22_ADDR_8BIT_H   0xBAu    /* SA0 = 1 -> 0x5D */
+#define LPS22_ADDR_8BIT_L   0xB8u    /* SA0 = 0 -> 0x5C */
+#define LPS22_WHO_AM_I      0x0Fu
+#define LPS22DF_ID          0xB4u
+#define LPS22HB_ID          0xB1u
+#define LPS22_CTRL_REG1     0x10u
+#define LPS22_CTRL_REG2     0x11u
+#define LPS22_PRESS_OUT_XL  0x28u    /* PRESS XL, L, H, TEMP L, H */
+
 #define DEG2RAD_F           0.017453292519943295f
 #define SH_POLL_MAX         50u      /* x 5 ms */
 
@@ -49,18 +59,18 @@ static int32_t sh_run_once(imu_t *imu)
     return ms.sens_hub_endop ? IMU_OK : IMU_ERR_SH_TIMEOUT;
 }
 
-static int32_t mag_write(imu_t *imu, uint8_t reg, uint8_t val)
+static int32_t sh_write(imu_t *imu, uint8_t addr8, uint8_t reg, uint8_t val)
 {
-    lsm6dsv16x_sh_cfg_write_t w = { LIS2MDL_ADDR_8BIT, reg, val };
+    lsm6dsv16x_sh_cfg_write_t w = { addr8, reg, val };
     if (lsm6dsv16x_xl_data_rate_set(&imu->ctx, LSM6DSV16X_ODR_OFF)) return IMU_ERR_BUS;
     if (lsm6dsv16x_sh_cfg_write(&imu->ctx, &w))                     return IMU_ERR_BUS;
     if (lsm6dsv16x_sh_write_mode_set(&imu->ctx, LSM6DSV16X_ONLY_FIRST_CYCLE)) return IMU_ERR_BUS;
     return sh_run_once(imu);
 }
 
-static int32_t mag_read(imu_t *imu, uint8_t reg, uint8_t *buf, uint8_t len)
+static int32_t sh_read(imu_t *imu, uint8_t addr8, uint8_t reg, uint8_t *buf, uint8_t len)
 {
-    lsm6dsv16x_sh_cfg_read_t r = { LIS2MDL_ADDR_8BIT, reg, len };
+    lsm6dsv16x_sh_cfg_read_t r = { addr8, reg, len };
     if (lsm6dsv16x_xl_data_rate_set(&imu->ctx, LSM6DSV16X_ODR_OFF))       return IMU_ERR_BUS;
     if (lsm6dsv16x_sh_slv_cfg_read(&imu->ctx, 0, &r))                      return IMU_ERR_BUS;
     if (lsm6dsv16x_sh_slave_connected_set(&imu->ctx, LSM6DSV16X_SLV_0))    return IMU_ERR_BUS;
@@ -72,17 +82,47 @@ static int32_t mag_read(imu_t *imu, uint8_t reg, uint8_t *buf, uint8_t len)
 static int32_t mag_setup(imu_t *imu, uint8_t fast)
 {
     uint8_t id = 0;
-    int32_t st = mag_read(imu, LIS2MDL_WHO_AM_I, &id, 1);
+    int32_t st = sh_read(imu, LIS2MDL_ADDR_8BIT, LIS2MDL_WHO_AM_I, &id, 1);
     if (st) return st;
     if (id != LIS2MDL_ID) return IMU_ERR_MAG_ID;
 
-    if ((st = mag_write(imu, LIS2MDL_CFG_A, 0x20u))) return st;    /* SOFT_RST              */
+    if ((st = sh_write(imu, LIS2MDL_ADDR_8BIT, LIS2MDL_CFG_A, 0x20u))) return st;    /* SOFT_RST              */
     dly(imu, 10);
-    if ((st = mag_write(imu, LIS2MDL_CFG_C, 0x10u))) return st;    /* BDU                   */
-    if ((st = mag_write(imu, LIS2MDL_CFG_B, 0x03u))) return st;    /* OFF_CANC | LPF        */
+    if ((st = sh_write(imu, LIS2MDL_ADDR_8BIT, LIS2MDL_CFG_C, 0x10u))) return st;    /* BDU                   */
+    if ((st = sh_write(imu, LIS2MDL_ADDR_8BIT, LIS2MDL_CFG_B, 0x03u))) return st;    /* OFF_CANC | LPF        */
     /* COMP_TEMP_EN | ODR 50 or 100 Hz | continuous. The sensor hub re-reads at 60 or
      * 120 Hz: ~1 read in 6 is a duplicate, discarded by the parser. */
-    return mag_write(imu, LIS2MDL_CFG_A, fast ? 0x8Cu : 0x88u);
+    return sh_write(imu, LIS2MDL_ADDR_8BIT, LIS2MDL_CFG_A, fast ? 0x8Cu : 0x88u);
+}
+
+/* Optional barometer: a missing or silent part is not an error (the IMU and
+ * the attitude estimate must start without it). 0 = found and configured. */
+static int32_t baro_setup(imu_t *imu)
+{
+    static const uint8_t addr[2] = { LPS22_ADDR_8BIT_H, LPS22_ADDR_8BIT_L };
+    for (unsigned k = 0; k < 2u; ++k) {
+        uint8_t id = 0;
+        if (sh_read(imu, addr[k], LPS22_WHO_AM_I, &id, 1) != IMU_OK) continue;
+        if (id == LPS22DF_ID) {
+            /* CTRL_REG2: SWRESET, then BDU | EN_LPFP (ODR/4); CTRL_REG1: ODR 50 Hz, AVG 16 */
+            if (sh_write(imu, addr[k], LPS22_CTRL_REG2, 0x04u)) return -1;
+            dly(imu, 5);
+            if (sh_write(imu, addr[k], LPS22_CTRL_REG2, 0x18u)) return -1;
+            if (sh_write(imu, addr[k], LPS22_CTRL_REG1, 0x2Au)) return -1;
+            imu->baro_model = IMU_BARO_LPS22DF;
+        } else if (id == LPS22HB_ID) {
+            /* CTRL_REG2: SWRESET (IF_ADD_INC kept); CTRL_REG1: ODR 50 Hz | EN_LPFP | BDU */
+            if (sh_write(imu, addr[k], LPS22_CTRL_REG2, 0x14u)) return -1;
+            dly(imu, 5);
+            if (sh_write(imu, addr[k], LPS22_CTRL_REG1, 0x4Au)) return -1;
+            imu->baro_model = IMU_BARO_LPS22HB;
+        } else {
+            continue;
+        }
+        imu->baro_addr8 = addr[k];
+        return 0;
+    }
+    return -1;
 }
 
 int32_t imu_init(imu_t *imu, const sensor_bus_t *bus, const imu_config_t *cfg)
@@ -108,6 +148,9 @@ int32_t imu_init(imu_t *imu, const sensor_bus_t *bus, const imu_config_t *cfg)
         if (st) return st;
         imu->mag_enabled = 1;
     }
+    if (cfg->baro_enable && baro_setup(imu) == 0) imu->baro_enabled = 1;
+    /* hub slots are consecutive from 0: mag first, then baro */
+    imu->baro_slot = imu->mag_enabled ? 1u : 0u;
 
     /* 2) full scales and filters */
     int32_t ret = 0;
@@ -129,17 +172,26 @@ int32_t imu_init(imu_t *imu, const sensor_bus_t *bus, const imu_config_t *cfg)
                                                         : LSM6DSV16X_XL_BATCHED_AT_960Hz);
     ret |= lsm6dsv16x_fifo_gy_batch_set(&imu->ctx, fast ? LSM6DSV16X_GY_BATCHED_AT_1920Hz
                                                         : LSM6DSV16X_GY_BATCHED_AT_960Hz);
-    if (imu->mag_enabled) ret |= lsm6dsv16x_fifo_sh_batch_slave_set(&imu->ctx, 0, PROPERTY_ENABLE);
+    if (imu->mag_enabled)  ret |= lsm6dsv16x_fifo_sh_batch_slave_set(&imu->ctx, 0, PROPERTY_ENABLE);
+    if (imu->baro_enabled) ret |= lsm6dsv16x_fifo_sh_batch_slave_set(&imu->ctx, imu->baro_slot, PROPERTY_ENABLE);
     ret |= lsm6dsv16x_fifo_mode_set(&imu->ctx, LSM6DSV16X_STREAM_MODE);
     if (ret) return IMU_ERR_BUS;
 
-    /* 4) sensor hub: continuous read of LIS2MDL OUTX_L..OUTZ_H */
-    if (imu->mag_enabled) {
-        lsm6dsv16x_sh_cfg_read_t r = { LIS2MDL_ADDR_8BIT, LIS2MDL_OUTX_L, 6 };
-        ret |= lsm6dsv16x_sh_slv_cfg_read(&imu->ctx, 0, &r);
+    /* 4) sensor hub: continuous read of LIS2MDL OUTX_L..OUTZ_H and of the
+     *    barometer PRESS_OUT_XL..TEMP_OUT_H */
+    if (imu->mag_enabled || imu->baro_enabled) {
+        if (imu->mag_enabled) {
+            lsm6dsv16x_sh_cfg_read_t r = { LIS2MDL_ADDR_8BIT, LIS2MDL_OUTX_L, 6 };
+            ret |= lsm6dsv16x_sh_slv_cfg_read(&imu->ctx, 0, &r);
+        }
+        if (imu->baro_enabled) {
+            lsm6dsv16x_sh_cfg_read_t r = { imu->baro_addr8, LPS22_PRESS_OUT_XL, 5 };
+            ret |= lsm6dsv16x_sh_slv_cfg_read(&imu->ctx, imu->baro_slot, &r);
+        }
         ret |= lsm6dsv16x_sh_data_rate_set(&imu->ctx, cfg->mag_fast ? LSM6DSV16X_SH_120Hz
                                                                      : LSM6DSV16X_SH_60Hz);
-        ret |= lsm6dsv16x_sh_slave_connected_set(&imu->ctx, LSM6DSV16X_SLV_0);
+        ret |= lsm6dsv16x_sh_slave_connected_set(&imu->ctx,
+                   (imu->mag_enabled && imu->baro_enabled) ? LSM6DSV16X_SLV_0_1 : LSM6DSV16X_SLV_0);
         ret |= lsm6dsv16x_sh_master_set(&imu->ctx, PROPERTY_ENABLE);
         if (ret) return IMU_ERR_BUS;
     }
@@ -204,6 +256,23 @@ size_t imu_fifo_parse(imu_t *imu, const uint8_t *raw, uint16_t words,
             n++; if (st) st->acc++;
             break;
         case LSM6DSV16X_SENSORHUB_SLAVE0_TAG:
+        case LSM6DSV16X_SENSORHUB_SLAVE1_TAG: {
+            const uint8_t slot = (tag == LSM6DSV16X_SENSORHUB_SLAVE0_TAG) ? 0u : 1u;
+            if (imu->baro_enabled && slot == imu->baro_slot) {
+                /* the hub re-reads at 60/120 Hz, the baro converts at 50 Hz */
+                if (imu->have_baro && memcmp(d, imu->last_baro_raw, 5) == 0) { if (st) st->baro_dup++; break; }
+                memcpy(imu->last_baro_raw, d, 5);
+                imu->have_baro = 1;
+                int32_t pr = (int32_t)((uint32_t)d[0] | ((uint32_t)d[1] << 8) | ((uint32_t)d[2] << 16));
+                if (pr & 0x00800000) pr -= 0x01000000;               /* 24-bit two's complement */
+                ev[n].type = IMU_EV_BARO;
+                ev[n].v[0] = (float)pr * (100.0f / 4096.0f);          /* Pa  (LSB = 1/4096 hPa) */
+                ev[n].v[1] = (float)le16(&d[3]) * 0.01f;              /* degC                   */
+                ev[n].v[2] = 0.0f;
+                n++; if (st) st->baro++;
+                break;
+            }
+            if (!imu->mag_enabled || slot != 0u) { if (st) st->unknown++; break; }
             if (imu->have_mag && memcmp(d, imu->last_mag_raw, 6) == 0) {
                 if (st) st->mag_dup++;                      /* re-read of the same sample      */
                 break;
@@ -214,6 +283,7 @@ size_t imu_fifo_parse(imu_t *imu, const uint8_t *raw, uint16_t words,
             for (int i = 0; i < 3; ++i) ev[n].v[i] = (float)le16(&d[2*i]) * LIS2MDL_UT_PER_LSB;
             n++; if (st) st->mag++;
             break;
+        }
         case LSM6DSV16X_SENSORHUB_NACK_TAG:
             if (st) st->sh_nack++;
             break;

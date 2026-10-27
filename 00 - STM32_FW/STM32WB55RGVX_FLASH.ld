@@ -44,7 +44,9 @@ _Min_Stack_Size = 0x400; /* required amount of stack */
 /* Specify the memory areas */
 MEMORY
 {
-FLASH (rx)                 : ORIGIN = 0x08000000, LENGTH = 512K
+/* ACwing: the last 8 KB of the 512 KB application area (0x0807E000-0x0807FFFF)
+ * hold the configuration pages (App/app/cfg_store.h, platform/cfg_flash_wb.c). */
+FLASH (rx)                 : ORIGIN = 0x08000000, LENGTH = 504K
 RAM (xrw)                 : ORIGIN = 0x20000008, LENGTH = 0x2FFF8
 RAM_SHARED (xrw)           : ORIGIN = 0x20030000, LENGTH = 10K
 }

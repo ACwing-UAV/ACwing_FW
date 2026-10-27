@@ -132,4 +132,11 @@
 #define APP_BLE_CONN_INT_MAX   24u     /* x1.25 ms = 30 ms (iOS: max >= min + 15 ms)   */
 #define APP_BLE_SUPERV_TIMEOUT 400u    /* x10 ms   = 4 s                               */
 
+/* ---------------- ACwing Pilot protocol v2 ---------------- */
+#define APP_HW_REV        'N'     /* CAPS hwRev: 'N' = NUCLEO-WB55 + IKS4A1 bench, 'A' = ACwing FC rev A */
+/* ACwing Flow: PMW3901 counts -> body axes (frame C2: board t forward, s left).
+ * To be confirmed on the first build (FLOW_TOF calibration, "match"). */
+#define APP_FLOW_SIGN_X   (1.0f)
+#define APP_FLOW_SIGN_Y   (1.0f)
+
 #endif /* APP_CONFIG_H */
