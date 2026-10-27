@@ -89,7 +89,7 @@ ACwing FC. Motors are disabled (`MOTORS_ENABLE = 0`).
 | understand the vehicle and its sensors | [Vehicle model and dynamics](theory/vehicle-model.md) |
 | understand the attitude filter | [Attitude IEKF](theory/iekf.md), then [IEKF on the microcontroller](theory/iekf-embedded.md) |
 | understand the altitude estimate | [Altitude Kalman filter](theory/altitude-kf.md) |
-| see how the firmware is organised | [Architecture](firmware/architecture.md), [API reference](api/index.md) |
+| see how the firmware is organised | [Architecture](firmware/architecture.md), API reference of the [FC](https://andrea-cirillo.github.io/ACwing_FlightController_FW/api/fc/) and [Flow](https://andrea-cirillo.github.io/ACwing_FlightController_FW/api/flow/) firmware |
 | build and flash | [Building and flashing](firmware/build.md); for the Flow board, [ACwing Flow bridge](firmware/flow-bridge.md) |
 | see the attitude live, record logs | [PC tools and live viewer](tools/pc-tools.md) |
 | calibrate the magnetometer | [Magnetometer calibration](tools/mag-calibration.md) |
