@@ -132,4 +132,15 @@
 #define APP_BLE_CONN_INT_MAX   24u     /* x1.25 ms = 30 ms (iOS: max >= min + 15 ms)   */
 #define APP_BLE_SUPERV_TIMEOUT 400u    /* x10 ms   = 4 s                               */
 
+/* ---------------- ACwing Pilot protocol v2 ---------------- */
+#define APP_HW_REV        'N'     /* CAPS hwRev: 'N' = NUCLEO-WB55 + IKS4A1 bench, 'A' = ACwing FC rev A */
+/* ACwing Flow: PMW3901 counts -> body axes (frame C2: board t forward, s left).
+ * To be confirmed on the first build (FLOW_TOF calibration, "match"). */
+#define APP_FLOW_SIGN_X   (1.0f)
+#define APP_FLOW_SIGN_Y   (1.0f)
+/* PMW3901 minimum working distance (datasheet: 80 mm). Landed, the lens is
+ * ~11 mm above the floor (frame C2): below this height the flow is not used
+ * (no velocity, no POS_HOLD, no FLOW_LOST failsafe); usable again 20 mm above. */
+#define APP_FLOW_MIN_H    0.08f
+
 #endif /* APP_CONFIG_H */

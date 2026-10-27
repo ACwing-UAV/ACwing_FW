@@ -42,6 +42,8 @@ typedef struct {
     iekf_config_t ekf;               /* sigma_acc/sigma_mag overwritten by calib */
     float         mag_map[9];        /* LIS2MDL sensor -> body (LSM6DSV16X)  */
     float         mag_hard_iron[3];  /* uT, body frame                          */
+    float         mag_scale[3];      /* per-axis soft-iron scale (COMPASS calibration);
+                                        0 = 1 (configs that do not set it)       */
     /* Age of the mag sample on arrival: the LIS2MDL converts at f_lis, the sensor
      * hub re-reads it at f_sh > f_lis and duplicates are discarded, so the age is
      * ~uniform in [0, 1/f_sh]: mean 0.5/f_sh, std (1/f_sh)/sqrt(12).

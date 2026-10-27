@@ -40,3 +40,18 @@ void motors_set(const float duty[4])
     (void)duty;
 #endif
 }
+
+void motors_test(uint8_t motor, float duty)
+{
+#if MOTORS_ENABLE
+    if (s_armed) return;                         /* never while armed */
+    if (duty < 0.0f) duty = 0.0f;
+    if (duty > 0.2f) duty = 0.2f;                /* MOTOR_TEST limit: 20 % */
+    for (int i = 0; i < 4; ++i) {
+        const float d = (motor == (uint8_t)(i + 1)) ? duty : 0.0f;
+        __HAL_TIM_SET_COMPARE(&htim1, k_ch[i], (uint32_t)(d * (float)MOTORS_PWM_TOP + 0.5f));
+    }
+#else
+    (void)motor; (void)duty;
+#endif
+}

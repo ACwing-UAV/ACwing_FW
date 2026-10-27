@@ -85,6 +85,8 @@
 									<listOptionValue builtIn="false" value="&quot;${workspace_loc:/${ProjName}/App/third_party/cmsis_dsp/Include}&quot;"/>
 									<listOptionValue builtIn="false" value="&quot;${workspace_loc:/${ProjName}/App/third_party/st_lsm6dsv16x}&quot;"/>
 									<listOptionValue builtIn="false" value="&quot;${workspace_loc:/${ProjName}/App/drivers/imu_lsm6dsv16x}&quot;"/>
+									<listOptionValue builtIn="false" value="&quot;${workspace_loc:/${ProjName}/App/drivers/vl53l1x}&quot;"/>
+									<listOptionValue builtIn="false" value="&quot;${workspace_loc:/${ProjName}/App/drivers/flow_bridge}&quot;"/>
 									<listOptionValue builtIn="false" value="../STM32_WPAN/App"/>
 									<listOptionValue builtIn="false" value="../Utilities/lpm/tiny_lpm"/>
 									<listOptionValue builtIn="false" value="../Middlewares/ST/STM32_WPAN"/>
@@ -229,6 +231,8 @@
 									<listOptionValue builtIn="false" value="&quot;${workspace_loc:/${ProjName}/App/drivers/common}&quot;"/>
 									<listOptionValue builtIn="false" value="&quot;${workspace_loc:/${ProjName}/App/third_party/st_lsm6dsv16x}&quot;"/>
 									<listOptionValue builtIn="false" value="&quot;${workspace_loc:/${ProjName}/App/drivers/imu_lsm6dsv16x}&quot;"/>
+									<listOptionValue builtIn="false" value="&quot;${workspace_loc:/${ProjName}/App/drivers/vl53l1x}&quot;"/>
+									<listOptionValue builtIn="false" value="&quot;${workspace_loc:/${ProjName}/App/drivers/flow_bridge}&quot;"/>
 									<listOptionValue builtIn="false" value="../STM32_WPAN/App"/>
 									<listOptionValue builtIn="false" value="../Utilities/lpm/tiny_lpm"/>
 									<listOptionValue builtIn="false" value="../Middlewares/ST/STM32_WPAN"/>

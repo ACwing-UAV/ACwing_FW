@@ -2,6 +2,9 @@
  * @file  ble_tlm_svc.c
  * @brief "ACwing telemetry" GATT service + TX thread on STM32_WPAN (see ble_tlm_svc.h).
  *
+ * Protocol v2 (HANDOVER_FW.md §2): CMD writes are only recorded (app_link.c),
+ * the TX thread drains the two priority queues of tlm_ble.c.
+ *
  * Event flow
  *   HCI user-event thread (stack)  -> TlmSvc_EventHandler(): only flags and
  *                                     counters, never an ACI call, never blocks
@@ -34,6 +37,8 @@
 #include "common_blesvc.h"
 #include "cmsis_os2.h"
 #include "tlm_ble.h"
+#include "app_link.h"
+#include "main.h"
 #include <string.h>
 
 #ifndef CFG_BLE_MAX_ATT_MTU
@@ -96,7 +101,13 @@ static SVCCTL_EvtAckStatus_t TlmSvc_EventHandler(void *Event)
             kick();
         } else if (am->Attr_Handle == (uint16_t)(s_cmdHdl + 1u)) {   /* CMD value */
             ret = SVCCTL_EvtAckFlowEnable;
-            tlm_ble_on_command(am->Attr_Data, am->Attr_Data_Length);
+            /* Only the arrival is recorded here (app_link.h): time from the 1 kHz
+             * HAL tick, RC values, or a copy into the command queue drained by
+             * the AppTask. No command is executed in the BLE context. */
+            if (!g_dbg_ble_stall) {
+                appl_on_cmd_write(am->Attr_Data, am->Attr_Data_Length, HAL_GetTick());
+                tlm_ble_on_command(am->Attr_Data, am->Attr_Data_Length);
+            }
         }
         break;
     }
@@ -141,6 +152,7 @@ static void BleTxThread(void *arg)
     (void)arg;
     for (;;) {
         (void)osThreadFlagsWait(FLAG_KICK, osFlagsWaitAny, APP_BLE_FLUSH_MS);
+        if (g_dbg_ble_stall) continue;            /* bench test: BLE path stalled on purpose */
 
         if (s_paramsPending && s_conn != 0xFFFFu) {
             s_paramsPending = 0u;
@@ -169,10 +181,14 @@ static void BleTxThread(void *arg)
 }
 
 /* ------------------------------------------------------------------ public */
+extern volatile uint8_t g_cpu2_ready;           /* platform/cfg_flash_wb.c */
+
 void ble_tlm_svc_init(void)
 {
     Char_UUID_t uuid;
     tBleStatus  st;
+
+    g_cpu2_ready = 1u;    /* called from APP_BLE_Init(): the wireless stack is running */
 
     tlm_ble_reset();
     SVCCTL_RegisterSvcHandler(TlmSvc_EventHandler);
@@ -205,6 +221,7 @@ void ble_tlm_svc_init(void)
 
 void ble_tlm_on_connect(uint16_t conn_handle)
 {
+    appl_on_connect();
     s_conn = conn_handle;
     s_notify = 0u;
     tlm_ble_set_mtu(TLM_BLE_MTU_DEFAULT);
@@ -213,6 +230,7 @@ void ble_tlm_on_connect(uint16_t conn_handle)
 
 void ble_tlm_on_disconnect(void)
 {
+    appl_on_disconnect();     /* may only make the app-link failsafe start earlier */
     s_conn = 0xFFFFu;
     s_notify = 0u;
     s_paramsPending = 0u;
