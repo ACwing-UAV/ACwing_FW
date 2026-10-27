@@ -3,9 +3,9 @@
  * @brief ACwing Flow rev A optical-flow bridge (STM32C011 at 0x3B, PMW3901 behind it).
  *
  * The bridge reads the PMW3901 motion burst at 100 Hz over SPI and serves the
- * accumulated motion over I2C. This file DEFINES the register map the bridge
- * firmware has to implement (the bridge firmware is not written yet: until it
- * exists, flow_init() fails and the FLOW sensor bit stays 0).
+ * accumulated motion over I2C. Bridge firmware: 03 - FLOW_FW (its flow_regs.h
+ * holds the same map; its host test checks that the two agree). Without a
+ * programmed bridge flow_init() fails and the FLOW sensor bit stays 0.
  *
  * Register map (8-bit addresses, auto-increment, little-endian):
  *
@@ -14,7 +14,8 @@
  *   0x01  VERSION   R       bridge firmware version (major << 4 | minor)
  *   0x02  STATUS    R       bit0 PMW3901 ok (product id checked), bit1 new data
  *                           since the last FRAME read, bit2 overflow (|dX| or |dY|
- *                           saturated), bit3 PMW3901 in low-light mode
+ *                           saturated), bit3 last sample rejected (no surface
+ *                           features: low SQUAL at maximum shutter)
  *   0x03  COUNT     R       u8, +1 per PMW3901 sample accumulated (wraps)
  *   0x04  DX        R       i16, counts accumulated since the last FRAME read
  *   0x06  DY        R       i16
@@ -46,7 +47,7 @@
 #define FLOW_ST_SENSOR_OK      0x01u
 #define FLOW_ST_NEW            0x02u
 #define FLOW_ST_OVERFLOW       0x04u
-#define FLOW_ST_LOW_LIGHT      0x08u
+#define FLOW_ST_REJECTED       0x08u
 
 typedef struct {
     sensor_bus_t bus;

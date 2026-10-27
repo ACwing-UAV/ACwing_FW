@@ -128,8 +128,9 @@ name of the file that implements it.
 
 ## 2. Repository structure
 
-The repository has three numbered top-level folders: the firmware, the PC
-tools and the documentation assets. Names follow the ACwing convention of the
+The repository has four numbered top-level folders: the flight-controller
+firmware, the PC tools, the documentation assets and the firmware of the
+ACwing Flow bridge. Names follow the ACwing convention of the
 hardware repository: `ACwing_<part>_<what>` (CubeIDE project `ACwing_FC_FW`,
 Python package `acwing_tools`, MATLAB viewer `acwingLiveViewer`, logs
 `acwing_log_*`). Names of the filter itself (`iekf.c`, `iekfAttitude.m`, …)
@@ -190,6 +191,8 @@ ACwing_FlightController_FW/
 │       └── README.md               run, simulator, native builds
 ├── 02 - Docs/
 │   └── 00 - Brand/                 ACwing logos (SVG/PNG), copied from the hardware repository
+├── 03 - FLOW_FW/                   ACwing Flow bridge firmware (STM32C011F4U6): PMW3901 over SPI -> I²C target
+│                                   0x3B; Makefile, CMSIS only, host tests; see its README
 ├── .gitignore                      build outputs (Debug/, Release/) are not versioned
 └── README.md                       this file: theory, firmware, procedures, results
 ```
@@ -1557,7 +1560,7 @@ ExtTask (BelowNormal)        VL53L1X + flow bridge on Qwiic, 10 ms, I²C lock wi
 |---|---|---|---|
 | Barometer | LPS22DF (X-NUCLEO-IKS4A1) or LPS22HB (ACwing FC rev A), slave 1 of the LSM6DSV16X **sensor hub**, 50 Hz, in the same FIFO | `imu_lsm6dsv16x.c`, model from WHO_AM_I. Optional: if it is missing, the IMU starts without it | bench and FC |
 | ToF height | VL53L1X at 0x29 on the Qwiic bus (ACwing Flow), long mode, 33 ms (30 Hz) | `vl53l1x.c` (from ST's ULD, BSD-3) | ACwing Flow |
-| Optical flow | PMW3901 behind the STM32C011 bridge at 0x3B | `flow_bridge.c`. The **register map is defined in `flow_bridge.h`**; the bridge firmware is still to be written, so until then FLOW stays 0 in CAPS | ACwing Flow |
+| Optical flow | PMW3901 behind the STM32C011 bridge at 0x3B, 100 Hz motion burst | `flow_bridge.c` on the FC; bridge firmware in [`03 - FLOW_FW`](03%20-%20FLOW_FW/README.md), same register map (checked by its host test). An unprogrammed bridge leaves FLOW at 0 in CAPS | ACwing Flow |
 
 `ExtTask` probes the Qwiic devices at boot and every 5 s, so the board can be
 plugged in later. A new sensor bit makes the AppTask send CAPS again.
@@ -1715,9 +1718,9 @@ validation) is concluded. Open items for the next phases:
 - Protocol v2 (§13) on the board: run the acceptance tests of
   `HANDOVER_FW.md` §16 with the app; tune the vertical estimator and the
   altitude loop on the first flights (`alt_est.c`, `alt_ctrl.c`).
-- ACwing Flow: firmware of the STM32C011 bridge (register map in
-  `flow_bridge.h`), FLOW_TOF calibration (ToF offset, flow scale, axis signs
-  `APP_FLOW_SIGN_*`), then POS_HOLD on the flow velocity.
+- ACwing Flow: program and check the bridge on the first board
+  (`03 - FLOW_FW/README.md`), FLOW_TOF calibration (ToF offset, flow scale,
+  axis signs `APP_FLOW_SIGN_*`), then POS_HOLD on the flow velocity.
 - POWER frame and battery failsafes once the ADC (VBAT, current) is read;
   BATTERY calibration.
 - Optionally read the LSM6DSV16X `INTERNAL_FREQ_FINE` register at start-up to
