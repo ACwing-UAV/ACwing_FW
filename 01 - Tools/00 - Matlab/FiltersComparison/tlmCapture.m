@@ -16,7 +16,7 @@ if nargin < 2 || isempty(duration), duration = 60; end
 if nargin < 3 || isempty(baud),     baud     = 921600; end
 if nargin < 4 || isempty(outDir),   outDir   = pwd; end
 
-binFile = fullfile(outDir, sprintf('iekf_cap_%s.bin', datestr(now, 'yyyymmdd_HHMMSS'))); %#ok<TNOW1,DATST>
+binFile = fullfile(outDir, sprintf('acwing_cap_%s.bin', datestr(now, 'yyyymmdd_HHMMSS'))); %#ok<TNOW1,DATST>
 fid = fopen(binFile, 'w');
 if fid < 0, error('Cannot create %s', binFile); end
 dev = serialport(port, baud, "Timeout", 1);

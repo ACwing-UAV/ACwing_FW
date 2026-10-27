@@ -3,8 +3,8 @@ import struct
 
 import numpy as np
 
-from iekf_tools.simulate import pack_init, pack_state, pack_status, synthetic_stream
-from iekf_tools.telemetry import (crc16ccitt, decode_init, decode_replay, decode_state,
+from acwing_tools.simulate import pack_init, pack_state, pack_status, synthetic_stream
+from acwing_tools.telemetry import (crc16ccitt, decode_init, decode_replay, decode_state,
                                   decode_status, encode_frame, frame_counts, parse_telemetry,
                                   status_diagnosis)
 

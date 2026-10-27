@@ -8,8 +8,8 @@ import pytest
 import scipy.io as sio
 
 from conftest import DATA
-from iekf_tools.compare import compare_embedded
-from iekf_tools.telemetry import encode_frame, parse_telemetry
+from acwing_tools.compare import compare_embedded
+from acwing_tools.telemetry import encode_frame, parse_telemetry
 
 
 @pytest.fixture(scope="module")

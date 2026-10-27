@@ -5,8 +5,8 @@ attitude and what the firmware would log with ``MAG_AXIS_MAP`` = identity and
 ``MAG_HARD_IRON`` = 0 (i.e. the raw sensor field), so that
 ``calib_mag_axes`` must recover the given axis map and hard-iron.
 
-    python -c "from iekf_tools.simulate import write_stream; write_stream('sim.bin')"
-    python -m iekf_tools viewer --replay sim.bin
+    python -c "from acwing_tools.simulate import write_stream; write_stream('sim.bin')"
+    python -m acwing_tools viewer --replay sim.bin
 """
 from __future__ import annotations
 

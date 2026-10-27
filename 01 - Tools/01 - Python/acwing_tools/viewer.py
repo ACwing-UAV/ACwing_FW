@@ -1,4 +1,4 @@
-"""Live 3D viewer of the attitude estimated by the firmware (port of ``iekfLiveViewer.m``).
+"""Live 3D viewer of the attitude estimated by the firmware (port of ``acwingLiveViewer.m``).
 
 A 3D board + body triad follows the attitude in the levelled NWU world frame
 (x = magnetic north, y = west, z = up) defined by the firmware's static
@@ -70,7 +70,7 @@ class LiveViewer:
         self.stop_at_eof = stop_at_eof
         self.show = show
         stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        self.log_file = os.path.join(log_dir, f"iekf_log_{stamp}.mat")
+        self.log_file = os.path.join(log_dir, f"acwing_log_{stamp}.mat")
         self.bin_file = self.log_file[:-4] + ".bin"
         self.log = _Log()
         self.q_rx: "queue.Queue[bytes]" = queue.Queue()
@@ -196,7 +196,7 @@ class LiveViewer:
         import matplotlib.pyplot as plt
         from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 
-        fig = plt.figure("IEKF live - STM32", figsize=(7.5, 8))
+        fig = plt.figure("ACwing FC - live attitude", figsize=(7.5, 8))
         ax = fig.add_axes([0.02, 0.24, 0.96, 0.74], projection="3d")
         lim = 1.6
         ax.set_xlim(-lim, lim); ax.set_ylim(-lim, lim); ax.set_zlim(-lim, lim)
@@ -310,7 +310,7 @@ class LiveViewer:
         print(f"Log: {self.log_file}\n  {self.log.n} STATE samples, {self.n_status} STATUS, "
               f"{self.n_lost} lost, {self.n_resets} reboots.")
         if self.n_replay > 0:
-            print(f"  {self.n_replay} REPLAY packets: python -m iekf_tools compare {self.bin_file}")
+            print(f"  {self.n_replay} REPLAY packets: python -m acwing_tools compare {self.bin_file}")
 
 
 def live_viewer(port: str | None = None, baud: int = 921600, log_dir: str = ".",

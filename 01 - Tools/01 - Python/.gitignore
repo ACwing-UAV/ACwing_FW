@@ -6,7 +6,13 @@ __pycache__/
 build/
 dist/
 # outputs of the tools
+acwing_log_*.mat
+acwing_log_*.bin
+acwing_cap_*.bin
+acwing_ble_*.bin
+# names before the ACwing rename
 iekf_log_*.mat
 iekf_log_*.bin
 iekf_cap_*.bin
+iekf_ble_*.bin
 sim.bin

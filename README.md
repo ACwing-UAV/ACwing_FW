@@ -1,20 +1,43 @@
-# Embedded Invariant EKF for attitude estimation on STM32WB55
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="02%20-%20Docs/00%20-%20Brand/ACwing_logo_white.png">
+    <img alt="ACwing" src="02%20-%20Docs/00%20-%20Brand/ACwing_logo_black.png" width="260">
+  </picture>
+</p>
 
-This repository contains the firmware of an **attitude estimator for a small
-quadrotor**, together with the PC tools used to develop, calibrate and validate
-it.
+<h1 align="center">ACwing – flight-controller firmware</h1>
 
-The estimator is an **Invariant Extended Kalman Filter (IEKF) on SO(3)** that
-fuses a gyroscope, an accelerometer and a magnetometer. It runs on an
-**STM32WB55** (P-NUCLEO-WB55) with the **X-NUCLEO-IKS4A1** sensor shield: the
-LSM6DSV16X provides gyroscope + accelerometer, the LIS2MDL the magnetometer.
+<p align="center">
+  Invariant EKF attitude estimation on STM32WB55 · FreeRTOS · BLE telemetry<br>
+  PC tools in MATLAB and Python · by Andrea Cirillo
+</p>
+
+---
+
+**ACwing** is an open project for small multirotors. Its parts are:
+- a modular set of PCBs, with a universal flight controller (**ACwing FC**), a
+  1S power board, and GNSS and optical-flow expansions. They are in the
+  hardware repository,
+  [ACwing_FlightController_HW](https://github.com/andrea-cirillo/ACwing_FlightController_HW);
+- the **firmware** that runs on the flight controller, and the PC tools used to
+  develop, calibrate and validate it. They are in **this repository**.
+
+The first building block of the firmware is the **attitude estimator**. It is
+an **Invariant Extended Kalman Filter (IEKF) on SO(3)** that fuses a
+gyroscope, an accelerometer and a magnetometer. It runs on the **STM32WB55**,
+the microcontroller of the ACwing FC. Until the first ACwing FC boards are
+built, development runs on the ST evaluation kit: P-NUCLEO-WB55 with the
+**X-NUCLEO-IKS4A1** sensor shield. The kit has the same MCU family and the same
+IMU (LSM6DSV16X, gyroscope + accelerometer); its magnetometer is the LIS2MDL.
+
 The filter was first developed and benchmarked in MATLAB, then ported to C on
 FreeRTOS + CMSIS-DSP, inside a multi-rate architecture:
 - 960 Hz propagation;
 - 240 Hz accelerometer update;
 - ~100 Hz magnetometer update.
 
-The rate and attitude control loops are already wired in and empty.
+The estimate reaches the PC over USB or over **BLE**. The rate and attitude
+control loops are already wired in and empty.
 
 Two things make the repository more than a firmware project:
 
@@ -31,10 +54,11 @@ Two things make the repository more than a firmware project:
 
 | | |
 |---|---|
-| **Vehicle** | quadrotor, 4 × brushed coreless 8520 motors, 1S LiPo; attitude control only (no GPS, no position control) |
-| **Target** | P-NUCLEO-WB55 (NUCLEO-WB55RG: Cortex-M4F @ 64 MHz + Cortex-M0+ radio core) |
+| **Project** | ACwing · hardware: [ACwing_FlightController_HW](https://github.com/andrea-cirillo/ACwing_FlightController_HW) · firmware: this repository |
+| **Vehicle** | ACwing 1S mini drone: ACwing FC on the ACwing ESC 1S power board, 4 × brushed coreless 8520 motors, 1S LiPo. Attitude control first; GNSS and optical flow come with the expansion boards |
+| **Target** | today the P-NUCLEO-WB55 (NUCLEO-WB55RG: Cortex-M4F @ 64 MHz + Cortex-M0+ radio core); next, the ACwing FC (STM32WB55CGU6, same cores) |
 | **Sensors** | X-NUCLEO-IKS4A1 in **Mode 3**: LSM6DSV16X (gyro + acc) on the MCU I²C bus, LIS2MDL (mag) read through the LSM6DSV16X sensor hub |
-| **Software** | STM32CubeIDE / CubeMX, FreeRTOS (CMSIS-RTOS2), CMSIS-DSP; PC tools: MATLAB R2019b+ or Python ≥ 3.9 |
+| **Software** | STM32CubeIDE / CubeMX (project `ACwing_FC_FW`), FreeRTOS (CMSIS-RTOS2), CMSIS-DSP; PC tools: MATLAB R2019b+ or Python ≥ 3.9 (`acwing-tools`) |
 | **Status** | **Phase 1 (attitude estimation) concluded.** Both validation tests passed **on the board**: base equations vs the original `iekfAttitude.m` (≤ 0.003 σ), full embedded filter vs `iekfAttitudeEmb.m` (≤ 0.002 σ), see §11.5. **Phase 2 (BLE telemetry to the PC)**: working on the board, 57 STATE/s with no loss and no drift (§12.9). Motors disabled. |
 
 ---
@@ -62,11 +86,23 @@ Two things make the repository more than a firmware project:
 
 ## 1. Introduction
 
-The goal of the project is **attitude control of a small quadrotor**
-(4 × brushed coreless 8520 motors, 1S). Position and trajectory are out of
-scope and there is no GPS: the estimator has to provide only the **attitude**
-(and the gyroscope bias), from a gyroscope, an accelerometer and a
-magnetometer.
+The goal of ACwing is a small, open multirotor whose hardware and software are
+both designed in the project. The first target is the **ACwing 1S mini
+drone** (4 × brushed coreless 8520 motors, 1S), and its first milestone is
+**attitude control**.
+
+| ACwing part | What it is | Where |
+|---|---|---|
+| ACwing FC | flight controller: STM32WB55, LSM6DSV16X IMU, barometer, compass, BLE, two 4-in-1 ESC links | [hardware repository](https://github.com/andrea-cirillo/ACwing_FlightController_HW) |
+| ACwing ESC 1S | 1S power board: 4 brushed motor stages, current sensor, USB-C charger | hardware repository |
+| ACwing GPS, ACwing Flow | expansions: GNSS + compass (outdoor), optical flow + ToF height (indoor) | hardware repository |
+| ACwing FC firmware | attitude estimation, telemetry (USB, BLE), then control | **this repository** (`00 - STM32_FW`) |
+| ACwing PC tools | live viewer, capture, calibration, validation, in MATLAB and Python | **this repository** (`01 - Tools`) |
+
+Position and trajectory are out of scope for now: the estimator has to
+provide only the **attitude** (and the gyroscope bias), from a gyroscope, an
+accelerometer and a magnetometer. GNSS and optical flow will come with the
+expansion boards.
 
 The work is organised in phases:
 
@@ -91,11 +127,15 @@ name of the file that implements it.
 
 ## 2. Repository structure
 
-The repository has two numbered top-level folders: the firmware and the PC
-tools.
+The repository has three numbered top-level folders: the firmware, the PC
+tools and the documentation assets. Names follow the ACwing convention of the
+hardware repository: `ACwing_<part>_<what>` (CubeIDE project `ACwing_FC_FW`,
+Python package `acwing_tools`, MATLAB viewer `acwingLiveViewer`, logs
+`acwing_log_*`). Names of the filter itself (`iekf.c`, `iekfAttitude.m`, …)
+keep the name of the algorithm.
 
 ```
-stm32_iekf_attitude_fw/
+ACwing_FlightController_FW/
 ├── 00 - STM32_FW/                  STM32CubeIDE project of the firmware (import this folder)
 │   ├── App/                        application code, hardware-independent where possible
 │   │   ├── app/                    app_main (FreeRTOS tasks, IRQ glue), app_config.h (ALL parameters),
@@ -114,26 +154,28 @@ stm32_iekf_attitude_fw/
 │   ├── STM32_WPAN/App/             CubeMX-generated BLE application (app_ble.c with our 3 hooks, §12.5)
 │   ├── Drivers/, Middlewares/      CubeMX-generated: STM32WB HAL, CMSIS, FreeRTOS, ST STM32_WPAN (BLE)
 │   ├── Utilities/                  CubeMX-generated: low-power manager used by STM32_WPAN
-│   ├── STM32_IEKF.ioc              CubeMX configuration (pins, clocks, DMA, FreeRTOS)
-│   ├── STM32_IEKF.launch           STM32CubeIDE debug configuration (ST-LINK, SWD)
+│   ├── ACwing_FC_FW.ioc            CubeMX configuration (pins, clocks, DMA, FreeRTOS, BLE)
+│   ├── ACwing_FC_FW.launch         STM32CubeIDE debug configuration (ST-LINK, SWD)
 │   ├── .project, .cproject, .mxproject, .settings/   STM32CubeIDE project files
 │   └── STM32WB55RGVX_FLASH.ld, ..._RAM.ld   linker scripts
 ├── 01 - Tools/                     PC tools, in two equivalent flavours
 │   ├── 00 - Matlab/                MATLAB tools (R2019b+)
 │   │   ├── initPath.m              adds every folder below to the path
-│   │   ├── Viewer/                 iekfLiveViewer.m (live 3D triad + logging, USB or BLE), quat2rotmLocal.m
+│   │   ├── Viewer/                 acwingLiveViewer.m (live 3D triad + logging, USB or BLE), quat2rotmLocal.m
 │   │   ├── Telemetry/              parseTelemetry, decode*, crc16ccitt, statusDiagnosis
 │   │   ├── MagCalib/               calibMagAxes.m (axis map + hard-iron), fitHardIron.m, magCheck.m
 │   │   └── FiltersComparison/      tlmCapture, tlmSniffer, compareEmbeddedVsMatlab
 │   │       ├── IEKF_originalVersion/   ORIGINAL filter developed in MATLAB: iekfAttitude.m, expSO3, logSO3, skewSym
 │   │       └── IEKF_embeddedVersion/   EXTENDED filter: iekfAttitudeEmb.m + iekfCore*.m (MATLAB mirror of the C code)
-│   └── 01 - Python/                Python equivalents of the MATLAB tools (package iekf_tools, CLI iekf-tools)
-│       ├── iekf_tools/             viewer, capture + sniffer, compare, magcalib, telemetry,
+│   └── 01 - Python/                Python equivalents of the MATLAB tools (package acwing_tools, CLI acwing-tools)
+│       ├── acwing_tools/           viewer, capture + sniffer, compare, magcalib, telemetry,
 │       │                           ble_io (BLE link, bleak), filters/ (original + embedded mirror),
 │       │                           logio (.mat logs), simulate
 │       ├── tests/                  pytest suite: parity with the MATLAB outputs, recorded captures
 │       ├── pyproject.toml, requirements.txt
 │       └── README.md               installation, MATLAB ↔ Python map, commands
+├── 02 - Docs/
+│   └── 00 - Brand/                 ACwing logos (SVG/PNG), copied from the hardware repository
 ├── .gitignore                      build outputs (Debug/, Release/) are not versioned
 └── README.md                       this file: theory, firmware, procedures, results
 ```
@@ -143,9 +185,9 @@ belong to:
 
 | Paths like | Are relative to |
 |---|---|
-| `App/…`, `Core/…`, `STM32_IEKF.ioc` | `00 - STM32_FW/` |
+| `App/…`, `Core/…`, `ACwing_FC_FW.ioc` | `00 - STM32_FW/` |
 | `Viewer/…`, `MagCalib/…`, `FiltersComparison/…`, `initPath.m` | `01 - Tools/00 - Matlab/` |
-| `iekf_tools/…`, `tests/…` | `01 - Tools/01 - Python/` |
+| `acwing_tools/…`, `tests/…` | `01 - Tools/01 - Python/` |
 
 **Three implementations of the same filter**, each with its role:
 
@@ -155,7 +197,7 @@ belong to:
 | `FiltersComparison/IEKF_originalVersion/` (MATLAB) | the filter as first designed, kept **unchanged** as the reference of the equations |
 | `FiltersComparison/IEKF_embeddedVersion/` (MATLAB) | MATLAB mirror of the C code, written line by line after `iekf.c`, with every improvement of §5 |
 
-`iekf_tools/filters/` (Python) ports both MATLAB filters, matching them to
+`acwing_tools/filters/` (Python) ports both MATLAB filters, matching them to
 ~1e-14.
 
 **Where to start:**
@@ -165,10 +207,10 @@ belong to:
 | understand the vehicle and its sensors | §3 |
 | understand the filter | §4 (original IEKF), §5 (embedded improvements) |
 | build and flash the firmware | §6 (architecture), §8 (build), `App/app/app_config.h` (parameters) |
-| see the attitude live / record logs | §9: MATLAB `iekfLiveViewer`, Python `iekf-tools viewer` |
-| calibrate or check the magnetometer | §10: MATLAB `calibMagAxes` / `magCheck`, Python `iekf-tools calib-mag` / `mag-check` |
-| validate the embedded filter | §11: MATLAB `compareEmbeddedVsMatlab`, Python `iekf-tools compare` |
-| use the BLE link | §12: MATLAB `iekfLiveViewer("ble")`, Python `iekf-tools viewer --ble` |
+| see the attitude live / record logs | §9: MATLAB `acwingLiveViewer`, Python `acwing-tools viewer` |
+| calibrate or check the magnetometer | §10: MATLAB `calibMagAxes` / `magCheck`, Python `acwing-tools calib-mag` / `mag-check` |
+| validate the embedded filter | §11: MATLAB `compareEmbeddedVsMatlab`, Python `acwing-tools compare` |
+| use the BLE link | §12: MATLAB `acwingLiveViewer("ble")`, Python `acwing-tools viewer --ble` |
 | use the tools without MATLAB | [`01 - Tools/01 - Python/README.md`](01%20-%20Tools/01%20-%20Python/README.md) |
 | fix a problem | §13 (troubleshooting) |
 
@@ -796,7 +838,7 @@ still work.
 1. The folder `00 - STM32_FW` is an STM32CubeIDE project: *File → Import →
    General → Existing Projects into Workspace*, select `00 - STM32_FW`. Build
    outputs (`Debug/`) are not versioned: the first build regenerates them. To change
-   pins or clocks, open `STM32_IEKF.ioc` in CubeMX and regenerate (user code is
+   pins or clocks, open `ACwing_FC_FW.ioc` in CubeMX and regenerate (user code is
    kept). Relevant settings already in the `.ioc`: SYSCLK 64 MHz; I2C1 on PB8/PB9 with
    DMA RX and event/error IRQs; USART1 921600 baud with DMA TX (**Memory increment
    enabled**) and global IRQ; PA15 EXTI rising edge (`IMU_INT1`); FreeRTOS
@@ -812,7 +854,7 @@ still work.
 4. `main.c` already calls `app_start()` and forwards the HAL callbacks
    (`HAL_GPIO_EXTI_Callback`, `HAL_I2C_MemRxCpltCallback`,
    `HAL_I2C_ErrorCallback`, `HAL_UART_TxCpltCallback`).
-5. Debug/flash: `STM32_IEKF.launch` (ST-LINK GDB server, SWD, connect under reset).
+5. Debug/flash: `ACwing_FC_FW.launch` (ST-LINK GDB server, SWD, connect under reset).
 6. BLE: the wireless stack must be flashed once on the Cortex-M0+ (§12.6). Without
    it, the radio core never starts. Set `APP_TLM_BLE 0` to run on USB only.
 
@@ -846,7 +888,7 @@ Python setup (details in [`01 - Tools/01 - Python/README.md`](01%20-%20Tools/01%
 
 ```bash
 cd "01 - Tools/01 - Python"
-python -m pip install -e .        # installs the iekf-tools command
+python -m pip install -e .        # installs the acwing-tools command
 ```
 
 `initPath.m` adds all folders (tools, original filter, extended filter) to the
@@ -857,9 +899,9 @@ another copy shadows it).
 **Live viewer** (firmware with `APP_TLM_REPLAY = 0`):
 
 ```matlab
-L = iekfLiveViewer("serial", "COM6");                 % 921600 baud by default
-L = iekfLiveViewer("serial", "COM6", 921600, "C:\logs") % choose the log folder
-L = iekfLiveViewer("ble");                            % BLE, board found automatically (§12.8)
+L = acwingLiveViewer("serial", "COM6");                 % 921600 baud by default
+L = acwingLiveViewer("serial", "COM6", 921600, "C:\logs") % choose the log folder
+L = acwingLiveViewer("ble");                            % BLE, board found automatically (§12.8)
 ```
 
 1. Start the viewer, then reset the board and keep it **still for 2–4 s**
@@ -870,8 +912,8 @@ L = iekfLiveViewer("ble");                            % BLE, board found automat
    above 0.5 s), gyro bias, flags (`ACC de-weighted`, `MAG de-weighted`, `STILL`)
    and the calibration result. Before the filter starts it shows the STATUS
    diagnosis instead.
-3. Close the figure to stop. The log (`iekf_log_*.mat`, autosaved every 10 s) is
-   also returned and copied into the workspace as `iekfLog`; a raw `.bin` capture
+3. Close the figure to stop. The log (`acwing_log_*.mat`, autosaved every 10 s) is
+   also returned and copied into the workspace as `acwingLog`; a raw `.bin` capture
    is written next to it.
 
 **Byte-level link check:**
@@ -883,10 +925,10 @@ tlmSniffer("COM6")      % bytes -> frames -> STATUS -> diagnosis
 **Python equivalents** (installation in [`01 - Tools/01 - Python/README.md`](01%20-%20Tools/01%20-%20Python/README.md)):
 
 ```bash
-iekf-tools viewer COM6                  # live viewer; --log-dir DIR, --baud B
-iekf-tools viewer --replay file.bin     # replay a recorded session (no board needed)
-iekf-tools viewer --ble                 # BLE (pip install bleak), board found automatically (§12.8)
-iekf-tools sniff COM6                   # byte-level link check
+acwing-tools viewer COM6                  # live viewer; --log-dir DIR, --baud B
+acwing-tools viewer --replay file.bin     # replay a recorded session (no board needed)
+acwing-tools viewer --ble                 # BLE (pip install bleak), board found automatically (§12.8)
+acwing-tools sniff COM6                   # byte-level link check
 ```
 
 The Python viewer shows the same panel and writes the same `.mat` log (variable
@@ -921,18 +963,18 @@ The candidate with the smallest residual wins, and must win by a clear margin.
    #define MAG_HARD_IRON  { 0.0f, 0.0f, 0.0f }
    ```
    Build with `APP_TLM_REPLAY = 0` and flash.
-2. `iekfLiveViewer("serial","COM6")`, reset, keep still 2 s, then ~40 s of slow to
+2. `acwingLiveViewer("serial","COM6")`, reset, keep still 2 s, then ~40 s of slow to
    moderate rotations about **all** axes (tilts included), away from metal objects
    and the USB cable. Close the viewer.
 3. Run
    ```matlab
-   calibMagAxes('iekf_log_YYYYMMDD_HHMMSS.mat')
+   calibMagAxes('acwing_log_YYYYMMDD_HHMMSS.mat')
    ```
    It prints the residuals of the 4 best hypotheses (warning if the best is not
    clearly separated) and the two lines to paste into `app_config.h`.
 4. Rebuild, flash and verify with a new log while rotating in all directions:
    ```matlab
-   S = load('iekf_log_....mat'); m = vecnorm(S.L.mag);
+   S = load('acwing_log_....mat'); m = vecnorm(S.L.mag);
    fprintf('|B| mean %.1f uT, variation %.1f%%\n', mean(m), 100*std(m)/mean(m))
    ```
    Expected: |B| ≈ 40–50 µT (local Earth field), variation < 3–5 %. With the
@@ -967,7 +1009,7 @@ ordinary viewer log recorded with the current firmware: board still for 2 s,
 then ~30 s of slow rotations about all axes.
 
 ```matlab
-out = magCheck('iekf_log_YYYYMMDD_HHMMSS.mat', [100.31 -0.56 -166.07])  % current MAG_HARD_IRON
+out = magCheck('acwing_log_YYYYMMDD_HHMMSS.mat', [100.31 -0.56 -166.07])  % current MAG_HARD_IRON
 ```
 
 It fits a sphere to the logged (already corrected) field and compares how much
@@ -981,10 +1023,10 @@ the field direction turns with how much the gyro turns. Possible verdicts:
 the MATLAB functions), with logs from either viewer:
 
 ```bash
-iekf-tools calib-mag iekf_log_....mat                       # firmware with identity map, zero offset
-iekf-tools calib-mag iekf_log_....mat --map 1,0,0,0,-1,0,0,0,-1 --hard-iron 100.31,-0.56,-166.07
-iekf-tools fit-hard-iron iekf_log_....mat
-iekf-tools mag-check iekf_log_....mat --hard-iron 100.31,-0.56,-166.07
+acwing-tools calib-mag acwing_log_....mat                       # firmware with identity map, zero offset
+acwing-tools calib-mag acwing_log_....mat --map 1,0,0,0,-1,0,0,0,-1 --hard-iron 100.31,-0.56,-166.07
+acwing-tools fit-hard-iron acwing_log_....mat
+acwing-tools mag-check acwing_log_....mat --hard-iron 100.31,-0.56,-166.07
 ```
 
 ---
@@ -1039,13 +1081,13 @@ Inputs are identical bit for bit: any difference comes from the filter.
 5. Set `APP_TLM_REPLAY 0` again for normal use.
 
 A previously recorded file is analysed the same way:
-`compareEmbeddedVsMatlab('C:\...\iekf_cap_YYYYMMDD_HHMMSS.bin')`.
+`compareEmbeddedVsMatlab('C:\...\acwing_cap_YYYYMMDD_HHMMSS.bin')`.
 
 Python, same procedure and same report:
 
 ```bash
-iekf-tools capture COM6 --duration 60          # then reset the board immediately
-iekf-tools compare iekf_cap_YYYYMMDD_HHMMSS.bin
+acwing-tools capture COM6 --duration 60          # then reset the board immediately
+acwing-tools compare acwing_cap_YYYYMMDD_HHMMSS.bin
 ```
 
 The Python port of both filters matches the MATLAB code to ~1e-14, and
@@ -1206,7 +1248,7 @@ Design choices:
 
 | Item | UUID | Properties | Content |
 |---|---|---|---|
-| Service "IEKF Telemetry" | `7E4A0001-2C6B-4F8E-9A5D-3B1C0E1D2F30` | primary | |
+| Service "ACwing telemetry" | `7E4A0001-2C6B-4F8E-9A5D-3B1C0E1D2F30` | primary | |
 | TLM | `7E4A0002-…` | Notify | frame byte stream, ≤ ATT_MTU−3 bytes per notification |
 | CMD | `7E4A0003-…` | Write, Write w/o response | `[0x01]` resend INIT · `[0x02, N]` STATE every N acc updates (1…240) |
 
@@ -1266,14 +1308,15 @@ reference, and to check after a regeneration:
    (IMU EXTI, IPCC, HSEM, RTC wake-up).
 
 6. **BLE parameters** (*STM32_WPAN → BLE → Configuration*).
-   - Advertised **name**: **`IEKF`**. CubeMX accepts only 5 characters here
-     because the name shares the 31-byte advertising packet with the
-     template's data. The PC tools recognise any name starting with `IEKF`,
-     and also `STM32WB` (the CubeMX default).
+   - Advertised **name**: **`ACwFC`** (ACwing FC). CubeMX accepts only 5
+     characters here because the name shares the 31-byte advertising packet
+     with the template's data. The same name is used as the GAP device name.
+     The PC tools recognise any name starting with `ACw`, and also `IEKF…`
+     (firmware before the ACwing rename) and `STM32WB` (the CubeMX default).
    - `CFG_BLE_MAX_ATT_MTU`: **247**. It gives fewer and fuller notifications.
 
-The CubeIDE project is named `STM32_IEKF` (`STM32_IEKF.ioc`,
-`STM32_IEKF.launch`).
+The CubeIDE project is named `ACwing_FC_FW` (`ACwing_FC_FW.ioc`,
+`ACwing_FC_FW.launch`).
 
 ### 12.5 Firmware hooks
 
@@ -1346,8 +1389,8 @@ STM32CubeProgrammer:
 MATLAB (R2019b+, Windows 10+/macOS, Bluetooth 4.0+ adapter):
 
 ```matlab
-L = iekfLiveViewer("ble");                 % board found automatically, STATE 60 Hz
-L = iekfLiveViewer("ble", "IEKF", 8); % by name or address, STATE 30 Hz
+L = acwingLiveViewer("ble");                 % board found automatically, STATE 60 Hz
+L = acwingLiveViewer("ble", "ACwFC", 8); % by name or address, STATE 30 Hz
 blelist                                    % what is advertising
 ```
 
@@ -1355,15 +1398,16 @@ Python (`pip install bleak`, or `pip install -e ".[ble]"`; Windows, macOS,
 Linux/BlueZ):
 
 ```bash
-iekf-tools scan                            # boards advertising, marked "<-- IEKF board"
-iekf-tools viewer --ble                    # board found automatically, STATE 60 Hz
-iekf-tools viewer --ble IEKF --decim 8
-iekf-tools capture --ble --duration 30     # no graphics: received rates every 2 s
+acwing-tools scan                            # boards advertising, marked "<-- ACwing board"
+acwing-tools viewer --ble                    # board found automatically, STATE 60 Hz
+acwing-tools viewer --ble ACwFC --decim 8
+acwing-tools capture --ble --duration 30     # no graphics: received rates every 2 s
 ```
 
 How the tools behave:
-- **Discovery.** It picks the strongest device whose name starts with `IEKF`
-  or equals `STM32WB` (the CubeMX default).
+- **Discovery.** It picks the strongest device whose name starts with `ACw`
+  (`ACwFC`). Boards with older firmware are found too: names starting with
+  `IEKF`, or `STM32WB` (the CubeMX default).
 - **On connection.** The tools subscribe to TLM and write the decimation to
   CMD.
 - **Processing.** Notifications are appended as bytes and go through the same
@@ -1373,8 +1417,8 @@ How the tools behave:
 
 ### 12.9 Verification
 
-**On the board.** The link was measured with `iekf-tools capture --ble --duration 30` and
-`iekf-tools info`, on the P-NUCLEO-WB55, HSE clock, Windows PC:
+**On the board.** The link was measured with `acwing-tools capture --ble --duration 30` and
+`acwing-tools info`, on the P-NUCLEO-WB55, HSE clock, Windows PC:
 
 | Quantity | Measured |
 |---|---|
@@ -1413,7 +1457,7 @@ and were fixed in `ImuTask` (§13):
 | HardFault / stack overflow at start-up | FreeRTOS heap too small |
 | `multiple definition of HAL_GPIO_EXTI_Callback` after a regeneration | keep a single definition, calling `app_exti(pin)` |
 | `ble_drop` grows | link slower than the data: decimation 8, larger MTU |
-| PC viewer over BLE: rate below 60 Hz, `lag` growing, `lost 0` and `drop 0` | the PC delivers the notifications late (nothing is lost on the link). The Python tools receive BLE in a separate process for this reason (since the BLE support was added); update them. The `BLE:` line shows the notifications/s actually received, `draw` the redraw time. `iekf-tools capture --ble` measures the link without graphics: if it shows 60 STATE/s and a stable lag, the limit is the viewer's redraw on that PC |
+| PC viewer over BLE: rate below 60 Hz, `lag` growing, `lost 0` and `drop 0` | the PC delivers the notifications late (nothing is lost on the link). The Python tools receive BLE in a separate process for this reason (since the BLE support was added); update them. The `BLE:` line shows the notifications/s actually received, `draw` the redraw time. `acwing-tools capture --ble` measures the link without graphics: if it shows 60 STATE/s and a stable lag, the limit is the viewer's redraw on that PC |
 | PC tools: board not found | it is connected to another central (phone): disconnect it. Python on Linux: `bluetoothd` running |
 
 ### 12.11 Towards a mobile app
@@ -1451,8 +1495,8 @@ CMD is the place for future commands: arming, gains, logging.
 | Build errors with paths that no longer exist, after moving or re-cloning the project | stale makefiles in the local `Debug/` folder: delete it (or *Project → Clean*), re-import `00 - STM32_FW` and build again |
 | Comparison: "INIT of this boot was lost" | UART saturated during the capture; repeat |
 | Euler plots jump by 180° | gimbal lock (|pitch| ≈ 90°); use the quaternion figure |
-| `iekf-tools info`: IMU interrupts 0/s, gyro far below 960/s, tens of I²C errors/s; viewer below its rate with a growing `lag` and `lost 0` | INT1 stuck high: it is a *level* (FIFO ≥ watermark) and the EXTI is on the *rising edge*. One late read leaves the FIFO above the watermark, so no edge arrives any more and the task lives on its 5 ms timeout, with big reads, DMA timeouts and lost samples. Fixed in `ImuTask`: immediate re-read after a large read or a timeout wake-up, and a 12 ms DMA timeout. `s_drainReads` in *Live Expressions* counts the recoveries |
-| `lag` grows slowly (about 1 %/s) with no loss; `iekf-tools info`: filter time behind the uptime | the gyro was integrated with the nominal 1/960 s for part of the samples, while the LSM6DSV16X runs on its own RC oscillator (916 Hz measured). Fixed: the sample period is measured over 2 s windows against the MCU clock and used for every sample. `s_odrHz` in *Live Expressions* shows it |
+| `acwing-tools info`: IMU interrupts 0/s, gyro far below 960/s, tens of I²C errors/s; viewer below its rate with a growing `lag` and `lost 0` | INT1 stuck high: it is a *level* (FIFO ≥ watermark) and the EXTI is on the *rising edge*. One late read leaves the FIFO above the watermark, so no edge arrives any more and the task lives on its 5 ms timeout, with big reads, DMA timeouts and lost samples. Fixed in `ImuTask`: immediate re-read after a large read or a timeout wake-up, and a 12 ms DMA timeout. `s_drainReads` in *Live Expressions* counts the recoveries |
+| `lag` grows slowly (about 1 %/s) with no loss; `acwing-tools info`: filter time behind the uptime | the gyro was integrated with the nominal 1/960 s for part of the samples, while the LSM6DSV16X runs on its own RC oscillator (916 Hz measured). Fixed: the sample period is measured over 2 s windows against the MCU clock and used for every sample. `s_odrHz` in *Live Expressions* shows it |
 | `undefined reference to arm_mat_*` | CMSIS-DSP GCC library not linked (§8) |
 
 ---
@@ -1501,6 +1545,10 @@ validation) is concluded. Open items for the next phases:
 - Optionally read the LSM6DSV16X `INTERNAL_FREQ_FINE` register at start-up to
   use the true ODR from the first sample, instead of the nominal value during
   the first 2 s.
+- **Port to the ACwing FC** (STM32WB55CGU6) when the first boards are built:
+  pin map and CubeMX configuration from the FC pin map in the hardware
+  repository; IIS2MDC compass on the board instead of the LIS2MDL behind the
+  sensor hub; IMU axes remapped to the board axes, as noted in the FC README.
 - Phase 3: rate PID at 960 Hz with notch-filtered gyro, attitude loop at 240 Hz,
   motor power stage, arming and fail-safe, and a **thrust model** to reject
   sustained accelerations in the acc update.
@@ -1515,6 +1563,14 @@ validation) is concluded. Open items for the next phases:
   Special Orthogonal Group*, IEEE TAC, 2008.
 - S. Madgwick, A. Harrison, R. Vaidyanathan, *Estimation of IMU and MARG
   orientation using a gradient descent algorithm*, ICORR, 2011.
+- ACwing hardware: [ACwing_FlightController_HW](https://github.com/andrea-cirillo/ACwing_FlightController_HW)
+  (ACwing FC, ESC 1S, GPS and Flow boards: schematics, pin maps, BoMs).
 - STMicroelectronics: UM3239 (X-NUCLEO-IKS4A1), UM2435 (NUCLEO-WB55),
   LSM6DSV16X and LIS2MDL datasheets, `lsm6dsv16x-pid` driver, AN5289 (STM32WB
   BLE).
+
+---
+
+## Author
+
+**Andrea Cirillo** – ACwing firmware and PC tools.

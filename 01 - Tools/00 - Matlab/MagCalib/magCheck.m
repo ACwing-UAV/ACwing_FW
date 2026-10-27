@@ -1,8 +1,8 @@
 function out = magCheck(logFile, hardIronFw)
 %MAGCHECK  Is the magnetometer calibration still valid? (diagnosis from a viewer log)
 %
-%   out = magCheck('iekf_log_....mat')
-%   out = magCheck('iekf_log_....mat', [100.31 -0.56 -166.07])   % MAG_HARD_IRON in the firmware
+%   out = magCheck('acwing_log_....mat')
+%   out = magCheck('acwing_log_....mat', [100.31 -0.56 -166.07])   % MAG_HARD_IRON in the firmware
 %
 %   The log holds the field AFTER MAG_AXIS_MAP and MAG_HARD_IRON (body frame).
 %   With a valid calibration, rotating the board gives:
@@ -15,7 +15,7 @@ function out = magCheck(logFile, hardIronFw)
 %   same body axis on "North" whatever the orientation, and de-weights the mag
 %   because |m| and the dip change as the board tilts.
 %
-%   Acquisition: firmware as is, iekfLiveViewer, board still for 2 s, then ~30 s of
+%   Acquisition: firmware as is, acwingLiveViewer, board still for 2 s, then ~30 s of
 %   slow rotations about ALL axes, away from metal objects.
 %
 %   out.verdict: 'ok', 'hard-iron-mismatch', 'no-data' or 'no-rotation'.

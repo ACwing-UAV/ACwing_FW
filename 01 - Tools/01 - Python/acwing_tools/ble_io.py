@@ -44,8 +44,9 @@ CMD_UUID = "7e4a0003-2c6b-4f8e-9a5d-3b1c0e1d2f30"
 CMD_SEND_INIT = 0x01
 CMD_STATE_DECIM = 0x02
 
-#: advertised names recognised as an IEKF board ("STM32WB" = CubeMX default name)
-BOARD_NAME_PREFIXES = ("IEKF",)
+#: advertised names recognised as an ACwing board: "ACwFC" (current firmware), "IEKF..."
+#: (firmware before the rename), "STM32WB" (CubeMX default name)
+BOARD_NAME_PREFIXES = ("ACw", "IEKF")
 BOARD_NAMES = ("STM32WB",)
 
 
@@ -59,7 +60,7 @@ def _bleak():
 
 
 def is_board_name(name: Optional[str]) -> bool:
-    """True for the names the firmware may advertise (IEKF..., or the CubeMX default)."""
+    """True for the names the firmware may advertise (ACw..., IEKF..., or the CubeMX default)."""
     if not name:
         return False
     return name.startswith(BOARD_NAME_PREFIXES) or name in BOARD_NAMES
@@ -152,7 +153,7 @@ def _ble_worker(target, decim, scan_timeout, conn, stop_evt, cmd_q, fake_stream=
         dev = pick_board(devs, target)
         if dev is None:
             seen = ", ".join(f'"{n}" {a}' for n, a, _ in devs if n) or "none with a name"
-            what = f'"{target}"' if target else 'a board named "IEKF..." or "STM32WB"'
+            what = f'"{target}"' if target else 'a board named "ACwFC", "IEKF..." or "STM32WB"'
             conn.send(("error", f"BLE: {what} not found (devices seen: {seen}). Is it advertising "
                                 "(USB viewer: \"BLE: advertising\")? Is a phone connected to it?"))
             return
@@ -160,7 +161,7 @@ def _ble_worker(target, decim, scan_timeout, conn, stop_evt, cmd_q, fake_stream=
         try:
             await client.connect()
             if client.services.get_characteristic(TLM_UUID) is None:
-                conn.send(("error", f'"{dev[0]}" has no IEKF telemetry service ({SVC_UUID}): '
+                conn.send(("error", f'"{dev[0]}" has no ACwing telemetry service ({SVC_UUID}): '
                                     "is APP_TLM_BLE = 1 in the firmware?"))
                 return
             await client.start_notify(TLM_UUID, on_notify)         # board: INIT sent right away
@@ -357,7 +358,7 @@ class BleSource:
             await client.connect()
             if client.services.get_characteristic(TLM_UUID) is None:
                 await client.disconnect()
-                raise RuntimeError(f'"{self.name}" has no IEKF telemetry service ({SVC_UUID}): '
+                raise RuntimeError(f'"{self.name}" has no ACwing telemetry service ({SVC_UUID}): '
                                    "is APP_TLM_BLE = 1 in the firmware?")
             await client.start_notify(TLM_UUID, self.on_notify)   # board: INIT sent right away
             if decim is not None:
@@ -388,7 +389,7 @@ class BleSource:
         dev = pick_board(devs, target)
         if dev is None:
             seen = ", ".join(f'"{n}" {a}' for n, a, _ in devs if n) or "none with a name"
-            what = f'"{target}"' if target else 'a board named "IEKF..." or "STM32WB"'
+            what = f'"{target}"' if target else 'a board named "ACwFC", "IEKF..." or "STM32WB"'
             raise RuntimeError(f"BLE: {what} not found (devices seen: {seen}). Is it advertising "
                                "(USB viewer: \"BLE: advertising\")? Is a phone connected to it?")
         return dev

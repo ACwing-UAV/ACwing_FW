@@ -1,8 +1,8 @@
-"""Command-line interface: ``python -m iekf_tools <command> ...`` (or ``iekf-tools`` once installed).
+"""Command-line interface: ``python -m acwing_tools <command> ...`` (or ``acwing-tools`` once installed).
 
 Commands (MATLAB equivalent in brackets):
 
-  viewer         live 3D attitude viewer + log, USB or BLE [iekfLiveViewer]
+  viewer         live 3D attitude viewer + log, USB or BLE [acwingLiveViewer]
   scan           list the boards advertising over BLE      [blelist]
   capture        raw telemetry to .bin, no decoding       [tlmCapture]
   sniff          byte-level link diagnosis                [tlmSniffer]
@@ -41,7 +41,7 @@ def _cmd_scan(a):
         return 1
     print(f"{'name':24s} {'address':40s} RSSI")
     for name, addr, rssi in devs:
-        mark = "  <-- IEKF board" if is_board_name(name) else ""
+        mark = "  <-- ACwing board" if is_board_name(name) else ""
         print(f"{name or '-':24s} {addr:40s} {rssi:4d}{mark}")
     return 0 if any(is_board_name(n) for n, _, _ in devs) else 1
 
@@ -133,7 +133,7 @@ def _cmd_info(a):
 
 
 def build_parser() -> argparse.ArgumentParser:
-    p = argparse.ArgumentParser(prog="iekf_tools", description=__doc__,
+    p = argparse.ArgumentParser(prog="acwing_tools", description=__doc__,
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = p.add_subparsers(dest="cmd", required=True)
 
@@ -141,7 +141,7 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("port", nargs="?", help="serial port, e.g. COM6 or /dev/ttyACM0")
     s.add_argument("--ble", nargs="?", const="", metavar="NAME_OR_ADDRESS",
                    help="use BLE instead of the serial port; without a value the board is found "
-                        "automatically (name IEKF... or STM32WB). Needs: pip install bleak")
+                        "automatically (name ACwFC, IEKF... or STM32WB). Needs: pip install bleak")
     s.add_argument("--decim", type=int, default=4,
                    help="BLE only: STATE every N acc updates (default 4 = 60 Hz; 8 = 30 Hz)")
     s.add_argument("--baud", type=int, default=921600)

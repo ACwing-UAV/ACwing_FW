@@ -1,4 +1,13 @@
-# iekf_tools — Python tools for the IEKF attitude firmware
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="../../02%20-%20Docs/00%20-%20Brand/ACwing_logo_white.png">
+    <img alt="ACwing" src="../../02%20-%20Docs/00%20-%20Brand/ACwing_logo_black.png" width="200">
+  </picture>
+</p>
+
+# ACwing FC – PC tools in Python (`acwing_tools`)
+
+**Project:** ACwing · **Author:** Andrea Cirillo · **Overview:** [repository README](../../README.md)
 
 Python equivalents of the MATLAB tools in [`01 - Tools/00 - Matlab/`](../00%20-%20Matlab), for users
 without MATLAB. They cover:
@@ -37,12 +46,17 @@ Python ≥ 3.9. From this folder (`01 - Tools/01 - Python`; quote the path, it c
 ```bash
 python -m venv .venv
 .venv\Scripts\activate             # Windows   (Linux/macOS: source .venv/bin/activate)
-pip install -e .                   # numpy, scipy, matplotlib, pyserial + the "iekf-tools" command
+pip install -e .                   # numpy, scipy, matplotlib, pyserial + the "acwing-tools" command
 pip install -e ".[ble]"            # optional: BLE link (bleak)
 ```
 
 Without installing, run from this folder with `pip install -r requirements.txt`
-and `python -m iekf_tools ...`.
+and `python -m acwing_tools ...`.
+
+Before the ACwing rename the package was `iekf_tools` and the command
+`iekf-tools`. The old command still works, as an alias of `acwing-tools`. If
+you installed the package under its old name, uninstall it first:
+`pip uninstall iekf-tools`, then run `pip install -e .`.
 
 The board appears as **"STMicroelectronics STLink Virtual COM Port"**:
 - **Windows**: `COMx`;
@@ -52,17 +66,17 @@ The board appears as **"STMicroelectronics STLink Virtual COM Port"**:
 
 ## MATLAB ↔ Python map
 
-| MATLAB (`00 - Matlab/`) | Python (`iekf_tools`) | Command line |
+| MATLAB (`00 - Matlab/`) | Python (`acwing_tools`) | Command line |
 |---|---|---|
-| `Viewer/iekfLiveViewer.m` | `viewer.live_viewer`, `viewer.LiveViewer` | `iekf-tools viewer COM6` |
-| `iekfLiveViewer("ble", ...)` | `ble_io.BleSource` + `viewer.LiveViewer` | `iekf-tools viewer --ble [NAME]` |
-| `blelist` | `ble_io.scan` | `iekf-tools scan` |
-| `FiltersComparison/tlmCapture.m` | `capture.tlm_capture` | `iekf-tools capture COM6 --duration 60` |
-| `FiltersComparison/tlmSniffer.m` | `capture.tlm_sniffer` | `iekf-tools sniff COM6` |
-| `FiltersComparison/compareEmbeddedVsMatlab.m` | `compare.compare_embedded` | `iekf-tools compare iekf_cap_*.bin` |
-| `MagCalib/calibMagAxes.m` | `magcalib.calib_mag_axes` | `iekf-tools calib-mag iekf_log_*.mat` |
-| `MagCalib/fitHardIron.m` | `magcalib.fit_hard_iron` | `iekf-tools fit-hard-iron iekf_log_*.mat` |
-| `MagCalib/magCheck.m` | `magcalib.mag_check` | `iekf-tools mag-check iekf_log_*.mat --hard-iron X,Y,Z` |
+| `Viewer/acwingLiveViewer.m` | `viewer.live_viewer`, `viewer.LiveViewer` | `acwing-tools viewer COM6` |
+| `acwingLiveViewer("ble", ...)` | `ble_io.BleSource` + `viewer.LiveViewer` | `acwing-tools viewer --ble [NAME]` |
+| `blelist` | `ble_io.scan` | `acwing-tools scan` |
+| `FiltersComparison/tlmCapture.m` | `capture.tlm_capture` | `acwing-tools capture COM6 --duration 60` |
+| `FiltersComparison/tlmSniffer.m` | `capture.tlm_sniffer` | `acwing-tools sniff COM6` |
+| `FiltersComparison/compareEmbeddedVsMatlab.m` | `compare.compare_embedded` | `acwing-tools compare acwing_cap_*.bin` |
+| `MagCalib/calibMagAxes.m` | `magcalib.calib_mag_axes` | `acwing-tools calib-mag acwing_log_*.mat` |
+| `MagCalib/fitHardIron.m` | `magcalib.fit_hard_iron` | `acwing-tools fit-hard-iron acwing_log_*.mat` |
+| `MagCalib/magCheck.m` | `magcalib.mag_check` | `acwing-tools mag-check acwing_log_*.mat --hard-iron X,Y,Z` |
 | `Telemetry/parseTelemetry.m` | `telemetry.parse_telemetry` | |
 | `Telemetry/decodeState/Init/Status/Replay.m` | `telemetry.decode_state/init/status/replay` | |
 | `Telemetry/crc16ccitt.m`, `statusDiagnosis.m` | `telemetry.crc16ccitt`, `telemetry.status_diagnosis` | |
@@ -70,8 +84,8 @@ The board appears as **"STMicroelectronics STLink Virtual COM Port"**:
 | `IEKF_embeddedVersion/iekfAttitudeEmb.m` + `iekfCore*.m` | `filters.iekf_attitude_emb` + `filters.embedded.core_*` | |
 | `Viewer/quat2rotmLocal.m`, `so3ToQuat.m` | `common.quat2rotm`, `common.rotm2quat` | |
 | `initPath.m` | not needed (`pip install -e .`) | |
-| — | `logio.load_log`, `logio.save_log` (MATLAB-compatible `.mat`) | `iekf-tools info file` |
-| — | `simulate.synthetic_stream` (test stream, no board) | `iekf-tools viewer --replay file.bin` |
+| — | `logio.load_log`, `logio.save_log` (MATLAB-compatible `.mat`) | `acwing-tools info file` |
+| — | `simulate.synthetic_stream` (test stream, no board) | `acwing-tools viewer --replay file.bin` |
 
 Function and option names follow MATLAB. Arrays keep the MATLAB layout:
 - inputs `3 × N`;
@@ -82,7 +96,7 @@ So porting a MATLAB script is mechanical.
 
 ## Command line
 
-`iekf-tools <command>` (or `python -m iekf_tools <command>`); `-h` on any
+`acwing-tools <command>` (or `python -m acwing_tools <command>`); `-h` on any
 command lists its options.
 Lists of numbers (`--map`, `--hard-iron`) take commas or spaces. When the
 first value is negative, write `--hard-iron=-5,0,0`, otherwise the shell
@@ -90,12 +104,12 @@ argument is taken as an option.
 
 | Command | What it does |
 |---|---|
-| `viewer PORT [--baud 921600] [--log-dir DIR]` | Live 3D board + triad in the NWU frame. Text panel: roll/pitch/yaw, packet rate, lost packets, display lag, bias, flags, calibration. Writes `iekf_log_*.mat` (every 10 s and on exit) and the raw `iekf_log_*.bin`. Stop by closing the window or with Ctrl+C: the log is saved in both cases. |
-| `viewer --ble [NAME_OR_ADDRESS] [--decim 4]` | Same viewer over BLE (needs `bleak`). Without a name, the strongest board advertising `IEKF…` or `STM32WB` is used. `--decim N`: STATE every N acc updates (4 = 60 Hz, 8 = 30 Hz), written to the CMD characteristic. The panel adds a `BLE:` line (state, MTU, drops, notifications). |
-| `scan [--timeout 5]` | Lists the BLE devices advertising, IEKF boards marked. |
-| `capture --ble [NAME] [--duration 30] [--decim 4]` | Records the BLE stream to `iekf_ble_*.bin` without graphics and prints every 2 s the notifications/s, kB/s, STATE/s, lag and the firmware BLE fields. Use it to tell a slow link from a slow viewer. |
+| `viewer PORT [--baud 921600] [--log-dir DIR]` | Live 3D board + triad in the NWU frame. Text panel: roll/pitch/yaw, packet rate, lost packets, display lag, bias, flags, calibration. Writes `acwing_log_*.mat` (every 10 s and on exit) and the raw `acwing_log_*.bin`. Stop by closing the window or with Ctrl+C: the log is saved in both cases. |
+| `viewer --ble [NAME_OR_ADDRESS] [--decim 4]` | Same viewer over BLE (needs `bleak`). Without a name, the strongest board advertising `ACwFC` is used (`IEKF…` and `STM32WB`, the names of older firmware, are recognised too). `--decim N`: STATE every N acc updates (4 = 60 Hz, 8 = 30 Hz), written to the CMD characteristic. The panel adds a `BLE:` line (state, MTU, drops, notifications). |
+| `scan [--timeout 5]` | Lists the BLE devices advertising, ACwing boards marked. |
+| `capture --ble [NAME] [--duration 30] [--decim 4]` | Records the BLE stream to `acwing_ble_*.bin` without graphics and prints every 2 s the notifications/s, kB/s, STATE/s, lag and the firmware BLE fields. Use it to tell a slow link from a slow viewer. |
 | `viewer --replay FILE.bin [--rate B/s]` | Same viewer fed by a recorded capture (default 19 kB/s ≈ real time; `--rate 0` = as fast as possible). |
-| `capture PORT [--duration 60] [--out-dir DIR]` | Raw bytes to `iekf_cap_*.bin`, no decoding: for `APP_TLM_REPLAY = 1` (~44 kB/s). Reports the rate over the second half (~44 kB/s expected). |
+| `capture PORT [--duration 60] [--out-dir DIR]` | Raw bytes to `acwing_cap_*.bin`, no decoding: for `APP_TLM_REPLAY = 1` (~44 kB/s). Reports the rate over the second half (~44 kB/s expected). |
 | `sniff PORT [--duration 3]` / `sniff --file FILE.bin` | Bytes → frames → STATUS → diagnosis of the first broken link (no bytes, stuck DMA, wrong baud rate, IMU, interrupt, FIFO, sensor hub, calibration). |
 | `compare FILE.bin [--no-plot]` | Embedded vs reference filters (README §11). Exit code 0 = MATCH, 1 = DIVERGE, 2 = unusable capture. |
 | `calib-mag LOG.mat [--gap 0.2] [--map M] [--hard-iron H]` | Magnetometer axis map + hard-iron (README §10); prints the two `#define` lines for `app_config.h`. `--map`/`--hard-iron`: values of the firmware that recorded the log (default identity / 0); the result is always absolute. |
@@ -110,14 +124,14 @@ These follow README §9–§11 step by step; only the commands change.
 **Live view** (firmware with `APP_TLM_REPLAY = 0`):
 
 ```bash
-iekf-tools viewer COM6              # start, THEN reset the board and keep it still 2-4 s
+acwing-tools viewer COM6              # start, THEN reset the board and keep it still 2-4 s
 ```
 
 **Live view over BLE** (firmware with `APP_TLM_BLE 1`, README §12):
 
 ```bash
-iekf-tools scan                     # the board must be listed (disconnect any phone first)
-iekf-tools viewer --ble             # or: --ble IEKF --decim 8
+acwing-tools scan                     # the board must be listed (disconnect any phone first)
+acwing-tools viewer --ble             # or: --ble ACwFC --decim 8
 ```
 
 The BLE reception runs in a separate process. Bluetooth notifications arrive
@@ -134,22 +148,22 @@ works on them. Use USB for `capture` and `compare`.
 1. Record ~40 s of rotations about all axes with the viewer.
 2. Run, passing the values of the firmware that recorded the log:
    ```bash
-   iekf-tools calib-mag iekf_log_YYYYMMDD_HHMMSS.mat --map 1,0,0,0,-1,0,0,0,-1 --hard-iron 100.31,-0.56,-166.07
+   acwing-tools calib-mag acwing_log_YYYYMMDD_HHMMSS.mat --map 1,0,0,0,-1,0,0,0,-1 --hard-iron 100.31,-0.56,-166.07
    ```
    If that firmware had the identity map and zero offset, omit both options.
    Do not omit them on a calibrated firmware: the result would be the residual
    correction (≈ identity, ≈ 0), not the calibration.
 3. To check an existing calibration without re-flashing:
    ```bash
-   iekf-tools mag-check iekf_log_YYYYMMDD_HHMMSS.mat --hard-iron 100.31,-0.56,-166.07
+   acwing-tools mag-check acwing_log_YYYYMMDD_HHMMSS.mat --hard-iron 100.31,-0.56,-166.07
    ```
 
 **Embedded-vs-reference validation** (README §11):
 1. Flash with `APP_TLM_REPLAY 1`, and `APP_COMPARE_ORIGINAL` 1 or 0.
 2. Record and compare:
    ```bash
-   iekf-tools capture COM6 --duration 60      # then reset the board immediately
-   iekf-tools compare iekf_cap_YYYYMMDD_HHMMSS.bin
+   acwing-tools capture COM6 --duration 60      # then reset the board immediately
+   acwing-tools compare acwing_cap_YYYYMMDD_HHMMSS.bin
    ```
 
 The comparison prints the same report as `compareEmbeddedVsMatlab.m`:
@@ -164,18 +178,18 @@ difference/bias.
 ## Python API
 
 ```python
-from iekf_tools.telemetry import read_capture, parse_telemetry, decode_state
-from iekf_tools.filters import iekf_attitude, iekf_attitude_emb
-from iekf_tools.compare import compare_embedded
-from iekf_tools.logio import load_log
-from iekf_tools.magcalib import calib_mag_axes
+from acwing_tools.telemetry import read_capture, parse_telemetry, decode_state
+from acwing_tools.filters import iekf_attitude, iekf_attitude_emb
+from acwing_tools.compare import compare_embedded
+from acwing_tools.logio import load_log
+from acwing_tools.magcalib import calib_mag_axes
 
-frames, rest = parse_telemetry(read_capture("iekf_cap.bin"))
+frames, rest = parse_telemetry(read_capture("acwing_cap.bin"))
 states = [decode_state(f.payload) for f in frames if f.type == 1]
 
-out = compare_embedded("iekf_cap.bin", do_plot=False)   # out.ok, out.dAng, out.extended, ...
+out = compare_embedded("acwing_cap.bin", do_plot=False)   # out.ok, out.dAng, out.extended, ...
 
-L = load_log("iekf_log.mat")          # works for MATLAB and Python logs
+L = load_log("acwing_log.mat")          # works for MATLAB and Python logs
 cal = calib_mag_axes(L)               # cal.M, cal.hardIronBody, cal.ratio
 
 # the filters, as in MATLAB: inputs 3 x N, options with the MATLAB names
@@ -189,7 +203,7 @@ Decoded packets and results are `Struct` objects: a `dict` with attribute access
 
 ## Log format
 
-Both viewers save the variable `L` in `iekf_log_YYYYMMDD_HHMMSS.mat` with the
+Both viewers save the variable `L` in `acwing_log_YYYYMMDD_HHMMSS.mat` with the
 same layout (see `logio.py`):
 
 | Field | Shape | Content |
@@ -212,13 +226,13 @@ Next to every log, the viewer writes the raw byte stream (`.bin`), which
 
 ## Working without the board
 
-- `iekf-tools viewer --replay iekf_log_*.bin` replays any recorded session in
+- `acwing-tools viewer --replay acwing_log_*.bin` replays any recorded session in
   real time.
 - `simulate.synthetic_stream()` generates a telemetry stream with a known
   motion, magnetometer axis map and hard-iron:
   ```bash
-  python -c "from iekf_tools.simulate import write_stream; write_stream('sim.bin')"
-  iekf-tools viewer --replay sim.bin
+  python -c "from acwing_tools.simulate import write_stream; write_stream('sim.bin')"
+  acwing-tools viewer --replay sim.bin
   ```
   The stream contains INIT, STATUS and STATE frames, with the raw sensor field
   as the firmware logs it during the calibration acquisition. `calib-mag` on
@@ -259,8 +273,8 @@ cd tests/reference && matlab -batch make_reference     # or: octave-cli --eval m
 ```
 01 - Tools/01 - Python/
 ├── README.md, pyproject.toml, requirements.txt
-├── iekf_tools/
-│   ├── __main__.py      command line (iekf-tools)
+├── acwing_tools/
+│   ├── __main__.py      command line (acwing-tools)
 │   ├── common.py        Struct, quaternion/rotation helpers
 │   ├── telemetry.py     CRC, parser, decoders, STATUS diagnosis
 │   ├── filters/

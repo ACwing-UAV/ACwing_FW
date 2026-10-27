@@ -9,5 +9,5 @@ addpath(fullfile(root, 'MagCalib'));
 addpath(fullfile(root, 'FiltersComparison'));                          % capture / sniffer / comparison
 addpath(fullfile(root, 'FiltersComparison', 'IEKF_originalVersion'));  % ORIGINAL filter: iekfAttitude.m, expSO3.m, ...
 addpath(fullfile(root, 'FiltersComparison', 'IEKF_embeddedVersion'));  % extended filter (C mirror)
-fprintf('IEKF tools on the path (reference filter: %s)\n', which('iekfAttitude'));
+fprintf('ACwing tools on the path (reference filter: %s)\n', which('iekfAttitude'));
 clear root

@@ -7,8 +7,8 @@ import pytest
 import scipy.io as sio
 
 from conftest import DATA
-from iekf_tools.common import quat2rotm, rotm2quat
-from iekf_tools.filters import exp_so3, iekf_attitude, iekf_attitude_emb, log_so3
+from acwing_tools.common import quat2rotm, rotm2quat
+from acwing_tools.filters import exp_so3, iekf_attitude, iekf_attitude_emb, log_so3
 
 
 @pytest.fixture(scope="module")

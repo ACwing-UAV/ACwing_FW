@@ -1,17 +1,18 @@
-function L = iekfLiveViewer(transport, target, baud, logDir)
+function L = acwingLiveViewer(transport, target, baud, logDir)
 %IEKFLIVEVIEWER  3D triad following, in real time, the attitude estimated by the firmware.
 %
-%   iekfLiveViewer("serial", "COM6")                 % USB (ST-LINK VCP), 921600 baud
-%   iekfLiveViewer("serial", "/dev/ttyACM0", 460800)
-%   iekfLiveViewer("ble")                            % BLE, board found automatically, 60 Hz
-%   iekfLiveViewer("ble", "IEKF")               % BLE, by name (or address), 60 Hz
-%   iekfLiveViewer("ble", "IEKF", 8)            % BLE, STATE every 8 -> 30 Hz
+%   acwingLiveViewer("serial", "COM6")                 % USB (ST-LINK VCP), 921600 baud
+%   acwingLiveViewer("serial", "/dev/ttyACM0", 460800)
+%   acwingLiveViewer("ble")                            % BLE, board found automatically, 60 Hz
+%   acwingLiveViewer("ble", "ACwFC")            % BLE, by name (or address), 60 Hz
+%   acwingLiveViewer("ble", "ACwFC", 8)         % BLE, STATE every 8 -> 30 Hz
 %
 %   Both links carry the SAME frames (STATE, INIT, STATUS): the log, the .bin
 %   and everything downstream are identical. Over BLE the STATE rate is lower
 %   (3rd argument = decimation, default 4) and REPLAY is never sent.
 %   Automatic discovery picks the first board advertising a name that starts
-%   with "IEKF" or equals "STM32WB" (the CubeMX default). blelist lists them all.
+%   with "ACw" (ACwFC) or "IEKF" (firmware before the rename), or equals "STM32WB"
+%   (the CubeMX default). blelist lists them all.
 %
 %   World frame NWU (x = magnetic north, y = west, z = up), defined by the
 %   firmware through the static calibration: keep the board STILL ~2 s after reset.
@@ -23,8 +24,8 @@ function L = iekfLiveViewer(transport, target, baud, logDir)
 %
 %   LOG: the full file path is printed at start-up. The file is saved every 10 s
 %   (autosave) and on close; on close the log is also returned as output and
-%   copied into the base workspace as variable iekfLog:
-%       L = iekfLiveViewer("serial","COM6");
+%   copied into the base workspace as variable acwingLog:
+%       L = acwingLiveViewer("serial","COM6");
 %   logDir (optional) selects the folder, default the current folder.
 %
 %   serialport: R2019b+.  ble: R2019b+, Windows 10+ or macOS, Bluetooth 4.0+ adapter.
@@ -46,7 +47,7 @@ lastSeq = NaN; seqOffset = 0; nLost = 0; nFrames = 0; nStatus = 0;
 seqStep = Inf;                 % STATE decimation seen in the stream (1, 4, 8, ...)
 buf = uint8([]);
 lastUptime = -1; nResets = 0; finished = false;
-logFile = fullfile(logDir, sprintf('iekf_log_%s.mat', datestr(now, 'yyyymmdd_HHMMSS'))); %#ok<TNOW1,DATST>
+logFile = fullfile(logDir, sprintf('acwing_log_%s.mat', datestr(now, 'yyyymmdd_HHMMSS'))); %#ok<TNOW1,DATST>
 tSave = tic;
 binFile = strrep(logFile, '.mat', '.bin');           % raw capture (for compareEmbeddedVsMatlab)
 binFid  = fopen(binFile, 'w');
@@ -74,7 +75,7 @@ try
             end
 
         case "ble"
-            if strlength(string(target)) == 0, target = findIekfBoard(); end
+            if strlength(string(target)) == 0, target = findAcwingBoard(); end
             fprintf('Connecting to "%s" over BLE...\n', target);
             bleDev = ble(target);
             bleChr = characteristic(bleDev, SVC_UUID, CHR_UUID);
@@ -213,7 +214,7 @@ finish();          % normal close: save and prepare the output
             save(logFile, '-struct', 'S');
         catch err
             fprintf(2, 'ERROR while saving %s:\n  %s\n', logFile, err.message);
-            fprintf(2, 'Use a writable folder: iekfLiveViewer("serial","COMx",921600,"C:\\path")\n');
+            fprintf(2, 'Use a writable folder: acwingLiveViewer("serial","COMx",921600,"C:\\path")\n');
         end
     end
 
@@ -232,10 +233,10 @@ finish();          % normal close: save and prepare the output
         if binFid > 0, fclose(binFid); binFid = -1; end
         saveLog();
         L = trimLog(L, nLog);
-        assignin('base', 'iekfLog', L);
+        assignin('base', 'acwingLog', L);
         fprintf('Log: %s\n  %d STATE samples, %d STATUS, %d lost, %d reboots.\n', ...
                 logFile, nLog, nStatus, nLost, nResets);
-        fprintf('  Also in the workspace as variable iekfLog.\n');
+        fprintf('  Also in the workspace as variable acwingLog.\n');
         if nReplay > 0
             fprintf('  %d REPLAY packets: compareEmbeddedVsMatlab(''%s'')\n', nReplay, binFile);
         end
@@ -243,15 +244,15 @@ finish();          % normal close: save and prepare the output
 end
 
 % ================================================================== local functions
-function target = findIekfBoard()
-%FINDIEKFBOARD  Address of the first board advertising "IEKF..." or "STM32WB".
+function target = findAcwingBoard()
+%FINDACWINGBOARD  Address of the first board advertising "ACw...", "IEKF..." or "STM32WB".
 fprintf('Scanning for the board (5 s)...\n');
 T = blelist("Timeout", 5);
 names = string(T.Name);
-k = find(startsWith(names, "IEKF") | names == "STM32WB", 1);
+k = find(startsWith(names, "ACw") | startsWith(names, "IEKF") | names == "STM32WB", 1);
 if isempty(k)
     disp(T(:, {'Name', 'Address', 'RSSI'}));
-    error(['No IEKF board found: is it advertising (USB viewer: "BLE: advertising")? ' ...
+    error(['No ACwing board found: is it advertising (USB viewer: "BLE: advertising")? ' ...
            'Is it connected to a phone? Pass the name or the address explicitly.']);
 end
 target = string(T.Address(k));
@@ -282,7 +283,7 @@ end
 end
 
 function [fig, hT, hTxt] = buildFigure()
-fig = figure('Name', 'IEKF live - STM32', 'Color', 'w', 'NumberTitle', 'off');
+fig = figure('Name', 'ACwing FC - live attitude', 'Color', 'w', 'NumberTitle', 'off');
 ax  = axes(fig, 'Position', [0.05 0.22 0.9 0.75]);
 hold(ax, 'on'); grid(ax, 'on'); axis(ax, 'equal');
 lim = 1.6; axis(ax, [-lim lim -lim lim -lim lim]);

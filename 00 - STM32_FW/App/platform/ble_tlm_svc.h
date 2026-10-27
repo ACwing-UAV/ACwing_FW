@@ -1,6 +1,6 @@
 /**
  * @file  ble_tlm_svc.h
- * @brief "IEKF Telemetry" GATT service on the STM32WB BLE stack (STM32_WPAN).
+ * @brief "ACwing telemetry" GATT service on the STM32WB BLE stack (STM32_WPAN).
  *
  *   Service  7E4A0001-2C6B-4F8E-9A5D-3B1C0E1D2F30
  *     TLM    7E4A0002-...  Notify            telemetry byte stream (same frames as UART)
