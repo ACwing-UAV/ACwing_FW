@@ -347,6 +347,40 @@ arrives. Silence measured on the drone:
 The app shows its own "link lost" banner after 1.5 s without any frame; the
 drone acts on its own timers above.
 
+> **Requirement: the app-link watchdog must not depend on the BLE stack.**
+> The failsafe has to trigger even when the cause of the silence is on the
+> drone (BLE stack, CPU2 or radio stalled, TX/RX queue blocked, task
+> starved), not only when the phone goes away.
+>
+> - The BLE path only **records** the arrival: the CMD write callback (or the
+>   task that drains the CMD queue) stores `t_last_app = now` from a
+>   monotonic hardware tick (e.g. the 1 kHz timebase or a free-running
+>   timer), together with the RC values. Nothing else happens in the BLE
+>   context.
+> - The **check** runs in the control/flight-manager loop (≥ 50 Hz, the loop
+>   that also runs the attitude controller), which computes
+>   `silence = now − t_last_app` and applies the 1 s / 3 s actions. It never
+>   waits on BLE: no blocking calls, no mutex shared with the BLE thread
+>   (a single 32-bit timestamp written atomically is enough; RC values via a
+>   double buffer or sequence counter).
+> - **No other source refreshes the timer**: BLE connection events, CCCD
+>   writes, notifications sent, link-layer keep-alives do not count. Only
+>   frames received on CMD (RC, HEARTBEAT or any command) do.
+> - **Disconnection** (GAP disconnect event) is not required to start the
+>   count: the timer runs regardless. A disconnect may only make the
+>   failsafe start *earlier*, never later.
+> - If the BLE stack reports a fatal error or CPU2 stops answering, treat it
+>   as silence (do not reset the timer), and keep the hardware watchdog
+>   (IWDG) fed only by the control loop, so that a hung control task resets
+>   the MCU rather than flying on stale commands.
+> - Stale RC: when `silence > 0.25 s`, stop using the last RC values for
+>   attitude/thrust setpoints (hold the last mode's neutral: level attitude,
+>   hold altitude where available) before the 1 s failsafe proper.
+>
+> Test: with the drone in flight state on the bench (props off), stall the
+> BLE thread on purpose (debug flag that blocks its loop) and check that the
+> 1 s and 3 s actions, the APP_LINK bit and EVENT 20 still happen on time.
+
 **Input arbitration.** `input` in FLIGHT says who flies:
 
 1. **ELRS radio** has absolute priority whenever the receiver is linked and its
@@ -732,6 +766,9 @@ simulator (Connect › Simulator).
     failsafe "RTH" executes "land".
 11. 10 minutes connected at 20 Hz STATE: STATUS.bleDrop stays 0, no CRC errors
     in the app (Settings › Connection).
+12. Watchdog independence (§6): stall the BLE thread on the drone with a debug
+    flag while in flight state (props off) → fsAppShort after 1 s, fsAppLong
+    and EVENT 20 after 3 s, exactly as when the phone is switched off.
 
 ## 17. Out of scope and open points
 
