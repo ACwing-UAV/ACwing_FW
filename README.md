@@ -146,7 +146,8 @@ ACwing_FlightController_FW/
 │   │   ├── app/                    app_main (FreeRTOS tasks, IRQ glue), app_config.h (ALL parameters),
 │   │   │                           est_pipeline (multi-rate attitude estimation), tlm_build (telemetry frames),
 │   │   │                           app_task (protocol v2: commands, params, flash, v2 frames), params,
-│   │   │                           cfg_store (A/B flash image), fc_shared (ImuTask <-> AppTask data)
+│   │   │                           cfg_store (A/B flash image), fc_shared (ImuTask <-> AppTask data),
+│   │   │                           ext_sens (ExtTask: probe/poll the Qwiic ToF and flow, host-tested)
 │   │   ├── filters/                state estimators (no HAL, no RTOS, host-testable)
 │   │   │   ├── iekf/               attitude IEKF on SO(3): so3 (Exp/Log, orthonormalisation), iekf (filter),
 │   │   │   │                       accwin (rotation-compensated acc mean), calib (static calibration window)
@@ -159,7 +160,8 @@ ACwing_FlightController_FW/
 │   │   │                           FIFO parser), vl53l1x (ToF), flow_bridge (ACwing Flow)
 │   │   ├── bsp/                    board support, tied to the STM32WB55 + HAL/RTOS: imu_i2c (HAL I²C + DMA
 │   │   │                           binding, bus lock), ble_tlm_svc (GATT service + TX thread on STM32_WPAN),
-│   │   │                           cfg_flash_wb (flash pages shared with CPU2), ext_sens (Qwiic ToF/flow task)
+│   │   │                           cfg_flash_wb (flash pages shared with CPU2), ext_i2c (HAL binding of the
+│   │   │                           Qwiic devices for the vl53l1x / flow_bridge drivers)
 │   │   ├── telemetry/              frame format and CRC (telemetry.h), UART + DMA transport;
 │   │   │                           tlm_ble: BLE queues HI/LO + link state; proto_v2 (app protocol ids and
 │   │   │                           layouts), app_link (CMD receive side), ack_cache, spsc (all host-testable)
@@ -167,7 +169,8 @@ ACwing_FlightController_FW/
 │   ├── Core/                       CubeMX-generated: main.c, interrupts, HAL MSP, FreeRTOS config, startup,
 │   │                               radio-core infrastructure (app_entry, hw_timerserver, app_conf.h)
 │   ├── Tests/host/                 host tests (make): flight core, failsafes, TAKEOFF/LAND, altitude filter,
-│   │                               drivers, AppTask protocol, BLE rings
+│   │                               drivers, AppTask protocol, BLE rings; ExtTask end to end with the Flow
+│   │                               bridge logic of 01 - FLOW_FW
 │   ├── STM32_WPAN/App/             CubeMX-generated BLE application (app_ble.c with our 3 hooks, §13.5)
 │   ├── Drivers/, Middlewares/      CubeMX-generated: STM32WB HAL, CMSIS, FreeRTOS, ST STM32_WPAN (BLE)
 │   ├── Utilities/                  CubeMX-generated: low-power manager used by STM32_WPAN
@@ -1846,7 +1849,7 @@ Without any altitude sensor, `g_fc_dbg_in_air` (Live Expressions) still forces
 
 ### 14.5 Verification
 
-- `00 - FC_FW/Tests/host` (`make`): **93 checks**, with
+- `00 - FC_FW/Tests/host` (`make`): **93 + 12 checks** (two binaries), with
   AddressSanitizer and UBSan. They cover:
   - the ACK cache;
   - TAKEOFF rules;
@@ -1860,7 +1863,11 @@ Without any altitude sensor, `g_fc_dbg_in_air` (Live Expressions) still forces
   - the AppTask protocol: subscribe order, rates, PARAM_SET repeat with the
     same seq, save and reload, ARM blocked by CHECKS, KILL ×3, a flash error
     reported;
-  - HI/LO ring priority.
+  - HI/LO ring priority;
+  - the ExtTask (`ext_test`): probing every 5 s, a board plugged in late,
+    polling, a ToF lost after 50 errors and found again. The flow side runs
+    end to end, through the FC `flow_bridge` driver and the real bridge
+    logic of `01 - FLOW_FW`.
 - Every frame of that test is written to `frames.bin`. Decoding it with the
   app's own `StreamParser` and `decode*()`, then re-encoding it with
   `encode*()`, gives **identical bytes** for all v2 frame types (0 CRC
