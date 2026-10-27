@@ -1,0 +1,69 @@
+# Documentation: Doxygen API references + MkDocs site, published to GitHub Pages.
+# One-time setup: Settings -> Pages -> Source: GitHub Actions.
+name: docs
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "03 - Docs/**"
+      - "00 - FC_FW/App/**"
+      - "01 - FLOW_FW/Core/**"
+      - "mkdocs.yml"
+      - "Doxyfile.*"
+      - ".github/workflows/docs.yml"
+  pull_request:
+    paths:
+      - "03 - Docs/**"
+      - "00 - FC_FW/App/**"
+      - "01 - FLOW_FW/Core/**"
+      - "mkdocs.yml"
+      - "Doxyfile.*"
+      - ".github/workflows/docs.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Doxygen and Graphviz
+        run: sudo apt-get update -q && sudo apt-get install -y -q doxygen graphviz
+      - name: API reference (Doxygen)
+        run: |
+          doxygen Doxyfile.fc
+          doxygen Doxyfile.flow
+          for f in "03 - Docs/api/"doxygen-*-warnings.log; do
+            if [ -s "$f" ]; then echo "::error::Doxygen warnings in $f"; cat "$f"; exit 1; fi
+          done
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: MkDocs
+        run: pip install -r "03 - Docs/requirements.txt"
+      - name: Build the site (strict)
+        run: mkdocs build --strict
+      - uses: actions/upload-pages-artifact@v3
+        if: github.event_name != 'pull_request'
+        with:
+          path: site
+
+  deploy:
+    if: github.event_name != 'pull_request'
+    needs: build
+    runs-on: ubuntu-24.04
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

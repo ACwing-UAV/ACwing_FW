@@ -8,7 +8,7 @@ port ``expSO3.m``, ``logSO3.m`` and ``skewSym.m``.
 Array layout follows MATLAB: inputs are ``3 x N``, outputs are ``3 x 3 x N``
 (attitude), ``3 x N`` (bias) and ``n x n x N`` (covariance).
 
-Theory (summary; see the README and the MATLAB help for the full text)
+Theory (summary; see 03 - Docs/theory/iekf.md and the MATLAB help for the full text)
 -----------------------------------------------------------------------
 Left-invariant error on SO(3): ``R_true = R_hat * exp(delta)``. Error state
 ``x = [delta; beta]``, ``beta = b_true - b_hat``::

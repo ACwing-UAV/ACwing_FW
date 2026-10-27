@@ -62,9 +62,9 @@ typedef struct {
     float    dt_s;
 } flow_frame_t;
 
-int32_t flow_init(flow_t *f, const sensor_bus_t *bus);           /* 0 = bridge found */
-int32_t flow_read(flow_t *f, flow_frame_t *fr);                 /* 1 = new data, 0 = none, <0 error */
-/* pure decoder (host tests) */
+int32_t flow_init(flow_t *f, const sensor_bus_t *bus);           /**< 0 = bridge found */
+int32_t flow_read(flow_t *f, flow_frame_t *fr);                 /**< 1 = new data, 0 = none, <0 error */
+/** pure decoder (host tests) */
 void    flow_decode(const uint8_t raw[FLOW_FRAME_LEN], flow_frame_t *fr);
 
 #endif /* FLOW_BRIDGE_H */

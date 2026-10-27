@@ -26,22 +26,22 @@
 #define APP_FW_PATCH  0u
 
 typedef struct {
-    char     hw_rev;              /* CAPS hwRev: 'N' Nucleo bench, 'A' ACwing FC rev A */
+    char     hw_rev;              /**< CAPS hwRev: 'N' Nucleo bench, 'A' ACwing FC rev A */
     uint8_t  n_motors;
     uint8_t  motors_built;
-    uint32_t uid[3];              /* MCU unique id -> serial "ACW-xxxxxxxx"         */
-    /* INIT frame of the estimator (copy; 0 if not ready yet) */
+    uint32_t uid[3];              /**< MCU unique id -> serial "ACW-xxxxxxxx"         */
+    /** INIT frame of the estimator (copy; 0 if not ready yet) */
     size_t (*get_init)(uint8_t *dst, size_t cap);
 } app_task_cfg_t;
 
-/* Before the scheduler starts: loads the flash image (parameters, name,
+/** Before the scheduler starts: loads the flash image (parameters, name,
  * calibrations) and posts the saved calibrations to the ImuTask
  * (fsh_apply_post). Returns the calibration set in effect. */
 const cal_set_t *app_task_boot(const float mag_hi_default[3]);
 
-void app_task_start(const app_task_cfg_t *cfg);   /* app_init + the RTOS task */
+void app_task_start(const app_task_cfg_t *cfg);   /**< app_init + the RTOS task */
 
-/* protocol logic, also used by the host test */
+/** protocol logic, also used by the host test */
 void app_init(const app_task_cfg_t *cfg);
 void app_step(uint32_t now_ms);
 

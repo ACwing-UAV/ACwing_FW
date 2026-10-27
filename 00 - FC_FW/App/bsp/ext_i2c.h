@@ -13,7 +13,7 @@
 #include "vl53l1x.h"
 #include "sensor_bus.h"
 
-void ext_i2c_tof_bus(vl53_bus_t *bus, uint8_t addr7);      /* 16-bit registers */
-void ext_i2c_flow_bus(sensor_bus_t *bus, uint8_t addr7);   /* 8-bit registers  */
+void ext_i2c_tof_bus(vl53_bus_t *bus, uint8_t addr7);      /**< 16-bit registers */
+void ext_i2c_flow_bus(sensor_bus_t *bus, uint8_t addr7);   /**< 8-bit registers  */
 
 #endif /* EXT_I2C_H */

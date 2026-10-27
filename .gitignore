@@ -1,2 +1,7 @@
 Debug/
 Release/
+# documentation build
+site/
+03 - Docs/api/fc/
+03 - Docs/api/flow/
+03 - Docs/api/doxygen-*-warnings.log

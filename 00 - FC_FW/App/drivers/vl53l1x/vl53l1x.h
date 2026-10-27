@@ -27,21 +27,21 @@ typedef struct {
 
 typedef struct {
     vl53_bus_t bus;
-    uint8_t    int_pol;         /* data-ready level on GPIO__TIO_HV_STATUS bit 0 */
+    uint8_t    int_pol;         /**< data-ready level on GPIO__TIO_HV_STATUS bit 0 */
     uint8_t    ok;
 } vl53_t;
 
-/* Range status after the ULD mapping: 0 valid, 1 sigma fail, 2 signal fail,
+/** Range status after the ULD mapping: 0 valid, 1 sigma fail, 2 signal fail,
  * 4 out of bounds, 7 wrap-around, others < 255 unusual, 255 unknown. */
 typedef struct {
     uint16_t mm;
     uint8_t  status;
-    uint16_t signal_kcps;       /* peak signal rate (MCPS x 1000 / 128 x 8) */
+    uint16_t signal_kcps;       /**< peak signal rate (MCPS x 1000 / 128 x 8) */
 } vl53_sample_t;
 
-/* 0 = sensor found and ranging; < 0 = absent or error (the board works without it) */
+/** 0 = sensor found and ranging; < 0 = absent or error (the board works without it) */
 int32_t vl53_init(vl53_t *d, const vl53_bus_t *bus, uint16_t budget_ms);
-/* 1 = new sample in *s, 0 = none yet, < 0 = bus error */
+/** 1 = new sample in *s, 0 = none yet, < 0 = bus error */
 int32_t vl53_poll(vl53_t *d, vl53_sample_t *s);
 
 #endif /* VL53L1X_H */

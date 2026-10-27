@@ -12,7 +12,7 @@
 #define ALT_CTRL_H
 
 typedef struct {
-    float hover;            /* initial hover thrust guess (0..1)        */
+    float hover;            /**< initial hover thrust guess (0..1)        */
     float kp_h, kp_v, ki_v;
     float thr_min, thr_max;
     float i_lim;

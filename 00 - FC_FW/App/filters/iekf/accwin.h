@@ -19,14 +19,14 @@
 #include <stdint.h>
 
 typedef struct {
-    float    D[9];      /* rotation body(start) <- body(now)     */
+    float    D[9];      /**< rotation body(start) <- body(now)     */
     float    sum[3];
     uint16_t n;
 } accwin_t;
 
 void accwin_reset(accwin_t *w);
-void accwin_add(accwin_t *w, const float acc[3]);           /* sample in the current body  */
-void accwin_rotate(accwin_t *w, const float E[9]);          /* after every propagation     */
-int  accwin_mean(const accwin_t *w, float out[3]);          /* in the current body, 0 = OK  */
+void accwin_add(accwin_t *w, const float acc[3]);           /**< sample in the current body  */
+void accwin_rotate(accwin_t *w, const float E[9]);          /**< after every propagation     */
+int  accwin_mean(const accwin_t *w, float out[3]);          /**< in the current body, 0 = OK  */
 
 #endif /* ACCWIN_H */

@@ -19,10 +19,10 @@
 #endif
 
 typedef struct {
-    volatile uint32_t head;      /* written by the producer only */
-    volatile uint32_t tail;      /* written by the consumer only */
-    uint32_t          mask;      /* N - 1 */
-    uint32_t          item;      /* sizeof item */
+    volatile uint32_t head;      /**< written by the producer only */
+    volatile uint32_t tail;      /**< written by the consumer only */
+    uint32_t          mask;      /**< N - 1 */
+    uint32_t          item;      /**< sizeof item */
     uint8_t          *buf;
 } spsc_t;
 
@@ -35,7 +35,7 @@ static inline void spsc_reset(spsc_t *q) { q->head = q->tail = 0u; }
 static inline int spsc_push(spsc_t *q, const void *it)
 {
     const uint32_t h = q->head;
-    if (h - q->tail > q->mask) return -1;                 /* full */
+    if (h - q->tail > q->mask) return -1;                 /**< full */
     memcpy(&q->buf[(h & q->mask) * q->item], it, q->item);
     SPSC_BARRIER();
     q->head = h + 1u;
@@ -45,7 +45,7 @@ static inline int spsc_push(spsc_t *q, const void *it)
 static inline int spsc_pop(spsc_t *q, void *it)
 {
     const uint32_t t = q->tail;
-    if (q->head == t) return 0;                           /* empty */
+    if (q->head == t) return 0;                           /**< empty */
     SPSC_BARRIER();
     memcpy(it, &q->buf[(t & q->mask) * q->item], q->item);
     SPSC_BARRIER();

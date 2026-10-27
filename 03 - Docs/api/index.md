@@ -1,0 +1,37 @@
+# API reference
+
+The C API of both firmwares is documented with **Doxygen**, from the comments
+in the sources (`@file`, `@brief`, `/**< … */` on fields and constants). It
+comes with call graphs, caller graphs and include graphs drawn by Graphviz,
+and a source browser.
+
+| Reference | Covers | Configuration |
+|---|---|---|
+| [ACwing FC firmware](fc/index.html) | `00 - FC_FW/App`: app, control, filters, telemetry, drivers, bsp | `Doxyfile.fc` |
+| [ACwing Flow bridge firmware](flow/index.html) | `01 - FLOW_FW/Core` | `Doxyfile.flow` |
+
+The two references are generated, not versioned. On the published site they
+sit next to this page. The links above work there, and locally after building
+them:
+
+```
+doxygen Doxyfile.fc        # -> 03 - Docs/api/fc/
+doxygen Doxyfile.flow      # -> 03 - Docs/api/flow/
+```
+
+Doxygen and Graphviz are required (`apt install doxygen graphviz`, or the
+installers for Windows and macOS). Warnings go to
+`03 - Docs/api/doxygen-*-warnings.log`. The CI fails if a documentation
+comment is malformed.
+
+## How the code is documented
+
+- Every file starts with a `/** @file … @brief … */` block. It says what the
+  module does, in which context it runs (ImuTask, AppTask, ISR), and whether
+  it is portable (host-testable) or tied to the board.
+- Public functions are documented in the header, right above the prototype.
+- Struct fields, enum values and constants carry a trailing `/**< … */` with
+  their unit and meaning (for example `/**< m/s, + up */`).
+- The *why* of a design, as opposed to the *what*, goes in the
+  [documentation site](../index.md) and in the [decisions](../decisions/index.md),
+  not in long code comments.

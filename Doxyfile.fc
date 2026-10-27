@@ -1,0 +1,70 @@
+# Doxygen: API reference of the ACwing flight-controller firmware.
+#   doxygen Doxyfile.fc      -> 03 - Docs/api/fc/index.html (not versioned)
+# The CI builds it before the MkDocs site, which links to it (api/index.md).
+PROJECT_NAME           = "ACwing FC firmware"
+PROJECT_BRIEF          = "STM32WB55: attitude IEKF, altitude Kalman filter, flight core, protocol v2"
+PROJECT_LOGO           = "03 - Docs/api/doxygen/acwing_mark_48.png"
+OUTPUT_DIRECTORY       = "03 - Docs/api"
+HTML_OUTPUT            = fc
+CREATE_SUBDIRS         = NO
+INPUT                  = "03 - Docs/api/doxygen/fc_main.md" \
+                         "00 - FC_FW/App/app" \
+                         "00 - FC_FW/App/control" \
+                         "00 - FC_FW/App/filters" \
+                         "00 - FC_FW/App/telemetry" \
+                         "00 - FC_FW/App/drivers" \
+                         "00 - FC_FW/App/bsp"
+USE_MDFILE_AS_MAINPAGE = "03 - Docs/api/doxygen/fc_main.md"
+FILE_PATTERNS          = *.c *.h
+RECURSIVE              = YES
+EXCLUDE_PATTERNS       = */third_party/*
+STRIP_FROM_PATH        = "00 - FC_FW/App"
+FULL_PATH_NAMES        = YES
+
+OPTIMIZE_OUTPUT_FOR_C  = YES
+JAVADOC_AUTOBRIEF      = YES
+QT_AUTOBRIEF           = YES
+EXTRACT_ALL            = YES
+EXTRACT_STATIC         = YES
+EXTRACT_PRIVATE        = YES
+SOURCE_BROWSER         = YES
+INLINE_SOURCES         = NO
+REFERENCED_BY_RELATION = YES
+REFERENCES_RELATION    = YES
+SORT_MEMBER_DOCS       = NO
+MARKDOWN_SUPPORT       = YES
+AUTOLINK_SUPPORT       = YES
+TYPEDEF_HIDES_STRUCT   = YES
+
+ENABLE_PREPROCESSING   = YES
+MACRO_EXPANSION        = YES
+EXPAND_ONLY_PREDEF     = YES
+PREDEFINED             = STM32WB55xx USE_HAL_DRIVER "__attribute__(x)=" "__STATIC_INLINE=static inline"
+SEARCH_INCLUDES        = NO
+
+HAVE_DOT               = YES
+DOT_IMAGE_FORMAT       = svg
+INTERACTIVE_SVG        = YES
+CALL_GRAPH             = YES
+CALLER_GRAPH           = YES
+INCLUDE_GRAPH          = YES
+INCLUDED_BY_GRAPH      = YES
+COLLABORATION_GRAPH    = YES
+DIRECTORY_GRAPH        = YES
+DOT_GRAPH_MAX_NODES    = 60
+MAX_DOT_GRAPH_DEPTH    = 3
+
+GENERATE_HTML          = YES
+GENERATE_TREEVIEW      = YES
+HTML_COLORSTYLE        = AUTO_LIGHT
+SEARCHENGINE           = YES
+USE_MATHJAX            = YES
+MATHJAX_VERSION        = MathJax_3
+GENERATE_LATEX         = NO
+
+QUIET                  = YES
+WARNINGS               = YES
+WARN_IF_UNDOCUMENTED   = NO
+WARN_IF_DOC_ERROR      = YES
+WARN_NO_PARAMDOC       = NO
+WARN_LOGFILE           = "03 - Docs/api/doxygen-fc-warnings.log"

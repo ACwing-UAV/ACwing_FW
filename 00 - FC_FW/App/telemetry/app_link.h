@@ -27,15 +27,14 @@
 #include <stdint.h>
 
 #define APPL_CMD_MAX      20u
-#define APPL_QUEUE_LEN    16u      /* power of 2, >= 8 required by the handover */
-
+#define APPL_QUEUE_LEN    16u      /**< power of 2, >= 8 required by the handover */
 typedef struct {
     uint8_t len;
     uint8_t b[APPL_CMD_MAX];
 } appl_cmd_t;
 
 typedef struct {
-    int16_t thr, yaw, pitch, roll;   /* -1000..1000: thr -1000 = stick bottom */
+    int16_t thr, yaw, pitch, roll;   /**< -1000..1000: thr -1000 = stick bottom */
     uint8_t buttons;
 } appl_rc_t;
 
@@ -47,17 +46,17 @@ void     appl_on_connect(void);
 void     appl_on_disconnect(void);
 
 /* ---- AppTask (one consumer) ---- */
-int      appl_pop(appl_cmd_t *out);            /* 1 if a command was taken */
+int      appl_pop(appl_cmd_t *out);            /**< 1 if a command was taken */
 uint32_t appl_queue_dropped(void);
 
 /* ---- flight core (any reader, never blocks) ---- */
-uint8_t  appl_ever(void);                      /* 1 once any CMD frame arrived */
-uint32_t appl_last_ms(void);                   /* time of the last CMD frame   */
-uint8_t  appl_link_down(void);                 /* GAP disconnected since then  */
-/* Silence seen by the failsafe: now - last CMD frame, at least 'down_floor_ms'
+uint8_t  appl_ever(void);                      /**< 1 once any CMD frame arrived */
+uint32_t appl_last_ms(void);                   /**< time of the last CMD frame   */
+uint8_t  appl_link_down(void);                 /**< GAP disconnected since then  */
+/** Silence seen by the failsafe: now - last CMD frame, at least 'down_floor_ms'
  * while the link is reported down; UINT32_MAX if nothing ever arrived. */
 uint32_t appl_silence_ms(uint32_t now_ms, uint32_t down_floor_ms);
-/* Latest RC values and their arrival time. Returns 1 with a consistent copy,
+/** Latest RC values and their arrival time. Returns 1 with a consistent copy,
  * 0 if no RC ever arrived (out untouched). */
 int      appl_rc_read(appl_rc_t *out, uint32_t *t_ms);
 

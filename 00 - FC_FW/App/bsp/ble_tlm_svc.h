@@ -15,7 +15,7 @@
  *                             USER CODE BEGIN EVT_DISCONN_COMPLETE
  *                                 ble_tlm_on_disconnect();
  *
- * plus  #include "ble_tlm_svc.h"  in USER CODE BEGIN Includes.
+ * plus `#include "ble_tlm_svc.h"` in USER CODE BEGIN Includes.
  * With APP_TLM_BLE = 0 the functions exist but do nothing.
  */
 #ifndef BLE_TLM_SVC_H
@@ -27,7 +27,7 @@
 extern "C" {
 #endif
 
-/* After SVCCTL_Init() and before advertising starts (APP_BLE_Init_3) */
+/** After SVCCTL_Init() and before advertising starts (APP_BLE_Init_3) */
 void ble_tlm_svc_init(void);
 void ble_tlm_on_connect(uint16_t conn_handle);
 void ble_tlm_on_disconnect(void);
