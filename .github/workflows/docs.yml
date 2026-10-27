@@ -27,15 +27,17 @@ permissions:
   pages: write
   id-token: write
 
+# One run per branch at a time; a running deployment is never cancelled
+# (GitHub's recommendation for Pages), a newer push just queues behind it.
 concurrency:
-  group: pages
-  cancel-in-progress: true
+  group: pages-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
   build:
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: Doxygen and Graphviz
         run: sudo apt-get update -q && sudo apt-get install -y -q doxygen graphviz
       - name: API reference (Doxygen)
@@ -45,17 +47,21 @@ jobs:
           for f in "03 - Docs/api/"doxygen-*-warnings.log; do
             if [ -s "$f" ]; then echo "::error::Doxygen warnings in $f"; cat "$f"; exit 1; fi
           done
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
       - name: MkDocs
         run: pip install -r "03 - Docs/requirements.txt"
       - name: Build the site (strict)
         run: mkdocs build --strict
-      - uses: actions/upload-pages-artifact@v3
+      # One artifact name per run attempt: "Re-run jobs" keeps the artifacts of
+      # the earlier attempts, and deploy-pages refuses two artifacts with the
+      # same name ("Multiple artifacts named github-pages").
+      - uses: actions/upload-pages-artifact@v5
         if: github.event_name != 'pull_request'
         with:
           path: site
+          name: github-pages-${{ github.run_attempt }}
 
   deploy:
     if: github.event_name != 'pull_request'
@@ -66,4 +72,6 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - id: deployment
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5
+        with:
+          artifact_name: github-pages-${{ github.run_attempt }}
