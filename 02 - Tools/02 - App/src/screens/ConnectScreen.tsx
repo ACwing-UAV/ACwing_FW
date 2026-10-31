@@ -13,7 +13,11 @@ import { Dot, Seg, SlideToConfirm, toast, useCommand } from "../ui/kit";
 
 export function checkValue(c: CheckItem, t: (k: string, v?: Record<string, string | number>) => string, cells: number) {
   switch (c.id) {
-    case CheckId.BATTERY: return `${cells || "?"}S · ${(c.value / 1000).toFixed(2)} V/cell`;
+    case CheckId.BATTERY:
+      if (c.state === CheckState.NA) return t("common.na");
+      // value 0: no battery measured -- USB power only (WARN) or the battery monitor stopped (FAIL)
+      if (c.value === 0) return c.state === CheckState.FAIL ? t("checks.battMonitor") : t("checks.noBattery");
+      return `${cells || "?"}S · ${(c.value / 1000).toFixed(2)} V/cell`;
     case CheckId.COMPASS: return t("calib.compass.interference", { i: c.value });
     case CheckId.GNSS: return c.state === CheckState.NA ? t("common.na") : `3D · ${c.value} sat`;
     case CheckId.HOME: return c.state === CheckState.NA ? t("common.na") : `± ${(c.value / 10).toFixed(1)} m`;

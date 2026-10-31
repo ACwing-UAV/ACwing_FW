@@ -46,6 +46,9 @@ static struct {                      /* GYRO */
     double s[3], s2[3]; uint32_t n; uint8_t restarts;
     float  bias[3], noise; uint16_t remaining;
 } G;
+static struct {                      /* BATTERY */
+    float vbat, used, scale_i_used;
+} B;
 static struct {                      /* COMPASS */
     double N[6][6], b[6]; uint32_t n;
     uint8_t cov[5];
@@ -62,6 +65,8 @@ void cal_set_defaults(cal_set_t *s, const float hi[3])
         s->compass.scale[i] = 1.0f;
         s->compass.hi[i] = hi ? hi[i] : 0.0f;
     }
+    s->battery.scale_v = 110.0f;          /* 100k/10k divider of the ACwing FC */
+    s->battery.scale_i = 1.0f;
 }
 
 void cal_copy_type(cal_set_t *d, const cal_set_t *s, uint8_t type)
@@ -72,6 +77,7 @@ void cal_copy_type(cal_set_t *d, const cal_set_t *s, uint8_t type)
     case PV2_CAL_GYRO:    d->gyro    = s->gyro;    break;
     case PV2_CAL_COMPASS: d->compass = s->compass; break;
     case PV2_CAL_MOTORS:  d->motors  = s->motors;  break;
+    case PV2_CAL_BATTERY: d->battery = s->battery; break;
     default: return;
     }
     const uint32_t bit = 1u << (type - 1u);
@@ -152,7 +158,7 @@ uint8_t cal_start(uint8_t type, uint8_t option, uint8_t armed, uint32_t now, uin
         if (!(s_cfg.sensors & PV2_S_FLOW)) { *reason = PV2_R_SENSOR_MISSING; return PV2_ACK_REJECTED; }
         break;
     case PV2_CAL_BATTERY:
-        if (!(s_cfg.sensors & PV2_S_CURRENT)) { *reason = PV2_R_SENSOR_MISSING; return PV2_ACK_REJECTED; }
+        if (!(s_cfg.sensors & PV2_S_CURRENT) || !s_cfg.batt) { *reason = PV2_R_SENSOR_MISSING; return PV2_ACK_REJECTED; }
         break;
     case PV2_CAL_STICKS:
         if (!(s_cfg.sensors & PV2_S_ELRS)) { *reason = PV2_R_SENSOR_MISSING; return PV2_ACK_REJECTED; }
@@ -167,7 +173,7 @@ uint8_t cal_start(uint8_t type, uint8_t option, uint8_t armed, uint32_t now, uin
         break;
     }
     /* the sensors exist but this firmware has no procedure for them yet */
-    if (type == PV2_CAL_FLOW_TOF || type == PV2_CAL_BATTERY || type == PV2_CAL_STICKS ||
+    if (type == PV2_CAL_FLOW_TOF || type == PV2_CAL_STICKS ||
         type == PV2_CAL_MOTORS) return PV2_ACK_UNSUPPORTED;
 
     /* a previous calibration left in DONE (not saved) is discarded */
@@ -199,6 +205,11 @@ uint8_t cal_start(uint8_t type, uint8_t option, uint8_t armed, uint32_t now, uin
     case PV2_CAL_COMPASS:
         memset(&C, 0, sizeof C);
         set_state(PV2_CS_RUNNING, 2);
+        break;
+    case PV2_CAL_BATTERY:
+        memset(&B, 0, sizeof B);
+        s_cfg.batt(&B.vbat, &B.used, &B.scale_i_used);
+        set_state(PV2_CS_WAITING_USER, 1);
         break;
     default:
         break;
@@ -506,13 +517,23 @@ void cal_feed(const cal_sample_t *s, uint32_t now)
     }
 }
 
-void cal_tick(uint32_t now) { s_now = now; }
+void cal_tick(uint32_t now)
+{
+    s_now = now;
+    if (s_type == PV2_CAL_BATTERY && s_cfg.batt &&
+        (s_state == PV2_CS_WAITING_USER || s_state == PV2_CS_DONE))
+        s_cfg.batt(&B.vbat, &B.used, &B.scale_i_used);      /* vbat live, with the new scale once applied */
+}
 
 uint8_t cal_capture(uint32_t now, uint8_t *reason)
 {
     (void)now;
     *reason = PV2_R_NONE;
     if (!cal_active()) { *reason = PV2_R_NOT_CALIBRATING; return PV2_ACK_REJECTED; }
+    if (s_type == PV2_CAL_BATTERY && s_state == PV2_CS_WAITING_USER) {
+        set_state(PV2_CS_DONE, 3);          /* skip the current step (§10.6) */
+        return PV2_ACK_OK;
+    }
     if (s_type == PV2_CAL_ACCEL && s_state == PV2_CS_WAITING_USER) {
         const int pos = accel_position(A.last_a);
         if (pos < 0 || A.last_g >= 2.0f * STILL_GYRO) { *reason = PV2_R_NOT_STILL; return PV2_ACK_REJECTED; }
@@ -535,6 +556,32 @@ uint8_t cal_set_ref(uint8_t type, uint8_t index, float v, uint8_t *reason)
         s_changed = 1;
         return PV2_ACK_OK;
     }
+    if (type == PV2_CAL_BATTERY && s_state == PV2_CS_WAITING_USER && index == 0u) {
+        /* measured pack voltage: scaleV = scaleV * measured / read */
+        if (!isfinite(v) || v < 2.5f || v > 30.0f) { *reason = PV2_R_OUT_OF_RANGE; return PV2_ACK_INVALID; }
+        if (!(B.vbat > 1.0f)) { *reason = PV2_R_SENSOR_MISSING; return PV2_ACK_REJECTED; }   /* no battery */
+        const float k = v / B.vbat;
+        if (k < 0.7f || k > 1.3f) { *reason = PV2_R_OUT_OF_RANGE; return PV2_ACK_INVALID; }
+        s_res.battery.scale_v *= k;
+        apply(&s_res);
+        s_applied = 1;
+        B.vbat = v;
+        set_state(PV2_CS_WAITING_USER, 2);
+        return PV2_ACK_OK;
+    }
+    if (type == PV2_CAL_BATTERY && s_state == PV2_CS_WAITING_USER && index == 1u) {
+        /* charge put back by the charger after the last flight:
+         * scaleI = (scale the flight was counted with) * mAh / counted mAh */
+        if (!isfinite(v) || v < 50.0f || v > 20000.0f) { *reason = PV2_R_OUT_OF_RANGE; return PV2_ACK_INVALID; }
+        if (!(B.used >= 20.0f) || !(B.scale_i_used > 0.0f)) { *reason = PV2_R_OUT_OF_RANGE; return PV2_ACK_REJECTED; }
+        const float si = B.scale_i_used * v / B.used;
+        if (si < 0.5f * B.scale_i_used || si > 2.0f * B.scale_i_used) { *reason = PV2_R_OUT_OF_RANGE; return PV2_ACK_INVALID; }
+        s_res.battery.scale_i = si;
+        apply(&s_res);
+        s_applied = 1;
+        set_state(PV2_CS_DONE, 3);
+        return PV2_ACK_OK;
+    }
     return PV2_ACK_INVALID;
 }
 
@@ -548,6 +595,7 @@ size_t cal_frame(uint8_t *out, size_t cap)
     pv2_calib_hdr_t h = { s_type, s_state, s_step, s_progress, s_quality, s_reason };
     union {
         pv2_cal_accel_t a; pv2_cal_level_t l; pv2_cal_gyro_t g; pv2_cal_compass_t c;
+        pv2_cal_battery_t b;
     } d;
     uint8_t n = 0;
     memset(&d, 0, sizeof d);
@@ -593,6 +641,13 @@ size_t cal_frame(uint8_t *out, size_t cap)
         d.c.quality_fc  = fin ? C.qual : 0xFFu;
         d.c.quality_gps = 0xFFu;
         n = sizeof d.c;
+        break;
+    }
+    case PV2_CAL_BATTERY: {
+        const uint16_t b[4] = { clu16(B.vbat * 1000.0f), clu16(s_res.battery.scale_v * 10.0f),
+                                clu16(s_res.battery.scale_i * 1e4f), clu16(B.used) };
+        memcpy(&d.b, b, sizeof b);
+        n = sizeof d.b;
         break;
     }
     default:

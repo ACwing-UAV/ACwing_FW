@@ -1,3 +1,7 @@
 host_test
 ext_test
 frames.bin
+power_test
+log_test
+power_frames.bin
+log_sample.bin

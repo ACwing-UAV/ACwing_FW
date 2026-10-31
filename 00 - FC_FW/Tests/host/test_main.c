@@ -133,7 +133,7 @@ static void test_ack_cache(void)
 static void fc_setup(uint16_t sensors)
 {
     appl_reset();
-    const fc_config_t c = { sensors, 4, 0, NULL, NULL };
+    const fc_config_t c = { sensors, 4, 0, NULL, NULL, NULL, 0 };
     fc_init(&c);
     params_defaults();
     fc_set_ground_info(1, 0, 0);
@@ -163,7 +163,7 @@ static void test_takeoff_land(void)
     now = 1000;
     heartbeat();
     plant_t pl = { 0, 0, 0.42f };
-    fc_vert_t v = { 1, 0, 0, 0, 0, 0, 1.0f, 0xFF };
+    fc_vert_t v = { 1, 0, 0, 0, 0, 0, 1.0f, 0xFF, 0 };
     fc_service(now, 1, &v);
     const uint8_t arm[2] = { 0xA5, 0x5A };
     fc_res_t r = post(PV2_OP_ARM, 1, arm, 2, &v);
@@ -224,7 +224,7 @@ static void test_takeoff_tof(void)
     fc_setup(PV2_S_IMU | PV2_S_BARO | PV2_S_TOF | PV2_S_FLOW);
     now = 1000; heartbeat();
     plant_t pl = { 0, 0, 0.40f };
-    fc_vert_t v = { 1, 0, 0, 0, 1, 0, 1.0f, 80 };
+    fc_vert_t v = { 1, 0, 0, 0, 1, 0, 1.0f, 80, 0 };
     const uint8_t arm[2] = { 0xA5, 0x5A };
     fc_res_t r = post(PV2_OP_ARM, 1, arm, 2, &v);
     const uint16_t alt = 150;
@@ -370,7 +370,7 @@ static void test_app_link_failsafe(void)
     fc_setup(PV2_S_IMU | PV2_S_BARO);
     now = 1000; heartbeat();
     plant_t pl = { 0, 0, 0.42f };
-    fc_vert_t v = { 1, 0, 0, 0, 0, 0, 1.0f, 0xFF };
+    fc_vert_t v = { 1, 0, 0, 0, 0, 0, 1.0f, 0xFF, 0 };
     const uint8_t arm[2] = { 0xA5, 0x5A };
     (void)post(PV2_OP_ARM, 1, arm, 2, &v);
     (void)post(PV2_OP_TAKEOFF, 2, NULL, 0, &v);
@@ -555,12 +555,12 @@ static void test_app(void)
         fsh_est_write(&e);
         fsh_apply_t a; while (fsh_apply_take(&a)) {}
     }
-    { const fc_config_t c = { 0, 4, 0, NULL, NULL }; fc_init(&c); }
+    { const fc_config_t c = { 0, 4, 0, NULL, NULL, NULL, 0 }; fc_init(&c); }
     app_task_cfg_t ac; memset(&ac, 0, sizeof ac);
     ac.hw_rev = 'N'; ac.n_motors = 4; ac.uid[0] = 0x12345678; ac.get_init = fake_init;
     app_init(&ac);
 
-    fc_vert_t v = { 1, 0, 0, 0, 0, 0, 1.0f, 0xFF };
+    fc_vert_t v = { 1, 0, 0, 0, 0, 0, 1.0f, 0xFF, 0 };
     tlm_ble_set_state(TLM_BLE_CONNECTED);
     tlm_ble_set_state(TLM_BLE_STREAMING);
     appl_on_connect();

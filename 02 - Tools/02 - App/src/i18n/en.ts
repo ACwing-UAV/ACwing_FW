@@ -24,6 +24,7 @@ const en = {
     indoorNote: "On indoor models GNSS and Home are replaced by optical flow and ToF.", calibrate: "Calibrate",
   },
   checks: {
+    noBattery: "No battery (USB power)", battMonitor: "Battery monitor stopped",
     1: "Battery", 2: "IMU & level", 3: "Compass", 4: "GNSS", 5: "Home set", 6: "ELRS radio", 7: "EKF status",
     8: "Geofence · failsafe", 9: "Optical flow", 10: "Throttle low", 11: "Calibration",
     state: { 0: "OK", 1: "Check", 2: "Not ready", 3: "n/a" },
@@ -65,6 +66,7 @@ const en = {
   },
   levels: { 0: "INFO", 1: "WARN", 2: "ERROR", 3: "CRITICAL" },
   events: {
+    8: "Takeoff aborted: no lift-off", 33: "Battery monitor stopped",
     1: "Armed", 2: "Disarmed", 3: "Takeoff", 4: "Landed", 5: "Flight mode changed", 6: "Returning to home", 7: "Home set",
     20: "App link lost: failsafe", 21: "Radio link lost: failsafe", 22: "Battery failsafe", 23: "Geofence reached",
     24: "GPS lost", 25: "Optical flow lost", 30: "Battery low", 31: "Battery critical", 32: "Battery empty: landing",
@@ -105,6 +107,7 @@ const en = {
     elrsHelp: "Top priority: when active, the app switches to telemetry only",
   },
   params: {
+    battCapacity: "Capacity", battCells: "Cells", logMode: "Flight log",
     takeoffAlt: "Takeoff altitude", landSpeed: "Landing speed", autoDisarm: "Auto‑disarm after landing", maxTilt: "Max tilt",
     maxYawRate: "Max yaw rate", maxClimb: "Max climb / descent", maxHSpeed: "Max horizontal speed", beginner: "Beginner mode",
     fsAppShort: "App link lost for 1 s", fsAppLong: "App link lost for 3 s", fsRadio: "ELRS radio lost", fsGpsLost: "GPS lost",
@@ -114,10 +117,12 @@ const en = {
     compassPrimary: "Primary compass",
   },
   actions: {
+    auto: "Automatic", logOff: "Off", logArmed: "Each flight", logAlways: "Always",
     hover: "Hover", land: "Land", rth: "Return to home", useFlow: "Use optical flow", altHold: "ALT HOLD", altHoldWarn: "ALT HOLD + warn",
     stopBack: "Stop and move back", compassFc: "Flight controller", compassGps: "GPS module (farther from motors)",
   },
   safety: {
+    capacityHint: "0 = unknown: no flight time left", cellsHint: "Automatic: counted when the battery is connected",
     banner: "Options tagged GPS appear only on outdoor models. On indoor models they are hidden and every “Return to home” action becomes “Land”.",
     failsafe: "Failsafe actions", battery: "Battery", cellsDetected: "{n}S detected automatically", perCell: "V/cell",
     alert: "alert", rthOrLand: "RTH or land", landNow: "land now", geofence: "Geofence", altAll: "Barometer · all models",
@@ -224,6 +229,7 @@ const en = {
     say: { alt: "Altitude {v} meters", batt: "Battery {v} percent", timer: "{v} minutes" },
   },
   about: {
+    logUsed: "Flight log used", logModeHint: "Download over USB with the PC tools",
     firmware: "Firmware", fc: "Flight controller", serial: "Serial number", installed: "Installed", update: "Update firmware",
     updateHint: "Firmware updates come with the USB tools; over Bluetooth in a later release.", hardware: "Detected hardware",
     hardwareHint: "Read from the drone at every connection. The app shows only what this drone has: without GPS, RTH, map and distance geofence disappear.",

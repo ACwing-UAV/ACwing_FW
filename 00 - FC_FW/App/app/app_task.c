@@ -18,6 +18,8 @@
 #include "checks.h"
 #include "fc_shared.h"
 #include "ext_sens.h"
+#include "batt_task.h"
+#include "log_task.h"
 #include <string.h>
 #include <math.h>
 
@@ -43,6 +45,8 @@ static uint32_t s_pend_t;
 
 /* stream rates (Hz) and next send times */
 static uint8_t  s_hz_flight = 10, s_hz_power = 5, s_hz_nav = 5, s_hz_motors = 5, s_hz_system = 2;
+static uint32_t s_t_power;
+static uint16_t s_fl_count;
 static uint32_t s_t_flight, s_t_nav, s_t_motors, s_t_system, s_t_checks, s_t_caps, s_t_calib, s_t_ground;
 
 /* paced PARAM list */
@@ -59,8 +63,16 @@ static uint8_t  s_have_ev_mag, s_have_ev_vib;
 /* checks */
 static uint8_t  s_ready, s_batt_fail;
 
+/* BLE log download: one answer frame of the LogTask waiting for room in the HI ring */
+static log_msg_t s_logmsg;
+static uint8_t   s_have_logmsg;
+
 /* ------------------------------------------------------------------ helpers */
+static uint8_t armed_now(void);
 static void tx(const uint8_t *f, size_t len) { if (len) (void)tlm_ble_push_hi(f, (uint16_t)len); }
+
+/* frame buffer for frames longer than FRAME_CAP (log data over BLE) */
+static uint8_t s_big[4u + 255u + 2u];
 
 static uint32_t bit(uint8_t type) { return 1u << (type - 1u); }
 
@@ -90,6 +102,7 @@ static const char *ev_text(uint16_t code)
     case PV2_E_BATTERY_LOW:        return "Battery low";
     case PV2_E_BATTERY_CRITICAL:   return "Battery critical";
     case PV2_E_BATTERY_EMERGENCY:  return "Battery emergency: landing";
+    case PV2_E_BATTERY_MONITOR_LOST: return "Battery monitor stopped";
     case PV2_E_MAG_INTERFERENCE:   return "Magnetic interference";
     case PV2_E_HIGH_VIBRATION:     return "High vibration";
     case PV2_E_MOTOR_HOT:          return "Motor hot";
@@ -133,7 +146,15 @@ static uint16_t sensors_now(void)
     fsh_est_t e;
     memset(&e, 0, sizeof e);
     fsh_est_read(&e);
-    return (uint16_t)(e.sensors | ext_sensors());
+    return (uint16_t)(e.sensors | ext_sensors() | s_cfg.board_sensors);
+}
+
+static batt_state_t batt_now(void)
+{
+    batt_state_t b;
+    memset(&b, 0, sizeof b);
+    if (s_cfg.batt_monitor) batt_read(&b);
+    return b;
 }
 
 /* ------------------------------------------------------------------ frames */
@@ -148,7 +169,7 @@ static void send_caps(void)
     c.sensors = s_sensors;
     c.n_motors = s_cfg.n_motors;
     c.frame = (s_cfg.n_motors == 8u) ? 2u : (s_cfg.n_motors == 6u ? 1u : 0u);
-    c.cells = 0u;                                   /* no battery measurement yet */
+    c.cells = batt_now().cells;                     /* 0 = not known yet */
     memcpy(c.name, s_img.name, sizeof c.name);
     {
         uint32_t h = 2166136261u;                   /* FNV-1a of the 96-bit UID */
@@ -266,7 +287,27 @@ static void send_system(void)
     s.est_flags = (uint8_t)((e.running ? 1u : 0u) | (e.acc_gated ? 2u : 0u) | (e.mag_gated ? 4u : 0u) |
                             (e.mag_interf_pct > 30.0f ? 8u : 0u));
     s.mag_interf_pct = (uint8_t)(e.mag_interf_pct > 100.0f ? 100.0f : e.mag_interf_pct);
+    s.log_pct = s_cfg.log_pct ? s_cfg.log_pct() : 0u;
+    if (s.log_pct == 0xFFu) s.log_pct = 0u;
     tx(s_frame, pv2_frame(PV2_FT_SYSTEM, &s, sizeof s, s_frame, sizeof s_frame));
+}
+
+static uint16_t u16c(float v) { return (uint16_t)(v > 65535.0f ? 65535.0f : (v < 0.0f ? 0.0f : v + 0.5f)); }
+
+static void send_power(void)
+{
+    const batt_state_t b = batt_now();
+    pv2_power_t p;
+    memset(&p, 0, sizeof p);
+    p.vbat_mv = u16c(b.vbat * 1000.0f);
+    p.current_ca = (s_sensors & PV2_S_CURRENT) ? sat16(b.current * 100.0f) : 0;
+    p.used_mah = u16c(b.used_mah);
+    p.cells = b.cells;
+    p.cell_mv = u16c(b.cell_v * 1000.0f);
+    p.pct = b.pct;
+    p.remain_s = (b.remain_s < 0.0f) ? 0xFFFFu : u16c(b.remain_s > 65534.0f ? 65534.0f : b.remain_s);
+    p.warn = b.level;
+    tx(s_frame, pv2_frame(PV2_FT_POWER, &p, sizeof p, s_frame, sizeof s_frame));
 }
 
 static void build_checks(pv2_check_t *it, uint8_t *n)
@@ -298,6 +339,16 @@ static void build_checks(pv2_check_t *it, uint8_t *n)
     in.flow_q = e.flow_q;
     in.flow_ok = e.flow_ok;
     in.in_air = f.in_air;
+    if (s_cfg.batt_monitor) {
+        const batt_state_t b = batt_now();
+        in.batt_monitor = 1u;
+        in.batt_stale = f.batt_stale;
+        in.batt_present = b.present;
+        in.batt_level = f.batt_level;
+        in.batt_cell_v = b.cell_v;
+        in.batt_warn = PARAM(P_BATT_WARN);
+        in.batt_crit = PARAM(P_BATT_CRIT);
+    }
     *n = checks_build(&in, it, &s_ready, &s_batt_fail);
 }
 
@@ -346,14 +397,43 @@ static void send_calib(void)
 /* ------------------------------------------------------------------ flash */
 static int save_image(void)
 {
-    params_get_all(s_img.params);
+    float v[PARAM_COUNT];
+    params_get_all(v);
+    cfg_params_put(&s_img, v);
     return cfg_save(&s_img);
 }
 
-/* calibration apply hook (calib_mgr -> ImuTask) */
+/* the flash image as it is, with the parameters last saved (no unsaved edits) */
+static int save_image_keep_params(void) { return cfg_save(&s_img); }
+
+/* calibration apply hook (calib_mgr -> ImuTask, BATTERY -> BattTask) */
 static void cal_apply(uint8_t type, const cal_set_t *set)
 {
-    (void)fsh_apply_post(type, set);
+    if (type == PV2_CAL_BATTERY) (void)batt_task_post_scales(set->battery.scale_v, set->battery.scale_i);
+    else (void)fsh_apply_post(type, set);
+}
+
+/* BATTERY calibration readings */
+static void cal_batt(float *vbat, float *used, float *scale_i)
+{
+    *vbat = batt_now().vbat;
+    *used = s_img.batt_used_mah;
+    *scale_i = s_img.batt_used_scale_i;
+}
+
+/* after a flight: keep its charge for the BATTERY calibration (§10.6) */
+static void battery_flight(void)
+{
+    if (!s_cfg.batt_monitor) return;
+    batt_flight_t fl;
+    memset(&fl, 0, sizeof fl);
+    batt_task_last_flight(&fl);
+    if (fl.count == s_fl_count) return;
+    s_fl_count = fl.count;
+    if (fl.used_mah < 20.0f || armed_now()) return;       /* not a flight worth keeping */
+    s_img.batt_used_mah = fl.used_mah;
+    s_img.batt_used_scale_i = fl.scale_i;
+    (void)save_image_keep_params();                       /* disarmed: flash write allowed */
 }
 
 /* ------------------------------------------------------------------ commands */
@@ -484,7 +564,10 @@ static void local_cmd(uint8_t op, uint8_t seq, const uint8_t *p, uint8_t plen, u
         case PV2_FT_NAV:    ack(op, seq, PV2_ACK_OK, PV2_R_NONE); send_nav();    return;
         case PV2_FT_MOTORS: ack(op, seq, PV2_ACK_OK, PV2_R_NONE); send_motors(); return;
         case PV2_FT_SYSTEM: ack(op, seq, PV2_ACK_OK, PV2_R_NONE); send_system(); return;
-        default:            ack(op, seq, PV2_ACK_UNSUPPORTED, PV2_R_NONE);      return;   /* POWER: no ADC yet */
+        case PV2_FT_POWER:
+            if (!s_cfg.batt_monitor) { ack(op, seq, PV2_ACK_UNSUPPORTED, PV2_R_NONE); return; }
+            ack(op, seq, PV2_ACK_OK, PV2_R_NONE); send_power(); return;
+        default:            ack(op, seq, PV2_ACK_UNSUPPORTED, PV2_R_NONE);      return;
         }
     case PV2_OP_SET_NAME: {
         if (armed_now()) { ack(op, seq, PV2_ACK_REJECTED, PV2_R_ARMED); return; }
@@ -524,6 +607,16 @@ static void commands(uint32_t now)
         if (st == ACKC_DONE) { tx(s_frame, pv2_ack(op, seq, res, why, s_frame, sizeof s_frame)); continue; }
         if (st == ACKC_PENDING) continue;                 /* its ACK is on the way */
 
+        if (op == PV2_OP_LOG_LIST || op == PV2_OP_LOG_READ || op == PV2_OP_LOG_ERASE) {
+            /* the LogTask owns the log: it answers (ACK after the data) through log_ble_out() */
+            log_cmd_t lc;
+            memset(&lc, 0, sizeof lc);
+            lc.op = op; lc.seq = seq;
+            lc.len = (uint8_t)(plen > sizeof lc.p ? sizeof lc.p : plen);
+            memcpy(lc.p, &c.b[2], lc.len);
+            if (log_task_ble_cmd(&lc) != 0) ack(op, seq, PV2_ACK_BUSY, PV2_R_NONE);
+            continue;
+        }
         if (fc_is_core_op(op)) {
             fc_cmd_t fc;
             memset(&fc, 0, sizeof fc);
@@ -538,6 +631,31 @@ static void commands(uint32_t now)
             (void)fc_post(&stop);
             local_cmd(op, seq, &c.b[2], plen, now);
         }
+    }
+}
+
+/* answers of the LogTask to BLE log commands -> HI ring (dropped when no app
+ * is subscribed: the app asks again) */
+static void log_ble_out(void)
+{
+    for (;;) {
+        if (!s_have_logmsg) {
+            if (!log_task_ble_take(&s_logmsg)) return;
+            s_have_logmsg = 1u;
+        }
+        const log_msg_t *m = &s_logmsg;
+        if (m->type == PV2_FT_ACK && m->len >= 4u) {
+            ack(m->p[0], m->p[1], m->p[2], m->p[3]);     /* through the ACK cache */
+        } else {
+            /* the HI ring takes log frames up to 60 % full (tlm_ble.c), so ACKs and
+             * events always find room; a frame that does not fit waits here */
+            const size_t n = pv2_frame(m->type, m->p, m->len, s_big, sizeof s_big);
+            if (tlm_ble_state() == TLM_BLE_STREAMING && n) {
+                if (tlm_ble_hi_free() < (TLM_BLE_RING_SIZE * 40u) / 100u + n) return;   /* no room yet */
+                (void)tlm_ble_push_hi(s_big, (uint16_t)n);
+            }
+        }
+        s_have_logmsg = 0u;
     }
 }
 
@@ -595,7 +713,7 @@ static void streams(uint32_t now, uint8_t armed)
     if (due(now, &s_t_system, 1000u / s_hz_system)) send_system();
     if (due(now, &s_t_checks, armed ? 2000u : 500u)) send_checks();
     if (due(now, &s_t_caps, 5000u)) send_caps();
-    (void)s_hz_power;                                 /* POWER: no ADC yet, not sent */
+    if (s_cfg.batt_monitor && due(now, &s_t_power, 1000u / s_hz_power)) send_power();
 }
 
 /* ------------------------------------------------------------------ entry points */
@@ -607,9 +725,12 @@ const cal_set_t *app_task_boot(const float mag_hi_default[3])
     params_defaults();
     memcpy(s_img.name, "ACwing #1", 9);
     cfg_image_t img;
+    s_img.batt_used_scale_i = 1.0f;
     if (cfg_load(&img) == 0) {
         s_img = img;
-        params_load(img.params, PARAM_COUNT);
+        float v[PARAM_COUNT];
+        cfg_params_get(&img, v);
+        params_load(v, PARAM_COUNT);
         s_img.name[15] = '\0';
     }
     params_mark_saved();
@@ -630,10 +751,13 @@ void app_init(const app_task_cfg_t *cfg)
     s_sensors = sensors_now();
     fc_set_sensors(s_sensors);
     ackc_reset();
-    const cal_config_t cc = { s_sensors, s_cfg.motors_built, cal_apply };
+    const cal_config_t cc = { s_sensors, s_cfg.motors_built, cal_apply,
+                              s_cfg.batt_monitor ? cal_batt : NULL };
     cal_init(&cc, &s_cal);
     s_pend = 0u; s_list_next = -1;
     memset(s_rep, 0, sizeof s_rep);
+    s_fl_count = 0u;
+    s_have_logmsg = 0u;
 }
 
 void app_step(uint32_t now)
@@ -655,7 +779,7 @@ void app_step(uint32_t now)
         send_init();
         send_checks();
         tlm_ble_open_streams();
-        s_t_flight = s_t_nav = s_t_motors = s_t_system = now;
+        s_t_flight = s_t_nav = s_t_motors = s_t_system = s_t_power = now;
         s_t_checks = now + 500u; s_t_caps = now + 5000u;
     }
 
@@ -672,6 +796,8 @@ void app_step(uint32_t now)
         fc_set_ground_info(s_ready, s_batt_fail, cal_running());
     }
 
+    battery_flight();
+    log_ble_out();
     streams(now, armed_now());
     list_pace();
 }

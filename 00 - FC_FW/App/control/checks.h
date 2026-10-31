@@ -27,6 +27,13 @@ typedef struct {
     uint8_t  flow_q;           /**< 0..100, 0xFF n/a                              */
     uint8_t  flow_ok;          /**< bridge alive, PMW3901 OK                       */
     uint8_t  in_air;
+    /* battery (item 1) */
+    uint8_t  batt_monitor;     /**< battery measured (BattTask runs)               */
+    uint8_t  batt_stale;       /**< BattTask silent                                */
+    uint8_t  batt_present;
+    uint8_t  batt_level;       /**< latched level from the flight core             */
+    float    batt_cell_v;      /**< average cell, sagged and filtered              */
+    float    batt_warn, batt_crit;   /**< params battWarn / battCrit                */
 } checks_in_t;
 
 /** fills items (PV2_CHECKS_MAX), returns the count; *ready = no FAIL;

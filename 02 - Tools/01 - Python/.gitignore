@@ -16,3 +16,7 @@ iekf_log_*.bin
 iekf_cap_*.bin
 iekf_ble_*.bin
 sim.bin
+
+# flight logs downloaded from the drone
+acwing_flight_*.bin
+acwing_flight_*.csv

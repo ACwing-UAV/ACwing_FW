@@ -26,6 +26,7 @@ const it: Translation = {
     indoorNote: "Sui modelli indoor GNSS e Home sono sostituiti da flusso ottico e ToF.", calibrate: "Calibra",
   },
   checks: {
+    noBattery: "Nessuna batteria (alimentazione USB)", battMonitor: "Monitor batteria fermo",
     1: "Batteria", 2: "IMU e livello", 3: "Bussola", 4: "GNSS", 5: "Home impostata", 6: "Radio ELRS", 7: "Stato EKF",
     8: "Geofence · failsafe", 9: "Flusso ottico", 10: "Gas al minimo", 11: "Calibrazione",
     state: { 0: "OK", 1: "Verifica", 2: "Non pronto", 3: "n/d" },
@@ -67,6 +68,7 @@ const it: Translation = {
   },
   levels: { 0: "INFO", 1: "AVVISO", 2: "ERRORE", 3: "CRITICO" },
   events: {
+    8: "Decollo annullato: il drone non si è sollevato", 33: "Monitor batteria fermo",
     1: "Armato", 2: "Disarmato", 3: "Decollo", 4: "Atterrato", 5: "Modalità di volo cambiata", 6: "Ritorno a casa", 7: "Home impostata",
     20: "Link app perso: failsafe", 21: "Link radio perso: failsafe", 22: "Failsafe batteria", 23: "Geofence raggiunto",
     24: "GPS perso", 25: "Flusso ottico perso", 30: "Batteria bassa", 31: "Batteria critica", 32: "Batteria scarica: atterraggio",
@@ -107,6 +109,7 @@ const it: Translation = {
     elrsHelp: "Priorità massima: quando è attiva, l'app passa alla sola telemetria",
   },
   params: {
+    battCapacity: "Capacità", battCells: "Celle", logMode: "Log di volo",
     takeoffAlt: "Quota di decollo", landSpeed: "Velocità di atterraggio", autoDisarm: "Disarmo automatico dopo l'atterraggio", maxTilt: "Inclinazione max",
     maxYawRate: "Velocità di imbardata max", maxClimb: "Salita / discesa max", maxHSpeed: "Velocità orizzontale max", beginner: "Modalità principiante",
     fsAppShort: "Link app perso per 1 s", fsAppLong: "Link app perso per 3 s", fsRadio: "Radio ELRS persa", fsGpsLost: "GPS perso",
@@ -116,10 +119,12 @@ const it: Translation = {
     compassPrimary: "Bussola principale",
   },
   actions: {
+    auto: "Automatico", logOff: "Spento", logArmed: "A ogni volo", logAlways: "Sempre",
     hover: "Hover", land: "Atterra", rth: "Ritorno a casa", useFlow: "Usa flusso ottico", altHold: "ALT HOLD", altHoldWarn: "ALT HOLD + avviso",
     stopBack: "Fermati e torna indietro", compassFc: "Flight controller", compassGps: "Modulo GPS (più lontano dai motori)",
   },
   safety: {
+    capacityHint: "0 = sconosciuta: nessun tempo di volo residuo", cellsHint: "Automatico: contate quando si collega la batteria",
     banner: "Le opzioni con etichetta GPS compaiono solo sui modelli outdoor. Sui modelli indoor sono nascoste e ogni “Ritorno a casa” diventa “Atterra”.",
     failsafe: "Azioni di failsafe", battery: "Batteria", cellsDetected: "{n}S rilevate automaticamente", perCell: "V/cella",
     alert: "avviso", rthOrLand: "RTH o atterra", landNow: "atterra subito", geofence: "Geofence", altAll: "Barometro · tutti i modelli",
@@ -226,6 +231,7 @@ const it: Translation = {
     say: { alt: "Quota {v} metri", batt: "Batteria {v} per cento", timer: "{v} minuti" },
   },
   about: {
+    logUsed: "Memoria log usata", logModeHint: "Scaricabile via USB con i tool PC",
     firmware: "Firmware", fc: "Flight controller", serial: "Numero di serie", installed: "Installato", update: "Aggiorna firmware",
     updateHint: "Gli aggiornamenti firmware arrivano con gli strumenti USB; via Bluetooth in una versione successiva.", hardware: "Hardware rilevato",
     hardwareHint: "Letto dal drone a ogni connessione. L'app mostra solo ciò che il drone possiede: senza GPS spariscono RTH, mappa e geofence a distanza.",

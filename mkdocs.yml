@@ -63,6 +63,8 @@ nav:
       - BLE telemetry: firmware/ble.md
       - ACwing Pilot protocol v2: firmware/protocol-v2.md
       - ACwing Flow bridge: firmware/flow-bridge.md
+      - Battery and failsafes: firmware/battery.md
+      - Flight log and USB: firmware/logging.md
       - Testing: firmware/testing.md
       - API reference (Doxygen): api/index.md
   - Tools:
@@ -79,6 +81,8 @@ nav:
       - decisions/0004-linear-altitude-kf.md
       - decisions/0005-drivers-and-bsp.md
       - decisions/0006-flow-bridge-mcu.md
+      - decisions/0007-battery-task.md
+      - decisions/0008-flash-log-and-usb-cdc.md
   - Project:
       - Lessons learned: project/lessons-learned.md
       - Roadmap: project/roadmap.md

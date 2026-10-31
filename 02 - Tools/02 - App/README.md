@@ -13,6 +13,9 @@ delivered as:
 The app talks to the drone **directly over Bluetooth LE**: no server, no
 account. The drone ↔ app protocol (v2) and what the firmware has to implement
 are in **[HANDOVER_FW.md](HANDOVER_FW.md)**.
+What the firmware added since (battery failsafes, flight log, USB log
+download) and what the app still has to build for it are in
+**[HANDOVER_APP.md](HANDOVER_APP.md)**.
 
 UI languages: English (default), Italiano, Français, Deutsch, Español
 (Settings › General).
@@ -98,8 +101,8 @@ preferences (language, units, theme, stick feel, voice) live on the device.
 ## Status
 
 - App, protocol v2, simulator: complete.
-- Firmware side: to be implemented following [HANDOVER_FW.md](HANDOVER_FW.md)
-  (today the firmware sends STATE/INIT/STATUS only; the app connects, shows
-  the attitude and reports the missing parts as not available).
+- Firmware side: protocol v2 implemented (firmware 0.4.0+); firmware 0.5.0
+  adds battery failsafes, the flight log and USB log download
+  ([HANDOVER_APP.md](HANDOVER_APP.md) lists the app work for them).
 - Not yet: USB and Wi‑Fi links, firmware update from the app, flight-log
   download from the drone.

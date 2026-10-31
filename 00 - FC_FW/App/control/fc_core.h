@@ -47,6 +47,9 @@
 #define FC_FLOW_CHECK_H      0.15f   /* m: FLOW_LOST is judged only above this height,
                                         never on the ground, in TAKEOFF or LAND */
 
+/* ---- battery (§6): signals from the BattTask ---- */
+#define FC_BATT_STALE_MS     1000u   /**< no BattTask heartbeat: battery unknown   */
+
 /* internal opcodes (AppTask -> core), outside the v2 range */
 #define FC_OP_MOTOR_STOP     0xF0u   /**< stop a running motor test               */
 typedef struct {
@@ -57,6 +60,13 @@ typedef struct {
 typedef struct { uint8_t op, seq, result, reason; } fc_res_t;
 typedef struct { uint8_t level; uint16_t code; int32_t arg; } fc_event_t;
 
+/** battery signal (BattTask -> core): sent when the level or presence changes */
+typedef struct {
+    uint8_t  present;                /**< battery connected                       */
+    uint8_t  level;                  /**< PV2_BATT_OK … PV2_BATT_EMERGENCY         */
+    uint16_t cell_mv;                /**< sagged cell voltage (EVENT arg)          */
+} fc_batt_sig_t;
+
 typedef struct {
     uint16_t sensors;                /**< CAPS bits detected at boot             */
     uint8_t  n_motors;               /**< 4, 6 or 8                              */
@@ -64,6 +74,9 @@ typedef struct {
     /** outputs (ImuTask context); may be NULL on the host */
     void   (*motors_arm)(uint8_t armed);
     void   (*motor_test)(uint8_t motor, float duty);   /**< motor 0 = all off */
+    /** every event also goes here (flight-control context), e.g. to the log; may be NULL */
+    void   (*on_event)(const fc_event_t *e);
+    uint8_t  batt_monitor;           /**< a BattTask measures the battery          */
 } fc_config_t;
 
 /** published state (AppTask builds FLIGHT / MOTORS from it) */
@@ -76,6 +89,8 @@ typedef struct {
     uint8_t  test_motor;             /**< motor under test (1..n), 0 none         */
     uint8_t  landed;                 /**< touched down after a flight (until disarm) */
     uint8_t  geofence;               /**< a limit is active                        */
+    uint8_t  batt_level;             /**< last level signalled by the BattTask     */
+    uint8_t  batt_stale;             /**< BattTask silent: battery state unknown   */
     int32_t  alt_rel_cm;             /**< above the take-off point                  */
     int16_t  vz_cms;
     uint32_t silence_ms;             /**< app link silence seen by the failsafe    */
@@ -116,6 +131,10 @@ void    fc_set_sensors(uint16_t sensors);
 /** v: NULL = no vertical estimate (in air only via g_fc_dbg_in_air) */
 void    fc_service(uint32_t now_ms, uint8_t est_running, const fc_vert_t *v);
 void    fc_setpoint(fc_setpoint_t *out);         /**< last setpoints, same context */
+
+/* ---- BattTask ---- */
+int     fc_batt_signal(const fc_batt_sig_t *s);   /**< 0 = queued, -1 = full   */
+void    fc_batt_heartbeat(uint32_t now_ms);        /**< every BattTask step      */
 
 /* ---- AppTask ---- */
 int     fc_post(const fc_cmd_t *c);              /**< 0 = queued, -1 = full   */

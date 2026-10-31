@@ -38,6 +38,10 @@
 #define PV2_FT_CALIB    0x0Du
 #define PV2_FT_ACK      0x0Eu
 #define PV2_FT_CHECKS   0x0Fu
+/* USB link only (firmware extension, not used by the app over BLE) */
+#define PV2_FT_LOG_ENTRY 0x10u  /**< answer to LOG_LIST, one per log        */
+#define PV2_FT_LOG_DATA  0x11u  /**< answer to LOG_READ                     */
+#define PV2_FT_CMD       0x20u  /**< PC -> drone: payload = op, seq, args (as a BLE CMD write) */
 
 /* ---------------- command opcodes, app -> drone ---------------- */
 #define PV2_OP_SEND_INIT      0x01u   /**< legacy [0x01]           */
@@ -69,6 +73,9 @@
 #define PV2_OP_STREAM_RATES   0x40u
 #define PV2_OP_REQUEST        0x41u
 #define PV2_OP_SET_NAME       0x42u
+#define PV2_OP_LOG_LIST       0x50u   /**< reserved in HANDOVER §16, USB link     */
+#define PV2_OP_LOG_READ       0x51u   /**< id u16, offset u32, len u32            */
+#define PV2_OP_LOG_ERASE      0x52u   /**< "WIPE" (firmware extension)            */
 
 #define PV2_ARM_MAGIC0        0xA5u
 #define PV2_ARM_MAGIC1        0x5Au
@@ -132,6 +139,7 @@ enum {
     PV2_E_FAILSAFE_APP_LINK = 20, PV2_E_FAILSAFE_RADIO = 21, PV2_E_FAILSAFE_BATTERY = 22,
     PV2_E_GEOFENCE_BREACH = 23, PV2_E_GPS_LOST = 24, PV2_E_FLOW_LOST = 25,
     PV2_E_BATTERY_LOW = 30, PV2_E_BATTERY_CRITICAL = 31, PV2_E_BATTERY_EMERGENCY = 32,
+    PV2_E_BATTERY_MONITOR_LOST = 33, /**< firmware extension (ERROR): BattTask silent, battery unknown */
     PV2_E_MAG_INTERFERENCE = 40, PV2_E_HIGH_VIBRATION = 41, PV2_E_MOTOR_HOT = 42,
     PV2_E_RADIO_OVERRIDE = 43, PV2_E_CALIB_DONE = 50, PV2_E_CALIB_FAILED = 51,
     PV2_E_PARAMS_SAVED = 60, PV2_E_MOTOR_KILLED = 70
@@ -236,6 +244,21 @@ typedef struct {                  /**< 0x0C PARAM */
     uint16_t index, count;
 } pv2_param_t;                    /**< 11 */
 
+typedef struct {                  /**< 0x10 LOG_ENTRY (USB) */
+    uint16_t id;
+    uint8_t  index, count;        /**< position in the list, list size       */
+    uint8_t  flags;               /**< bit0 truncated (oldest, beginning overwritten), bit1 being written */
+    uint16_t sectors;
+    uint32_t t0_ms;               /**< uptime when the log started           */
+    uint32_t bytes;               /**< sectors × 4096                        */
+} pv2_log_entry_t;                /**< 15 */
+
+typedef struct {                  /**< 0x11 LOG_DATA header (USB), then data */
+    uint16_t id;
+    uint32_t offset;
+} pv2_log_data_hdr_t;             /**< 6 */
+#define PV2_LOG_DATA_MAX 240u
+
 typedef struct {                  /**< 0x0D CALIB header */
     uint8_t type, state, step, progress, quality, reason;
 } pv2_calib_hdr_t;                /**< 6 */
@@ -279,6 +302,8 @@ _Static_assert(sizeof(pv2_cal_motors_t)  == 4,  "CALIB motors layout");
 _Static_assert(sizeof(pv2_cal_sticks_t)  == 28, "CALIB sticks layout");
 _Static_assert(sizeof(pv2_ack_t)         == 4,  "ACK layout");
 _Static_assert(sizeof(pv2_check_t)       == 4,  "CHECKS item layout");
+_Static_assert(sizeof(pv2_log_entry_t)   == 15, "LOG_ENTRY layout");
+_Static_assert(sizeof(pv2_log_data_hdr_t) == 6, "LOG_DATA layout");
 #endif
 
 #define PV2_EVENT_TEXT_MAX   40u

@@ -16,30 +16,39 @@ ACwing_FlightController_FW/
 │   │   │                           est_pipeline (multi-rate attitude estimation), tlm_build (telemetry frames),
 │   │   │                           app_task (protocol v2: commands, params, flash, v2 frames), params,
 │   │   │                           cfg_store (A/B flash image), fc_shared (ImuTask <-> AppTask data),
-│   │   │                           ext_sens (ExtTask: probe/poll the Qwiic ToF and flow, host-tested)
+│   │   │                           ext_sens (ExtTask: probe/poll the Qwiic ToF and flow, host-tested),
+│   │   │                           batt_task (BattTask: battery monitor, signals the flight core),
+│   │   │                           log_task (LogTask: flight log, USB log commands)
 │   │   ├── filters/                state estimators (no HAL, no RTOS, host-testable)
 │   │   │   ├── iekf/               attitude IEKF on SO(3): so3 (Exp/Log, orthonormalisation), iekf (filter),
 │   │   │   │                       accwin (rotation-compensated acc mean), calib (static calibration window)
 │   │   │   └── altitude_kf/        altitude Kalman filter (alt_est): height, climb rate, baro and acc bias
 │   │   ├── control/                fc_core (arming, modes, TAKEOFF/LAND/HOLD, failsafes), alt_ctrl (height
-│   │   │                           loop), calib_mgr (calibrations), checks (pre-flight), control hooks (weak,
+│   │   │                           loop), calib_mgr (calibrations), checks (pre-flight), battery (estimator:
+│   │   │                           cells, level, state of charge, time left), control hooks (weak,
 │   │   │                           empty), motor PWM (disabled)
+│   │   ├── log/                    flight log: log_format.h (on-flash format), log_store (sector ring),
+│   │   │                           log_queue (producer rings), log_feed (record builders), log_flash_ram
 │   │   ├── drivers/                chip drivers, portable (bus given as function pointers, host-testable):
 │   │   │                           sensor_bus.h, imu_lsm6dsv16x (IMU, sensor hub with compass and barometer,
-│   │   │                           FIFO parser), vl53l1x (ToF), flow_bridge (ACwing Flow)
+│   │   │                           FIFO parser), vl53l1x (ToF), flow_bridge (ACwing Flow), w25q (log flash)
 │   │   ├── bsp/                    board support, tied to the STM32WB55 + HAL/RTOS: imu_i2c (HAL I²C + DMA
 │   │   │                           binding, bus lock), ble_tlm_svc (GATT service + TX thread on STM32_WPAN),
 │   │   │                           cfg_flash_wb (flash pages shared with CPU2), ext_i2c (HAL binding of the
-│   │   │                           Qwiic devices for the vl53l1x / flow_bridge drivers)
+│   │   │                           Qwiic devices for the vl53l1x / flow_bridge drivers), batt_adc (ADC1
+│   │   │                           injected group), usb_cdc + usb/ (USB CDC device: usbd_conf, descriptors)
 │   │   ├── telemetry/              frame format and CRC (telemetry.h), UART + DMA transport;
 │   │   │                           tlm_ble: BLE queues HI/LO + link state; proto_v2 (app protocol ids and
-│   │   │                           layouts), app_link (CMD receive side), ack_cache, spsc (all host-testable)
-│   │   └── third_party/            ST lsm6dsv16x-pid driver (BSD-3), CMSIS-DSP headers and library
+│   │   │                           layouts), app_link (CMD receive side), ack_cache, usb_link (USB byte
+│   │   │                           stream), spsc (all host-testable)
+│   │   └── third_party/            ST lsm6dsv16x-pid driver (BSD-3), CMSIS-DSP headers and library,
+│   │                               ST USB device library 2.11.6 (st_usb, SLA0044) and the HAL PCD/USB
+│   │                               and LL ADC files (st_hal_usb_adc, BSD-3), kept out of CubeMX's reach
 │   ├── Core/                       CubeMX-generated: main.c, interrupts, HAL MSP, FreeRTOS config, startup,
 │   │                               radio-core infrastructure (app_entry, hw_timerserver, app_conf.h)
 │   ├── Tests/host/                 host tests (make): flight core, failsafes, TAKEOFF/LAND, altitude filter,
 │   │                               drivers, AppTask protocol, BLE rings; ExtTask end to end with the Flow
-│   │                               bridge logic of 01 - FLOW_FW
+│   │                               bridge logic of 01 - FLOW_FW; battery (power_test); flight log (log_test)
 │   ├── STM32_WPAN/App/             CubeMX-generated BLE application (app_ble.c with our 3 hooks, see BLE telemetry)
 │   ├── Drivers/, Middlewares/      CubeMX-generated: STM32WB HAL, CMSIS, FreeRTOS, ST STM32_WPAN (BLE)
 │   ├── Utilities/                  CubeMX-generated: low-power manager used by STM32_WPAN
@@ -55,13 +64,14 @@ ACwing_FlightController_FW/
 │   │   ├── Viewer/                 acwingLiveViewer.m (live 3D triad + logging, USB or BLE), quat2rotmLocal.m
 │   │   ├── Telemetry/              parseTelemetry, decode*, crc16ccitt, statusDiagnosis
 │   │   ├── MagCalib/               calibMagAxes.m (axis map + hard-iron), fitHardIron.m, magCheck.m
+│   │   ├── FlightLog/              acwingLogDownload.m (USB), acwingLogDecode.m (flight log format 1)
 │   │   └── FiltersComparison/      tlmCapture, tlmSniffer, compareEmbeddedVsMatlab
 │   │       ├── IEKF_originalVersion/   ORIGINAL filter developed in MATLAB: iekfAttitude.m, expSO3, logSO3, skewSym
 │   │       └── IEKF_embeddedVersion/   EXTENDED filter: iekfAttitudeEmb.m + iekfCore*.m (MATLAB mirror of the C code)
 │   ├── 01 - Python/                Python equivalents of the MATLAB tools (package acwing_tools, CLI acwing-tools)
 │   │   ├── acwing_tools/           viewer, capture + sniffer, compare, magcalib, telemetry,
 │   │   │                           ble_io (BLE link, bleak), filters/ (original + embedded mirror),
-│   │   │                           logio (.mat logs), simulate
+│   │   │                           logio (.mat logs), simulate, flightlog (flight log download + decode)
 │   │   ├── tests/                  pytest suite: parity with the MATLAB outputs, recorded captures
 │   │   ├── pyproject.toml, requirements.txt
 │   │   └── README.md               installation, MATLAB ↔ Python map, commands

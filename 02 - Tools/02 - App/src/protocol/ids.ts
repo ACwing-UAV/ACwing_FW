@@ -204,6 +204,8 @@ export enum EventCode {
   MODE_CHANGED = 5,
   RTH_STARTED = 6,
   HOME_SET = 7,
+  /** firmware extension: no lift-off within 6 s, back on the ground */
+  TAKEOFF_ABORTED = 8,
   FAILSAFE_APP_LINK = 20,
   FAILSAFE_RADIO = 21,
   FAILSAFE_BATTERY = 22,
@@ -213,6 +215,8 @@ export enum EventCode {
   BATTERY_LOW = 30,
   BATTERY_CRITICAL = 31,
   BATTERY_EMERGENCY = 32,
+  /** firmware extension (ERROR): the battery task stopped, battery unknown */
+  BATTERY_MONITOR_LOST = 33,
   MAG_INTERFERENCE = 40,
   HIGH_VIBRATION = 41,
   MOTOR_HOT = 42,
@@ -297,6 +301,9 @@ export const PARAMS: ParamDef[] = [
   { id: 20, key: "battWarn", def: 3.6, min: 3.3, max: 3.9, step: 0.05, unit: "V" },
   { id: 21, key: "battCrit", def: 3.5, min: 3.2, max: 3.8, step: 0.05, unit: "V" },
   { id: 22, key: "battEmerg", def: 3.3, min: 3.0, max: 3.6, step: 0.05, unit: "V" },
+  // firmware extensions (0.5.0): 0 = unknown capacity / cells detected automatically
+  { id: 23, key: "battCapacity", def: 0, min: 0, max: 20000, step: 10, unit: "mAh", needs: SENSOR.CURRENT },
+  { id: 24, key: "battCells", def: 0, min: 0, max: 6, step: 1, unit: "S", options: [0, 1, 2, 3, 4, 5, 6] },
   { id: 30, key: "gfMaxAlt", def: 30, min: 5, max: 120, step: 1, unit: "m" },
   { id: 31, key: "gfCeiling", def: 2.5, min: 1, max: 4, step: 0.1, unit: "m", needs: SENSOR.TOF },
   { id: 32, key: "gfMaxDist", def: 150, min: 20, max: 500, step: 10, unit: "m", needs: SENSOR.GNSS },
@@ -305,6 +312,8 @@ export const PARAMS: ParamDef[] = [
   { id: 41, key: "rthStickCancel", def: 1, min: 0, max: 1, step: 1, needs: SENSOR.GNSS },
   { id: 50, key: "armRequireChecks", def: 1, min: 0, max: 1, step: 1 },
   { id: 60, key: "compassPrimary", def: 1, min: 0, max: 1, step: 1, options: [1, 0], needs: SENSOR.MAG_GPS },
+  // firmware extension (0.5.0): flight log in the drone flash
+  { id: 70, key: "logMode", def: 1, min: 0, max: 2, step: 1, options: [1, 2, 0], needs: SENSOR.FLASH_LOG },
 ];
 
 export const PARAM_BY_KEY: Record<string, ParamDef> = Object.fromEntries(PARAMS.map((p) => [p.key, p]));
@@ -319,4 +328,6 @@ export const ACTION = {
   fsFlowLost: { 0: "altHoldWarn", 1: "land" },
   gfAction: { 0: "stopBack", 1: "hover", 2: "rth" },
   compassPrimary: { 0: "compassFc", 1: "compassGps" },
+  battCells: { 0: "auto" },
+  logMode: { 0: "logOff", 1: "logArmed", 2: "logAlways" },
 } as Record<string, Record<number, string>>;

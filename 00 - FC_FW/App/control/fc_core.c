@@ -19,6 +19,7 @@ volatile uint8_t g_fc_dbg_in_air;
 SPSC_DEFINE(s_cmdq, fc_cmd_t,   8u);
 SPSC_DEFINE(s_resq, fc_res_t,   8u);
 SPSC_DEFINE(s_evq,  fc_event_t, 16u);
+SPSC_DEFINE(s_batq, fc_batt_sig_t, 8u);
 
 static fc_config_t s_cfg;
 static volatile uint16_t s_sensors;
@@ -53,6 +54,11 @@ static uint32_t   s_touch_ms, s_flow_bad_ms;
 static alt_ctrl_t s_ac;
 static fc_setpoint_t s_sp;
 
+/* battery */
+static uint8_t           s_batt_level, s_batt_present, s_batt_lock, s_batt_stale, s_batt_have_hb;
+static volatile uint32_t s_batt_hb_ms;
+static volatile uint8_t  s_batt_hb_set;
+
 /* motor test */
 static uint8_t  s_test_motor, s_test_pct;
 static uint32_t s_test_until;
@@ -79,7 +85,14 @@ void fc_init(const fc_config_t *cfg)
     s_touch_ms = s_flow_bad_ms = 0u;
     alt_ctrl_init(&s_ac, 0.45f);
     memset(&s_sp, 0, sizeof s_sp);
+    spsc_reset(&s_batq);
+    s_batt_level = PV2_BATT_OK; s_batt_present = 0u; s_batt_lock = 0u;
+    s_batt_stale = cfg->batt_monitor;      /* unknown until the first heartbeat */
+    s_batt_have_hb = 0u; s_batt_hb_set = 0u;
 }
+
+int  fc_batt_signal(const fc_batt_sig_t *b) { return spsc_push(&s_batq, b); }
+void fc_batt_heartbeat(uint32_t now)       { s_batt_hb_ms = now; SPSC_BARRIER(); s_batt_hb_set = 1u; }
 
 void fc_set_sensors(uint16_t sensors) { s_sensors = sensors; }
 void fc_setpoint(fc_setpoint_t *out)  { *out = s_sp; }
@@ -123,6 +136,7 @@ static void event(uint8_t level, uint16_t code, int32_t arg)
 {
     const fc_event_t e = { level, code, arg };
     (void)spsc_push(&s_evq, &e);             /* full: the AppTask is stalled, nothing to do */
+    if (s_cfg.on_event) s_cfg.on_event(&e);
 }
 
 static uint8_t has(uint16_t bits) { return (uint8_t)((s_sensors & bits) != 0u); }
@@ -182,7 +196,19 @@ static void disarm(void)
     s_in_air = 0u;                 /* motors off: not flying any more */
     s_dbg_forced = 0u;
     s_geofence = 0u;
+    s_batt_lock = 0u;
     if (was) event(PV2_EV_INFO, PV2_E_DISARMED, 0);
+}
+
+/* the battery monitor says no flight: level CRITICAL or worse, or it stopped */
+static uint8_t batt_unusable(void)
+{
+    return (uint8_t)(s_cfg.batt_monitor && (s_batt_stale || s_batt_level >= PV2_BATT_CRITICAL));
+}
+/* a battery failsafe is flying the drone down: other failsafes do not take over */
+static uint8_t batt_owns_auto(void)
+{
+    return (uint8_t)((s_failsafe & PV2_FS_BATTERY) && (s_auto == PV2_AUTO_LAND || s_auto == PV2_AUTO_RTH));
 }
 
 /* failsafe action value -> automatic action; RTH without GNSS + home -> land */
@@ -212,6 +238,10 @@ static void exec(const fc_cmd_t *c, uint32_t now, uint8_t est_running)
     /* a running motor test stops on any other command */
     if (c->op != PV2_OP_MOTOR_TEST) test_stop();
 
+    /* battery emergency: landing, no override except KILL (§6) */
+    if (s_batt_lock && (c->op == PV2_OP_SET_MODE || c->op == PV2_OP_HOLD || c->op == PV2_OP_RTH ||
+                        c->op == PV2_OP_TAKEOFF)) { REJ(PV2_R_BATTERY_LOW); return; }
+
     switch (c->op) {
     case PV2_OP_ARM: {
         if (c->len < 2u || p[0] != PV2_ARM_MAGIC0 || p[1] != PV2_ARM_MAGIC1) { INVALID(PV2_R_NONE); return; }
@@ -221,7 +251,7 @@ static void exec(const fc_cmd_t *c, uint32_t now, uint8_t est_running)
         /* ELRS in control -> RADIO_OVERRIDE: no receiver on this hardware */
         if (s_have_rc && (now - s_rc_ms) < FC_ARM_RC_FRESH_MS &&
             s_rc.thr > (hold_mode() ? 100 : -900)) { REJ(PV2_R_THROTTLE_NOT_LOW); return; }
-        if (s_batt_fail) { REJ(PV2_R_BATTERY_LOW); return; }
+        if (s_batt_fail || batt_unusable()) { REJ(PV2_R_BATTERY_LOW); return; }
         /* never arm without a running attitude estimate, whatever armRequireChecks says */
         if (!est_running || (PARAM(P_ARM_REQUIRE_CHECKS) > 0.5f && !s_checks_ready)) {
             REJ(PV2_R_CHECKS_FAILING); return;
@@ -248,6 +278,7 @@ static void exec(const fc_cmd_t *c, uint32_t now, uint8_t est_running)
         if (!s_armed) { REJ(PV2_R_NOT_ARMED); return; }
         if (s_in_air) { REJ(PV2_R_NOT_LANDED); return; }
         if (!alt_ok()) { REJ(PV2_R_SENSOR_MISSING); return; }     /* baro/ToF not ready yet */
+        if (batt_unusable()) { REJ(PV2_R_BATTERY_LOW); return; }
         float alt = (c->len >= 2u) ? (float)pv2_rd_u16(p) / 100.0f : 0.0f;
         if (alt <= 0.0f) alt = PARAM(P_TAKEOFF_ALT);
         if (alt < 0.5f) alt = 0.5f;
@@ -380,6 +411,12 @@ static void app_link_failsafe(uint32_t now)
         return;
     }
     /* ELRS in control: the app link does not matter (no receiver on this hardware) */
+    if (batt_owns_auto()) {
+        /* landing for the battery: the link loss is only flagged */
+        if (sil > FC_FS_SHORT_MS) s_failsafe |= PV2_FS_APP_LINK;
+        else if (sil < FC_LINK_BACK_MS) s_failsafe &= (uint8_t)~PV2_FS_APP_LINK;
+        return;
+    }
     if (sil > FC_FS_LONG_MS && !s_fs_long) {
         s_auto = fs_action(P_FS_APP_LONG);
         s_failsafe |= PV2_FS_APP_LINK;
@@ -397,6 +434,50 @@ static void app_link_failsafe(uint32_t now)
         if (!s_fs_long && s_fs_short_hold && s_auto == PV2_AUTO_HOLD) s_auto = PV2_AUTO_NONE;
         s_fs_short_hold = 0u;
     }
+}
+
+/* ---- battery (§6): signals from the BattTask, failsafes ---- */
+static void battery(uint32_t now)
+{
+    if (!s_cfg.batt_monitor) return;
+    fc_batt_sig_t b;
+    while (spsc_pop(&s_batq, &b)) {
+        if (b.level > s_batt_level) {
+            /* crossing a threshold downwards: one event (§11 codes 30/31/32) */
+            static const uint8_t lv[4]    = { 0, PV2_EV_WARN, PV2_EV_ERROR, PV2_EV_CRITICAL };
+            static const uint16_t code[4] = { 0, PV2_E_BATTERY_LOW, PV2_E_BATTERY_CRITICAL, PV2_E_BATTERY_EMERGENCY };
+            if (b.level <= PV2_BATT_EMERGENCY) event(lv[b.level], code[b.level], b.cell_mv);
+        }
+        s_batt_level = (b.level <= PV2_BATT_EMERGENCY) ? b.level : PV2_BATT_EMERGENCY;
+        s_batt_present = b.present;
+    }
+
+    /* the BattTask must be alive: its heartbeat is the only proof */
+    uint8_t stale = 1u;
+    if (s_batt_hb_set) {
+        SPSC_BARRIER();
+        stale = (uint8_t)((now - s_batt_hb_ms) > FC_BATT_STALE_MS);
+        s_batt_have_hb = 1u;
+    }
+    if (stale && !s_batt_stale && s_batt_have_hb)
+        event(PV2_EV_ERROR, PV2_E_BATTERY_MONITOR_LOST, 0);
+    s_batt_stale = stale;
+
+    if (!s_armed || !s_in_air) return;
+    if (s_batt_level >= PV2_BATT_CRITICAL && !(s_failsafe & PV2_FS_BATTERY)) {
+        /* RTH needs GNSS, home and enough charge to get there: none on this hardware */
+        const uint8_t act = (gnss() && home_set()) ? PV2_AUTO_RTH : PV2_AUTO_LAND;
+        s_failsafe |= PV2_FS_BATTERY;
+        if (s_auto != PV2_AUTO_LAND && s_auto != PV2_AUTO_RTH) { s_auto = act; s_touch_ms = 0u; }
+        s_fs_short_hold = 0u;
+        event(PV2_EV_ERROR, PV2_E_FAILSAFE_BATTERY, s_auto);
+    }
+    if (s_batt_level >= PV2_BATT_EMERGENCY && !s_batt_lock) {
+        s_batt_lock = 1u;
+        s_failsafe |= PV2_FS_BATTERY;
+        if (s_auto != PV2_AUTO_LAND) { s_auto = PV2_AUTO_LAND; s_touch_ms = 0u; }
+    }
+    if (s_batt_lock) s_auto = PV2_AUTO_LAND;          /* nothing but KILL overrides it */
 }
 
 /* ---- in air / on ground ---- */
@@ -592,6 +673,8 @@ static void publish(void)
     s_snap.test_motor = s_test_motor;
     s_snap.landed = s_landed;
     s_snap.geofence = s_geofence;
+    s_snap.batt_level = s_batt_level;
+    s_snap.batt_stale = (uint8_t)(s_cfg.batt_monitor && s_batt_stale);
     if (s_have_v && s_v.valid) {
         const float a = (s_v.h - (s_armed || s_took_off ? s_h_ref : s_v.h)) * 100.0f;
         s_snap.alt_rel_cm = (int32_t)(a + (a >= 0.0f ? 0.5f : -0.5f));
@@ -621,6 +704,7 @@ void fc_service(uint32_t now, uint8_t est_running, const fc_vert_t *v)
 
     app_link_failsafe(now);
     flow_failsafe(dt);
+    battery(now);
 
     /* ---- pilot cancels HOLD (and RTH, if allowed) with the sticks ---- */
     if (s_armed && s_in_air && s_silence < FC_LINK_BACK_MS && !(s_failsafe & PV2_FS_APP_LINK)) {

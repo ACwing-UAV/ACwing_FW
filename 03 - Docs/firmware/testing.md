@@ -8,9 +8,11 @@ the tests that run without a board, and what each one proves.
 |---|---|---|---|
 | FC host tests | `make` in `00 - FC_FW/Tests/host` | 93 | flight core, failsafes, TAKEOFF/LAND, altitude filter, drivers, AppTask protocol, BLE rings |
 | ExtTask, end to end | same `make` (`ext_test`) | 12 | Qwiic probing and polling, with the real bridge logic of `01 - FLOW_FW` |
+| Battery | same `make` (`power_test`) | 95 | estimator, BattTask signals, battery failsafes, BATTERY calibration, CHECKS item 1, POWER, flash image v1 → v2 |
+| Flight log | same `make` (`log_test`) | 58 | W25Q driver on a simulated chip, sector ring (wrap, re-mount, power loss), queues, LogTask policy, USB download protocol, BLE last-flight download through the AppTask |
 | Flow bridge | `make test` in `01 - FLOW_FW` | 22 | register map against the FC driver, I²C target protocol, PMW3901 sequences |
-| Frames vs app decoders | `frames.bin` from the FC host test, decoded by the app (`src/protocol`) | every v2 frame | byte-for-byte layout of CAPS, FLIGHT, NAV, MOTORS, SYSTEM, EVENT, PARAM, CALIB, ACK, CHECKS |
-| Python tools | `pytest` in `02 - Tools/01 - Python` | 26 | parity of the Python filters and parsers with MATLAB |
+| Frames vs app decoders | `frames.bin` and `power_frames.bin` from the FC host tests, decoded by the app (`src/protocol`) | every v2 frame | byte-for-byte layout of CAPS, FLIGHT, POWER, NAV, MOTORS, SYSTEM, EVENT, PARAM, CALIB (battery too), ACK, CHECKS |
+| Python tools | `pytest` in `02 - Tools/01 - Python` | 33 | parity of the Python filters and parsers with MATLAB; flight-log decoder on a log written by the firmware code (`log_test` → `flightlog_sample.bin`), download client against an emulated drone |
 | Firmware builds | CubeIDE / `arm-none-eabi-gcc` | – | the FC firmware (include paths and defines from `.cproject`) and the Flow firmware (`make`) |
 
 The C suites build with **AddressSanitizer and UBSan**, so an out-of-bounds
@@ -91,7 +93,17 @@ check the layouts against the app:
 3. re-encode it with the matching `encode*()`.
 
 The bytes must be identical, and there must be no CRC error. Last result:
-142 frames, 0 CRC errors, 0 mismatches.
+143 frames from `frames.bin` and 507 from `power_frames.bin` (POWER, battery
+CALIB, CHECKS with the battery item), 0 CRC errors, 0 mismatches.
+
+## Flight log across languages
+
+`log_test` writes one downloaded log, produced by the firmware's own store,
+queues and LogTask, to `log_sample.bin`. The same file is
+`02 - Tools/01 - Python/tests/data/flightlog_sample.bin`: the Python decoder
+test and the MATLAB decoder (`acwingLogDecode`, checked with Octave) read it
+and must find the same records. When the format changes, regenerate the file
+with `make` and copy it.
 
 ## On the board
 

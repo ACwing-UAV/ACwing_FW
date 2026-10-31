@@ -19,7 +19,7 @@ The code is in `App/app/app_task.c` (dispatcher, frames, flash), in
 |---|---|---|---|
 | `0x05` | CAPS | on subscribe, on REQUEST, every 5 s, when a sensor appears | AppTask |
 | `0x06` | FLIGHT | 10 Hz (STREAM_RATES 1–20) | flight-core snapshot |
-| `0x07` | POWER | not sent: no battery measurement yet | – |
+| `0x07` | POWER | 5 Hz (STREAM_RATES 1–10), on REQUEST; only on boards that measure the battery | BattTask snapshot, see [Battery](battery.md) |
 | `0x08` | NAV | 5 Hz, also on indoor models (baro, ToF, flow quality; `fix = 0xFF`) | estimator snapshot |
 | `0x09` | MOTORS | 5 Hz | flight-core snapshot |
 | `0x0A` | SYSTEM | 2 Hz | estimator snapshot (loop rate, jitter, CPU, vibration, attitude uncertainty, magnetic interference) |
@@ -122,11 +122,11 @@ than 256 bytes are free in the HI ring, so a list never pushes out an ACK.
 
 | Area | Implemented | Reported honestly as missing (as §15 of the handover asks) |
 |---|---|---|
-| Frames | CAPS (sensor bits detected at run time), FLIGHT 10 Hz, NAV 5 Hz (also indoor: baro, ToF, flow quality), MOTORS 5 Hz, SYSTEM 2 Hz, CHECKS 2 Hz (0.5 Hz armed), CALIB, EVENT (ERROR and CRITICAL sent 3 times, 100 ms apart), PARAM, ACK | POWER: not sent, and `REQUEST(POWER)` returns `UNSUPPORTED` (no ADC yet) |
+| Frames | CAPS (sensor bits detected at run time, cells), FLIGHT 10 Hz, POWER 5 Hz, NAV 5 Hz (also indoor: baro, ToF, flow quality), MOTORS 5 Hz, SYSTEM 2 Hz (with the flash log %), CHECKS 2 Hz (0.5 Hz armed), CALIB, EVENT (ERROR and CRITICAL sent 3 times, 100 ms apart), PARAM, ACK | POWER only where the battery is measured (ACwing FC; not on the bench by default): elsewhere `REQUEST(POWER)` returns `UNSUPPORTED` |
 | Commands | ACK cache of 32 entries: a repeat gets the cached ACK and is not executed again. ARM, DISARM, KILL, SET_MODE, TAKEOFF, LAND, HOLD, PARAM_*, CAL_*, MOTOR_TEST (behind `MOTORS_ENABLE`), STREAM_RATES, REQUEST, SET_NAME | RTH → `NO_GPS`. MOTOR_REVERSE and MOTOR_REMAP → `UNSUPPORTED` |
 | Parameters | the full ids.ts table; A/B flash pages with seq + CRC32; save allowed only when disarmed | – |
-| Calibrations | ACCEL (6 positions), LEVEL, GYRO, COMPASS (ellipsoid fit, 36-sector coverage), each with one backup per type (CAL_RESTORE) | FLOW_TOF → `UNSUPPORTED` while the board is present. BATTERY, STICKS, MOTORS → `SENSOR_MISSING` |
-| Failsafes | app link (RC stale 0.25 s, short 1 s, long 3 s with EVENT 20, link back 0.5 s, ground disarm 3 s), geofence ceiling (gfMaxAlt, gfCeiling with ToF), flow lost in POS_HOLD | radio, battery, GNSS: no hardware yet |
+| Calibrations | ACCEL (6 positions), LEVEL, GYRO, COMPASS (ellipsoid fit, 36-sector coverage), BATTERY (voltage and current scales), each with one backup per type (CAL_RESTORE) | FLOW_TOF → `UNSUPPORTED` while the board is present. STICKS, MOTORS → `SENSOR_MISSING`; BATTERY too without CAPS CURRENT |
+| Failsafes | app link (RC stale 0.25 s, short 1 s, long 3 s with EVENT 20, link back 0.5 s, ground disarm 3 s), geofence ceiling (gfMaxAlt, gfCeiling with ToF), flow lost in POS_HOLD, battery (LOW / CRITICAL → LAND / EMERGENCY → locked LAND, events 30/31/32/22) | radio, GNSS: no hardware yet. Battery RTH needs GNSS: LAND instead |
 
 ## Parameters and flash
 
@@ -136,8 +136,12 @@ than 256 bytes are free in the HI ring, so a list never pushes out an ACK.
   thresholds' order (warn > crit > emergency), and changes RAM only (flag
   *dirty*).
 - PARAM_SAVE, CAL_SAVE, CAL_RESTORE and SET_NAME write one **flash image**
-  (`App/app/cfg_store.c`): parameters, name, calibrations, and one backup per
-  calibration type. There are two pages used alternately (A/B), each image
+  (`App/app/cfg_store.c`): parameters, name, calibrations, one backup per
+  calibration type, and the charge of the last flight (for the BATTERY
+  calibration, written at disarm). Since firmware 0.5.0 (image version 2) the
+  parameters are stored **by id**, with room for 48: new parameters need no
+  migration. A version-1 image (0.4.x) is converted at boot, keeping the
+  parameters, the name and every calibration. There are two pages used alternately (A/B), each image
   with a sequence number and a CRC32, so a reset during a write leaves the
   previous image valid. All of these are refused while armed.
 - On the WB55 the write is coordinated with CPU2 (`bsp/cfg_flash_wb.c`): the
@@ -158,5 +162,23 @@ result when it is DONE.
 | COMPASS | 36-sector coverage in 3 rings, 6-parameter axis-aligned ellipsoid fit | hard iron + per-axis scale, quality and interference |
 
 ACCEL and COMPASS restart the attitude estimator, because the gravity and
-field references change; GYRO moves the IEKF bias by the same amount. FLOW_TOF
-is `UNSUPPORTED` for now; BATTERY, STICKS and MOTORS are `SENSOR_MISSING`.
+field references change; GYRO moves the IEKF bias by the same amount. BATTERY
+(multimeter voltage, then the charge put back by the charger) is described in
+[Battery](battery.md#battery-calibration-106). FLOW_TOF is `UNSUPPORTED` for
+now; STICKS and MOTORS are `SENSOR_MISSING`.
+
+## Firmware extensions
+
+Additions that the handover does not list yet. The app knows the parameters
+and the events; the log download over USB and the rest of the app work are
+described in
+[`HANDOVER_APP.md`](https://github.com/andrea-cirillo/ACwing_FlightController_FW/blob/main/02%20-%20Tools/02%20-%20App/HANDOVER_APP.md).
+
+| Kind | Id | Meaning |
+|---|---|---|
+| EVENT | 8 TAKEOFF_ABORTED (WARN) | no lift-off within 6 s: back on the ground, motors at idle |
+| EVENT | 33 BATTERY_MONITOR_LOST (ERROR) | the BattTask stopped: battery unknown, ARM refused |
+| PARAM | 23 battCapacity (mAh, 0 = unknown) | coulomb counting and POWER.remain |
+| PARAM | 24 battCells (0 = detect) | forces the cell count |
+| PARAM | 70 logMode (0 off, 1 armed, 2 always) | flight log, listed with CAPS FLASH_LOG |
+| Command | 0x50 LOG_LIST, 0x51 LOG_READ, 0x52 LOG_ERASE | USB: every log; BLE: LIST and READ of the last flight only, ERASE unsupported. See [Flight log and USB](logging.md#over-bluetooth-the-last-flight) |

@@ -26,6 +26,7 @@ const de: Translation = {
     indoorNote: "Bei Indoor‑Modellen werden GNSS und Home durch optischen Fluss und ToF ersetzt.", calibrate: "Kalibrieren",
   },
   checks: {
+    noBattery: "Kein Akku (USB‑Versorgung)", battMonitor: "Akkuüberwachung gestoppt",
     1: "Akku", 2: "IMU und Horizont", 3: "Kompass", 4: "GNSS", 5: "Home gesetzt", 6: "ELRS‑Funk", 7: "EKF‑Status",
     8: "Geofence · Failsafe", 9: "Optischer Fluss", 10: "Gas auf Minimum", 11: "Kalibrierung",
     state: { 0: "OK", 1: "Prüfen", 2: "Nicht bereit", 3: "k. A." },
@@ -67,6 +68,7 @@ const de: Translation = {
   },
   levels: { 0: "INFO", 1: "WARNUNG", 2: "FEHLER", 3: "KRITISCH" },
   events: {
+    8: "Start abgebrochen: kein Abheben", 33: "Akkuüberwachung gestoppt",
     1: "Scharfgeschaltet", 2: "Gesichert", 3: "Start", 4: "Gelandet", 5: "Flugmodus geändert", 6: "Rückkehr zum Startpunkt", 7: "Home gesetzt",
     20: "App‑Verbindung verloren: Failsafe", 21: "Funkverbindung verloren: Failsafe", 22: "Akku‑Failsafe", 23: "Geofence erreicht",
     24: "GPS verloren", 25: "Optischer Fluss verloren", 30: "Akku schwach", 31: "Akku kritisch", 32: "Akku leer: Landung",
@@ -107,6 +109,7 @@ const de: Translation = {
     elrsHelp: "Höchste Priorität: wenn aktiv, zeigt die App nur noch Telemetrie",
   },
   params: {
+    battCapacity: "Kapazität", battCells: "Zellen", logMode: "Fluglog",
     takeoffAlt: "Starthöhe", landSpeed: "Landegeschwindigkeit", autoDisarm: "Automatisch sichern nach der Landung", maxTilt: "Max. Neigung",
     maxYawRate: "Max. Gierrate", maxClimb: "Max. Steigen / Sinken", maxHSpeed: "Max. Horizontalgeschwindigkeit", beginner: "Anfängermodus",
     fsAppShort: "App‑Verbindung 1 s verloren", fsAppLong: "App‑Verbindung 3 s verloren", fsRadio: "ELRS‑Funk verloren", fsGpsLost: "GPS verloren",
@@ -116,10 +119,12 @@ const de: Translation = {
     compassPrimary: "Primärer Kompass",
   },
   actions: {
+    auto: "Automatisch", logOff: "Aus", logArmed: "Bei jedem Flug", logAlways: "Immer",
     hover: "Schweben", land: "Landen", rth: "Rückkehr zum Startpunkt", useFlow: "Optischen Fluss nutzen", altHold: "ALT HOLD", altHoldWarn: "ALT HOLD + Warnung",
     stopBack: "Anhalten und zurückfliegen", compassFc: "Flugcontroller", compassGps: "GPS‑Modul (weiter von den Motoren entfernt)",
   },
   safety: {
+    capacityHint: "0 = unbekannt: keine Restflugzeit", cellsHint: "Automatisch: beim Anstecken des Akkus gezählt",
     banner: "Mit GPS markierte Optionen erscheinen nur bei Outdoor‑Modellen. Bei Indoor‑Modellen sind sie ausgeblendet und jede „Rückkehr zum Startpunkt“ wird zu „Landen“.",
     failsafe: "Failsafe‑Aktionen", battery: "Akku", cellsDetected: "{n}S automatisch erkannt", perCell: "V/Zelle",
     alert: "Warnung", rthOrLand: "RTH oder landen", landNow: "sofort landen", geofence: "Geofence", altAll: "Barometer · alle Modelle",
@@ -226,6 +231,7 @@ const de: Translation = {
     say: { alt: "Höhe {v} Meter", batt: "Akku {v} Prozent", timer: "{v} Minuten" },
   },
   about: {
+    logUsed: "Fluglog‑Speicher belegt", logModeHint: "Download per USB mit den PC‑Tools",
     firmware: "Firmware", fc: "Flugcontroller", serial: "Seriennummer", installed: "Installiert", update: "Firmware aktualisieren",
     updateHint: "Firmware‑Updates kommen mit den USB‑Tools; über Bluetooth in einer späteren Version.", hardware: "Erkannte Hardware",
     hardwareHint: "Bei jeder Verbindung von der Drohne gelesen. Die App zeigt nur, was diese Drohne hat: ohne GPS entfallen RTH, Karte und Entfernungs‑Geofence.",

@@ -18,6 +18,8 @@ flowchart TB
     TLM["<b>TelemetryTask</b> · BelowNormal<br/>STATE / INIT / STATUS"]
     APPT["<b>AppTask</b> · BelowNormal, 5 ms<br/>commands, params, flash,<br/>calibrations, CHECKS, v2 frames"]
     EXT["<b>ExtTask</b> · BelowNormal, 10 ms<br/>ToF + flow bridge on Qwiic"]
+    BAT["<b>BattTask</b> · Normal, 20 ms<br/>ADC, battery monitor"]
+    LOG["<b>LogTask</b> · Low, 10 ms<br/>flight log, USB commands"]
     BLETX["<b>BleTxThread</b><br/>GATT notifications"]
   end
   CPU2[["Cortex-M0+ · BLE stack"]]
@@ -35,6 +37,11 @@ flowchart TB
   IMU -- "estimator snapshot (seqlock),<br/>calibration samples (SPSC)" --> APPT
   APPT -- "calibration to apply (SPSC)" --> IMU
   EXT -- "ToF / flow samples (SPSC)" --> IMU
+  BAT -- "level changes (SPSC),<br/>heartbeat" --> IMU
+  BAT -- "battery snapshot (seqlock)" --> APPT
+  IMU -- "log records (SPSC ring)" --> LOG
+  BAT -- "log records (SPSC ring)" --> LOG
+  LOG <-- "USB CDC" --> USB(["PC: acwing-tools log"])
 ```
 
 Every arrow between tasks is either a **lock-free single-producer
@@ -47,6 +54,8 @@ ever waits on another, and nothing in the ImuTask waits on BLE.
 | TelemetryTask | BelowNormal | 1 KB | queue-driven, STATUS 10 Hz | UART DMA, LO BLE ring producer |
 | AppTask | BelowNormal | 3 KB | 5 ms | ACK cache, parameters, flash image, calibration fits, HI BLE ring producer |
 | ExtTask | BelowNormal | 768 B | 10 ms | the Qwiic devices (probe, poll) |
+| BattTask | Normal | 768 B | 20 ms | ADC1, battery estimator ([Battery](battery.md)) |
+| LogTask | Low | 1.5 KB | 10 ms (1 ms while downloading) | log flash, log store, USB link ([Flight log](logging.md)) |
 | BleTxThread | (BLE glue) | 1 KB | 10 ms flush | BLE ring consumer, notifications |
 
 ## One IMU interrupt, step by step
@@ -86,16 +95,17 @@ sequenceDiagram
 ```mermaid
 flowchart TB
   subgraph APPL["app/ · tasks and glue"]
-    A1["app_main · app_task · ext_sens<br/>est_pipeline · params · cfg_store · fc_shared"]
+    A1["app_main · app_task · ext_sens · batt_task · log_task<br/>est_pipeline · params · cfg_store · fc_shared"]
   end
   subgraph LOGIC["portable logic (no HAL, no RTOS, host-tested)"]
-    C["control/<br/>fc_core · alt_ctrl · calib_mgr · checks"]
+    C["control/<br/>fc_core · alt_ctrl · calib_mgr · checks · battery"]
+    LG["log/<br/>log_store · log_queue · log_feed"]
     F["filters/<br/>iekf/ · altitude_kf/"]
-    T["telemetry/<br/>proto_v2 · app_link · tlm_ble · ack_cache · spsc"]
-    D["drivers/<br/>imu_lsm6dsv16x · vl53l1x · flow_bridge"]
+    T["telemetry/<br/>proto_v2 · app_link · tlm_ble · ack_cache · usb_link · spsc"]
+    D["drivers/<br/>imu_lsm6dsv16x · vl53l1x · flow_bridge · w25q"]
   end
   subgraph BOARD["bsp/ · STM32WB55, HAL, FreeRTOS"]
-    B["imu_i2c · ext_i2c · ble_tlm_svc · cfg_flash_wb"]
+    B["imu_i2c · ext_i2c · ble_tlm_svc · cfg_flash_wb<br/>batt_adc · usb_cdc + usb/ (ST USB device)"]
   end
   HAL[["CubeMX: HAL · FreeRTOS · STM32_WPAN"]]
   APPL --> LOGIC
@@ -130,9 +140,17 @@ flowchart TB
   microseconds. On the ACwing FC the IMU is on SPI and the lock is
   uncontended.
 - **Flash writes** happen only when disarmed (parameter save, calibration save,
-  name). On the WB55 they are coordinated with CPU2 through the hardware
+  name, the charge of the last flight). On the WB55 they are coordinated with CPU2 through the hardware
   semaphores (`bsp/cfg_flash_wb.c`). The configuration lives in two A/B pages
   at the top of the flash, with a sequence number and a CRC32.
+
+- **Battery.** The BattTask measures and signals; the flight core decides.
+  Because the IWDG is fed only by the ImuTask, the flight core watches the
+  BattTask heartbeat and treats a silence over 1 s as "battery unknown"
+  ([ADR 0007](../decisions/0007-battery-task.md)).
+- **Log.** Producers write into their own lock-free rings and never wait; a
+  full ring drops records and counts them. Only the LogTask touches the log
+  flash ([ADR 0008](../decisions/0008-flash-log-and-usb-cdc.md)).
 
 The reasoning behind these choices is in
 [ADR 0003](../decisions/0003-flight-core-in-imu-task.md).

@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { Drone, CommandError } from "./drone";
 import { SimTransport } from "../sim/simTransport";
-import { CalType, CalState, Reason, AckResult, ArmState, SENSOR } from "../protocol/ids";
+import { CalType, CalState, Reason, AckResult, ArmState, SENSOR, AutoAction, BattWarn, EventCode, FS, FlightMode, PARAM_BY_KEY, CheckId, CheckState } from "../protocol/ids";
+import { checkValue } from "../screens/ConnectScreen";
 
 const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
 async function until(fn: () => boolean, ms = 8000) {
@@ -51,4 +52,43 @@ describe("app session against the simulator (real bytes, 20-byte notifications)"
     await d.calSave();
     await d.disconnect();
   }, 40000);
+
+  it("firmware 0.5.0 extensions: battery params, logMode, battery EMERGENCY locks the landing", async () => {
+    const t = new SimTransport("indoor");
+    const d = new Drone();
+    await d.connect(t);
+    await until(() => !!d.getSnapshot().caps && !!d.getSnapshot().params[70]);
+    expect(d.param("battCapacity")).toBe(0);
+    expect(d.param("battCells")).toBe(0);
+    expect(d.param("logMode")).toBe(1);
+    await d.setParam("battCapacity", 450);
+    await d.setParam("logMode", 2);
+    await expect(d.setParam("battCells", 7)).rejects.toMatchObject({ reason: Reason.OUT_OF_RANGE });
+    expect(PARAM_BY_KEY.battCapacity.needs).toBe(SENSOR.CURRENT);
+
+    await d.arm();
+    await d.takeoff(1);
+    await until(() => (d.getSnapshot().flight?.altRelM ?? 0) > 0.5, 6000);
+    // drain the simulated battery: below battEmerg (3.3 V/cell) at once
+    (t.drone as unknown as { usedMah: number }).usedMah = 449;
+    await until(() => d.getSnapshot().power?.warn === BattWarn.EMERGENCY, 4000);
+    const codes = d.getSnapshot().events.map((e) => e.code);
+    expect(codes).toContain(EventCode.BATTERY_EMERGENCY);
+    expect(codes).toContain(EventCode.FAILSAFE_BATTERY);
+    const f = d.getSnapshot().flight!;
+    expect(f.auto).toBe(AutoAction.LAND);
+    expect(f.failsafe & FS.BATTERY).toBeTruthy();
+    await expect(d.setMode(FlightMode.ANGLE)).rejects.toMatchObject({ reason: Reason.BATTERY_LOW });
+    await expect(d.hold()).rejects.toMatchObject({ reason: Reason.BATTERY_LOW });
+    await d.kill();
+    await until(() => d.getSnapshot().flight?.arm === ArmState.DISARMED);
+    await d.disconnect();
+  }, 30000);
+
+  it("CHECKS battery value 0: USB power or monitor stopped", () => {
+    const tt = (k: string) => k;
+    expect(checkValue({ id: CheckId.BATTERY, state: CheckState.WARN, value: 0 }, tt, 1)).toBe("checks.noBattery");
+    expect(checkValue({ id: CheckId.BATTERY, state: CheckState.FAIL, value: 0 }, tt, 1)).toBe("checks.battMonitor");
+    expect(checkValue({ id: CheckId.BATTERY, state: CheckState.OK, value: 3910 }, tt, 3)).toBe("3S · 3.91 V/cell");
+  });
 });
