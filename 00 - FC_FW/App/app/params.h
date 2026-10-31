@@ -24,6 +24,8 @@ enum {
     P_RTH_ALT, P_RTH_STICK_CANCEL,
     P_ARM_REQUIRE_CHECKS,
     P_COMPASS_PRIMARY,
+    /* firmware extensions (not in HANDOVER_FW.md §8 yet): appended, never reordered */
+    P_BATT_CAPACITY, P_BATT_CELLS, P_LOG_MODE,
     PARAM_COUNT
 };
 
@@ -42,6 +44,9 @@ float    param_get(int idx);                     /**< lock-free read, any thread
 
 /** PARAM_SET rules: returns an ACK result (PV2_ACK_*) and sets *reason */
 uint8_t  params_set(uint16_t id, float v, uint8_t *reason);
+
+/** log modes (P_LOG_MODE) */
+enum { PARAM_LOG_OFF = 0, PARAM_LOG_ARMED = 1, PARAM_LOG_ALWAYS = 2 };
 
 /** flash image */
 void     params_load(const float *values, uint16_t n);   /**< out-of-range values -> default */

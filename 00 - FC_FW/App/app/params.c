@@ -33,6 +33,10 @@ const param_def_t g_param_def[PARAM_COUNT] = {
     [P_RTH_STICK_CANCEL]   = { 41, 1.0f,   0.0f,   1.0f,   PV2_S_GNSS },
     [P_ARM_REQUIRE_CHECKS] = { 50, 1.0f,   0.0f,   1.0f,   0 },
     [P_COMPASS_PRIMARY]    = { 60, 1.0f,   0.0f,   1.0f,   PV2_S_MAG_GPS },
+    /* firmware extensions */
+    [P_BATT_CAPACITY]      = { 23, 0.0f,   0.0f, 20000.0f, PV2_S_CURRENT },   /* mAh, 0 = unknown */
+    [P_BATT_CELLS]         = { 24, 0.0f,   0.0f,   6.0f,   0 },               /* 0 = detect */
+    [P_LOG_MODE]           = { 70, 1.0f,   0.0f,   2.0f,   PV2_S_FLASH_LOG }, /* 0 off, 1 armed, 2 always */
 };
 
 static volatile float s_val[PARAM_COUNT];

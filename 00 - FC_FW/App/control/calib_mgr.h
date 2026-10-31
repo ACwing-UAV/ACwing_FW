@@ -27,6 +27,7 @@ typedef struct { float roll_deg, pitch_deg; } cal_level_t;  /**< trim added to t
 typedef struct { float bias[3]; } cal_gyro_t;                /**< rad/s: w = raw - bias */
 typedef struct { float hi[3], scale[3]; } cal_compass_t;    /**< uT body: m = scale * (raw - hi) */
 typedef struct { uint8_t rev_mask, pad[3]; } cal_motors_t;
+typedef struct { float scale_v, scale_i; } cal_battery_t;  /**< vbat = pin*scale_v/10, I = I_nom*scale_i */
 
 typedef struct {
     cal_accel_t   accel;
@@ -34,6 +35,7 @@ typedef struct {
     cal_gyro_t    gyro;
     cal_compass_t compass;
     cal_motors_t  motors;
+    cal_battery_t battery;
     uint32_t      done_mask;     /**< bit (type-1): this calibration was done and saved */
 } cal_set_t;
 
@@ -54,10 +56,16 @@ typedef struct {
 /** apply hook: puts 'type' of 'set' in effect (RAM), in the estimator context */
 typedef void (*cal_apply_fn)(uint8_t type, const cal_set_t *set);
 
+/** battery readings for the BATTERY calibration (AppTask context):
+ *  vbat with the scale in effect, and the last flight's charge with the
+ *  current scale it was counted with */
+typedef void (*cal_batt_fn)(float *vbat, float *last_used_mah, float *last_scale_i);
+
 typedef struct {
     uint16_t     sensors;        /**< CAPS bits */
     uint8_t      motors_built;
     cal_apply_fn apply;
+    cal_batt_fn  batt;           /**< NULL: BATTERY -> SENSOR_MISSING */
 } cal_config_t;
 
 /** active: the set in effect (RAM), owned by the caller. DONE applies the new

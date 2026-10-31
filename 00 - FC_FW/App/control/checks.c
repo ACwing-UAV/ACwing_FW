@@ -19,8 +19,17 @@ uint8_t checks_build(const checks_in_t *in, pv2_check_t *it, uint8_t *ready, uin
     const uint32_t done = in->cal_done_mask;
     uint8_t n = 0;
 
-    /* 1 battery: no voltage measurement in this firmware yet (ADC) -> N/A */
-    put(&it[n++], PV2_CHK_BATTERY, PV2_CK_NA, 0);
+    /* 1 battery: average cell mV; FAIL < battCrit, WARN < battWarn (§9) */
+    if (!in->batt_monitor) put(&it[n++], PV2_CHK_BATTERY, PV2_CK_NA, 0);
+    else if (in->batt_stale) put(&it[n++], PV2_CHK_BATTERY, PV2_CK_FAIL, 0);     /* monitor stopped */
+    else if (!in->batt_present) put(&it[n++], PV2_CHK_BATTERY, PV2_CK_WARN, 0);  /* USB only: motors unpowered */
+    else {
+        const float c = in->batt_cell_v;
+        uint8_t st = PV2_CK_OK;
+        if (c < in->batt_warn || in->batt_level >= PV2_BATT_LOW) st = PV2_CK_WARN;
+        if (c < in->batt_crit || in->batt_level >= PV2_BATT_CRITICAL) st = PV2_CK_FAIL;
+        put(&it[n++], PV2_CHK_BATTERY, st, (int32_t)(c * 1000.0f + 0.5f));
+    }
 
     /* 2 IMU & level: FAIL if the IMU is missing or the accelerometer was never calibrated */
     put(&it[n++], PV2_CHK_IMU,
