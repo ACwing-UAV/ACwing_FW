@@ -16,6 +16,9 @@
 #include "fc_core.h"
 #include "app_link.h"
 #include "params.h"
+#include "app_task.h"
+#include "tlm_ble.h"
+#include "fc_shared.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -290,6 +293,32 @@ static void produce(void)
     }
 }
 
+/* BLE side: the AppTask and the frames it puts in the BLE rings */
+static int     s_with_app;
+static frm_t   s_b[8192];
+static int     s_nb;
+static uint32_t s_ble_bytes;
+static void ble_drain(void)
+{
+    static uint8_t acc[16384];
+    static size_t  na;
+    uint8_t buf[244];
+    uint16_t n;
+    while ((n = tlm_ble_peek(buf, sizeof buf)) != 0) {
+        tlm_ble_consume(n);
+        memcpy(acc + na, buf, n); na += n; s_ble_bytes += n;
+    }
+    size_t i = 0;
+    while (na - i >= 6) {
+        if (acc[i] != 0xA5 || acc[i + 1] != 0x5A) { i++; continue; }
+        const uint8_t len = acc[i + 3];
+        if (na - i < (size_t)len + 6u) break;
+        if (s_nb < 8192) { s_b[s_nb].type = acc[i + 2]; s_b[s_nb].len = len; memcpy(s_b[s_nb].p, &acc[i + 4], len); s_nb++; }
+        i += len + 6u;
+    }
+    memmove(acc, acc + i, na - i); na -= i;
+}
+
 static void run(int ms, int armed, int log_step_every)
 {
     for (int k = 0; k < ms; ++k) {
@@ -297,7 +326,26 @@ static void run(int ms, int armed, int log_step_every)
         if (now % 4u == 0u) fc_tick(armed);
         produce();
         if (now % (uint32_t)log_step_every == 0u) log_task_step(now);
+        if (s_with_app && now % 5u == 0u) { app_step(now); ble_drain(); }
     }
+}
+
+static void ble_cmd(uint8_t op, uint8_t seq, const void *a, uint8_t n)
+{
+    uint8_t b[20];
+    b[0] = op; b[1] = seq;
+    if (n) memcpy(b + 2, a, n);
+    appl_on_cmd_write(b, (uint16_t)(2 + n), now);
+}
+
+static const pv2_ack_t *ble_ack(int from, uint8_t op, uint8_t seq)
+{
+    for (int i = from; i < s_nb; ++i)
+        if (s_b[i].type == PV2_FT_ACK) {
+            const pv2_ack_t *a = (const pv2_ack_t *)s_b[i].p;
+            if (a->op == op && a->seq == seq) return a;
+        }
+    return NULL;
 }
 
 static void test_task(void)
@@ -430,11 +478,119 @@ static void test_task(void)
     CHECK(log_task_pct() == 0xFF && x && x->reason == PV2_R_SENSOR_MISSING, "no flash: pct 0xFF, SENSOR_MISSING");
 }
 
+/* ================================================================== BLE: last flight only */
+static void test_ble(void)
+{
+    memset(s_ram, 0x00, sizeof s_ram);
+    log_flash_ram_init(&s_rf, s_ram, sizeof s_ram);
+    appl_reset();
+    tlm_ble_reset();
+    params_defaults();
+    { uint8_t why; params_set(50, 0.0f, &why); }
+    const fc_config_t fcc = { PV2_S_IMU, 4, 0, NULL, NULL, logf_event, 0 };
+    fc_init(&fcc);
+    fc_set_ground_info(1, 0, 0);
+    {
+        fsh_est_t e; memset(&e, 0, sizeof e);
+        e.imu_ok = 1; e.running = 1; e.q[0] = 1; e.flow_q = 0xFF; e.tof_mm = 0xFFFF; e.sensors = PV2_S_IMU;
+        fsh_est_write(&e);
+    }
+    const log_task_cfg_t lc = { &s_rf, 'N', { 0, 5, 0 }, NULL, pump, NULL };
+    log_task_init(&lc);
+    app_task_cfg_t ac; memset(&ac, 0, sizeof ac);
+    ac.hw_rev = 'N'; ac.n_motors = 4; ac.board_sensors = PV2_S_FLASH_LOG; ac.log_pct = log_task_pct;
+    app_init(&ac);
+    tlm_ble_set_state(TLM_BLE_CONNECTED);
+    tlm_ble_set_state(TLM_BLE_STREAMING);
+    appl_on_connect();
+    s_with_app = 1;
+    now = 500000;
+
+    /* two flights: 3 s and 5 s */
+    run(1000, 0, 10); run(3000, 1, 10); run(2000, 0, 10);
+    run(5000, 1, 10); run(2000, 0, 10);
+    CHECK(log_count() == 2, "two flights recorded (%u)", log_count());
+
+    /* LIST over BLE: the last flight only */
+    int f0 = s_nb;
+    ble_cmd(PV2_OP_LOG_LIST, 1, NULL, 0);
+    run(50, 0, 10);
+    pv2_log_entry_t e; memset(&e, 0, sizeof e);
+    int ne = 0, ack_at = -1, last_entry_at = -1;
+    for (int i = f0; i < s_nb; ++i) {
+        if (s_b[i].type == PV2_FT_LOG_ENTRY) { memcpy(&e, s_b[i].p, sizeof e); ne++; last_entry_at = i; }
+        if (s_b[i].type == PV2_FT_ACK && ((const pv2_ack_t *)s_b[i].p)->op == PV2_OP_LOG_LIST) ack_at = i;
+    }
+    CHECK(ne == 1 && e.id == log_entry(1)->id && e.count == 1 && e.index == 0, "BLE LIST: one entry, the newest log (id %u)", e.id);
+    CHECK(ack_at > last_entry_at && ble_ack(f0, PV2_OP_LOG_LIST, 1)->result == PV2_ACK_OK, "ACK after the entry");
+
+    /* the older log is refused over BLE */
+    f0 = s_nb;
+    uint8_t a[10]; uint16_t id = log_entry(0)->id; uint32_t off = 0, len = 0;
+    memcpy(a, &id, 2); memcpy(a + 2, &off, 4); memcpy(a + 6, &len, 4);
+    ble_cmd(PV2_OP_LOG_READ, 2, a, 10);
+    run(50, 0, 10);
+    const pv2_ack_t *k = ble_ack(f0, PV2_OP_LOG_READ, 2);
+    CHECK(k && k->result == PV2_ACK_REJECTED && k->reason == PV2_R_OUT_OF_RANGE, "BLE READ of an older log refused");
+
+    /* read the last flight over BLE */
+    f0 = s_nb;
+    const uint32_t b0 = s_ble_bytes;
+    id = e.id; memcpy(a, &id, 2);
+    ble_cmd(PV2_OP_LOG_READ, 3, a, 10);
+    static uint8_t img[48 * 1024];
+    memset(img, 0, sizeof img);
+    uint32_t got = 0, holes = 0;
+    for (int t = 0; t < 400 && !ble_ack(f0, PV2_OP_LOG_READ, 3); ++t) run(10, 0, 1);
+    int data_after_ack = 0;
+    const pv2_ack_t *rk = ble_ack(f0, PV2_OP_LOG_READ, 3);
+    int seen_ack = 0;
+    for (int i = f0; i < s_nb; ++i) {
+        if (s_b[i].type == PV2_FT_ACK && ((const pv2_ack_t *)s_b[i].p)->op == PV2_OP_LOG_READ) seen_ack = 1;
+        if (s_b[i].type != PV2_FT_LOG_DATA) continue;
+        if (seen_ack) data_after_ack++;
+        pv2_log_data_hdr_t h; memcpy(&h, s_b[i].p, sizeof h);
+        const uint32_t n = s_b[i].len - sizeof h;
+        if (h.offset != got) holes++;
+        memcpy(img + h.offset, s_b[i].p + sizeof h, n);
+        got = h.offset + n;
+    }
+    CHECK(rk && rk->result == PV2_ACK_OK && got == e.bytes && holes == 0 && data_after_ack == 0,
+          "BLE READ: %u of %u bytes in order, ACK last", (unsigned)got, (unsigned)e.bytes);
+    parse_t p; parse_log(img, got, &p);
+    CHECK(p.bad == 0 && p.n[LR_ATT] >= 290 && p.n[LR_ATT] <= 310 && p.n[LR_EVENT] == 2,
+          "the last flight decodes: ~6 s at 50 Hz (%d ATT), ARMED + DISARMED", p.n[LR_ATT]);
+    printf("  BLE: %u bytes of frames for a %u-byte log\n", (unsigned)(s_ble_bytes - b0), (unsigned)got);
+
+    /* ERASE is USB only; LIST is refused while armed; arming stops a download */
+    f0 = s_nb;
+    ble_cmd(PV2_OP_LOG_ERASE, 4, "WIPE", 4);
+    run(50, 0, 10);
+    k = ble_ack(f0, PV2_OP_LOG_ERASE, 4);
+    CHECK(k && k->result == PV2_ACK_UNSUPPORTED && log_count() == 2, "BLE ERASE unsupported, logs kept");
+    run(6000, 0, 10);                                     /* the log-command pause ends */
+    f0 = s_nb;
+    ble_cmd(PV2_OP_LOG_READ, 5, a, 10);
+    run(30, 0, 10);
+    run(200, 1, 10);                                      /* armed while downloading */
+    k = ble_ack(f0, PV2_OP_LOG_READ, 5);
+    CHECK(k && k->result == PV2_ACK_REJECTED && k->reason == PV2_R_ARMED, "arming stops a BLE download");
+    f0 = s_nb;
+    ble_cmd(PV2_OP_LOG_LIST, 6, NULL, 0);
+    run(50, 1, 10);
+    k = ble_ack(f0, PV2_OP_LOG_LIST, 6);
+    CHECK(k && k->result == PV2_ACK_REJECTED && k->reason == PV2_R_ARMED, "BLE LIST refused while armed");
+    run(3000, 0, 10);
+    s_with_app = 0;
+    tlm_ble_set_state(TLM_BLE_OFF);
+}
+
 int main(void)
 {
     test_store();
     test_queue();
     test_task();
+    test_ble();
     printf("log: %d passed, %d failed\n", s_pass, s_fail);
     return s_fail ? 1 : 0;
 }

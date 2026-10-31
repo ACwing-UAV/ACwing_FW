@@ -155,11 +155,15 @@ def _cmd_log(a):
                 fl.save_mat(L, out)
                 print(f"  -> {out}")
         return 0
-    if not a.port:
-        print(f"log {a.action}: give the FC USB port (e.g. COM7 or /dev/ttyACM0) with --port", file=sys.stderr)
+    if not a.port and a.ble is None:
+        print(f"log {a.action}: give the FC USB port with --port (e.g. COM7 or /dev/ttyACM0), "
+              "or --ble [NAME] for the last flight", file=sys.stderr)
+        return 2
+    if a.ble is not None and a.action == "erase":
+        print("log erase: USB only (--port)", file=sys.stderr)
         return 2
     try:
-        link = fl.FcLink.open(a.port)
+        link = fl.FcLink.open_ble(a.ble) if a.ble is not None else fl.FcLink.open(a.port)
     except Exception as exc:                                    # pragma: no cover
         print(f"ERROR: {exc}", file=sys.stderr)
         return 2
@@ -263,7 +267,9 @@ def build_parser() -> argparse.ArgumentParser:
     s = sub.add_parser("log", help="flight logs: list / get / erase over the FC USB port, decode a .bin")
     s.add_argument("action", choices=("list", "get", "erase", "decode"))
     s.add_argument("target", nargs="*", help="get: log ids (default all); decode: downloaded .bin files")
-    s.add_argument("--port", help="FC USB port (CDC), e.g. COM7 or /dev/ttyACM0")
+    s.add_argument("--port", help="FC USB port (CDC), e.g. COM7 or /dev/ttyACM0: every log")
+    s.add_argument("--ble", nargs="?", const="", metavar="NAME_OR_ADDRESS",
+                   help="use BLE instead (needs bleak): the last flight only")
     s.add_argument("--out-dir", default=".", help="get: folder for the .bin files")
     s.add_argument("--csv", metavar="DIR", help="decode: one CSV per record type into DIR")
     s.add_argument("--mat", metavar="FILE_OR_DIR", help="decode: save as .mat (variable F)")

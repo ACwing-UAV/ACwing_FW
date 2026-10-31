@@ -30,6 +30,7 @@ cross-check.
 
 `log_test` covers the flight log: the W25Q driver against a simulated chip,
 the sector ring (wrap, re-mount, power loss), the record queues, the LogTask
-policy and the USB download protocol. It writes one downloaded log to
+policy, the USB download protocol and the BLE last-flight download through
+the AppTask. It writes one downloaded log to
 `log_sample.bin`; a copy is the input of the Python decoder test
 (`02 - Tools/01 - Python/tests/data/flightlog_sample.bin`).

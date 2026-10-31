@@ -6,6 +6,7 @@ SRC  = $(APP)/telemetry/telemetry.c $(APP)/telemetry/proto_v2.c $(APP)/telemetry
        $(APP)/app/params.c $(APP)/app/cfg_store.c $(APP)/app/fc_shared.c $(APP)/app/app_task.c \
        $(APP)/control/fc_core.c $(APP)/control/calib_mgr.c $(APP)/control/checks.c \
        $(APP)/control/battery.c $(APP)/app/batt_task.c $(APP)/log/log_queue.c $(APP)/log/log_feed.c \
+       $(APP)/log/log_store.c $(APP)/app/log_task.c $(APP)/telemetry/usb_link.c \
        $(APP)/filters/altitude_kf/alt_est.c $(APP)/control/alt_ctrl.c \
        $(APP)/drivers/vl53l1x/vl53l1x.c $(APP)/drivers/flow_bridge/flow_bridge.c \
        host_stubs.c test_main.c
@@ -19,8 +20,8 @@ EXT_SRC = $(APP)/app/ext_sens.c $(APP)/drivers/vl53l1x/vl53l1x.c $(APP)/drivers/
           "$(FLOW)/Core/Src/bridge.c" test_ext.c
 
 PWR_SRC = $(filter-out test_main.c,$(SRC)) test_power.c
-LOG_SRC = $(filter-out test_main.c,$(SRC)) $(APP)/log/log_store.c \
-          $(APP)/log/log_flash_ram.c $(APP)/drivers/w25q/w25q.c $(APP)/app/log_task.c $(APP)/telemetry/usb_link.c test_log.c
+LOG_SRC = $(filter-out test_main.c,$(SRC)) \
+          $(APP)/log/log_flash_ram.c $(APP)/drivers/w25q/w25q.c test_log.c
 
 all: run
 host_test: $(SRC) $(wildcard $(APP)/*/*.h)

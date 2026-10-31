@@ -19,6 +19,7 @@
 #include "fc_shared.h"
 #include "ext_sens.h"
 #include "batt_task.h"
+#include "log_task.h"
 #include <string.h>
 #include <math.h>
 
@@ -62,9 +63,16 @@ static uint8_t  s_have_ev_mag, s_have_ev_vib;
 /* checks */
 static uint8_t  s_ready, s_batt_fail;
 
+/* BLE log download: one answer frame of the LogTask waiting for room in the HI ring */
+static log_msg_t s_logmsg;
+static uint8_t   s_have_logmsg;
+
 /* ------------------------------------------------------------------ helpers */
 static uint8_t armed_now(void);
 static void tx(const uint8_t *f, size_t len) { if (len) (void)tlm_ble_push_hi(f, (uint16_t)len); }
+
+/* frame buffer for frames longer than FRAME_CAP (log data over BLE) */
+static uint8_t s_big[4u + 255u + 2u];
 
 static uint32_t bit(uint8_t type) { return 1u << (type - 1u); }
 
@@ -599,6 +607,16 @@ static void commands(uint32_t now)
         if (st == ACKC_DONE) { tx(s_frame, pv2_ack(op, seq, res, why, s_frame, sizeof s_frame)); continue; }
         if (st == ACKC_PENDING) continue;                 /* its ACK is on the way */
 
+        if (op == PV2_OP_LOG_LIST || op == PV2_OP_LOG_READ || op == PV2_OP_LOG_ERASE) {
+            /* the LogTask owns the log: it answers (ACK after the data) through log_ble_out() */
+            log_cmd_t lc;
+            memset(&lc, 0, sizeof lc);
+            lc.op = op; lc.seq = seq;
+            lc.len = (uint8_t)(plen > sizeof lc.p ? sizeof lc.p : plen);
+            memcpy(lc.p, &c.b[2], lc.len);
+            if (log_task_ble_cmd(&lc) != 0) ack(op, seq, PV2_ACK_BUSY, PV2_R_NONE);
+            continue;
+        }
         if (fc_is_core_op(op)) {
             fc_cmd_t fc;
             memset(&fc, 0, sizeof fc);
@@ -613,6 +631,31 @@ static void commands(uint32_t now)
             (void)fc_post(&stop);
             local_cmd(op, seq, &c.b[2], plen, now);
         }
+    }
+}
+
+/* answers of the LogTask to BLE log commands -> HI ring (dropped when no app
+ * is subscribed: the app asks again) */
+static void log_ble_out(void)
+{
+    for (;;) {
+        if (!s_have_logmsg) {
+            if (!log_task_ble_take(&s_logmsg)) return;
+            s_have_logmsg = 1u;
+        }
+        const log_msg_t *m = &s_logmsg;
+        if (m->type == PV2_FT_ACK && m->len >= 4u) {
+            ack(m->p[0], m->p[1], m->p[2], m->p[3]);     /* through the ACK cache */
+        } else {
+            /* the HI ring takes log frames up to 60 % full (tlm_ble.c), so ACKs and
+             * events always find room; a frame that does not fit waits here */
+            const size_t n = pv2_frame(m->type, m->p, m->len, s_big, sizeof s_big);
+            if (tlm_ble_state() == TLM_BLE_STREAMING && n) {
+                if (tlm_ble_hi_free() < (TLM_BLE_RING_SIZE * 40u) / 100u + n) return;   /* no room yet */
+                (void)tlm_ble_push_hi(s_big, (uint16_t)n);
+            }
+        }
+        s_have_logmsg = 0u;
     }
 }
 
@@ -714,6 +757,7 @@ void app_init(const app_task_cfg_t *cfg)
     s_pend = 0u; s_list_next = -1;
     memset(s_rep, 0, sizeof s_rep);
     s_fl_count = 0u;
+    s_have_logmsg = 0u;
 }
 
 void app_step(uint32_t now)
@@ -753,6 +797,7 @@ void app_step(uint32_t now)
     }
 
     battery_flight();
+    log_ble_out();
     streams(now, armed_now());
     list_pace();
 }

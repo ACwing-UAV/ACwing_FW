@@ -73,6 +73,7 @@ static uint32_t level_pct(uint8_t type)
     case PV2_FT_CALIB: case PV2_FT_PARAM: case PV2_FT_INIT:
     case PV2_FT_STATUS:                                      return 85u;
     case PV2_FT_FLIGHT: case PV2_FT_CHECKS:                  return 70u;
+    case PV2_FT_LOG_ENTRY: case PV2_FT_LOG_DATA:             return 60u;   /* log download (disarmed) */
     case PV2_FT_POWER: case PV2_FT_NAV:                      return 55u;
     case PV2_FT_STATE:                                       return 50u;
     default:                                                 return 45u;   /* MOTORS, SYSTEM */

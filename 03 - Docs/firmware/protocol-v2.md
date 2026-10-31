@@ -181,4 +181,4 @@ described in
 | PARAM | 23 battCapacity (mAh, 0 = unknown) | coulomb counting and POWER.remain |
 | PARAM | 24 battCells (0 = detect) | forces the cell count |
 | PARAM | 70 logMode (0 off, 1 armed, 2 always) | flight log, listed with CAPS FLASH_LOG |
-| Command | 0x50 LOG_LIST, 0x51 LOG_READ, 0x52 LOG_ERASE | USB only, see [Flight log and USB](logging.md#usb-link) |
+| Command | 0x50 LOG_LIST, 0x51 LOG_READ, 0x52 LOG_ERASE | USB: every log; BLE: LIST and READ of the last flight only, ERASE unsupported. See [Flight log and USB](logging.md#over-bluetooth-the-last-flight) |

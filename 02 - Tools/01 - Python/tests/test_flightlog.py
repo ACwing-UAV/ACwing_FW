@@ -115,6 +115,40 @@ def test_link_list_read_erase(tmp_path):
     assert link.list_logs() == []
 
 
+class FakeBle(FakeFC):
+    """The drone seen over BLE: raw commands, the last flight only, no erase."""
+
+    def write(self, b):
+        b = bytes(b)
+        self.cmd(b[0], b[1], b[2:])
+
+    def cmd(self, op, seq, a):
+        last = max(self.logs) if self.logs else None
+        if op == fl.OP_LOG_LIST:
+            if last is not None:
+                n = len(self.logs[last])
+                self.out += encode_frame(fl.FT_LOG_ENTRY, struct.pack("<HBBBHII", last, 0, 1, 0, n // 4096, 0, n))
+            return self.ack(op, seq, 0)
+        if op == fl.OP_LOG_READ and struct.unpack_from("<H", a)[0] != last:
+            return self.ack(op, seq, 1, 14)
+        if op == fl.OP_LOG_ERASE:
+            return self.ack(op, seq, 4)
+        return super().cmd(op, seq, a)
+
+
+def test_link_ble_last_flight():
+    sample = open(DATA, "rb").read()
+    dev = FakeBle({2: b"\xff" * 4096, 5: sample})
+    link = fl.FcLink(dev, timeout=0.5, raw=True)
+    logs = link.list_logs()
+    assert [e.id for e in logs] == [5]
+    assert link.read_log(5, len(sample), chunk=32 * 1024) == sample
+    with pytest.raises(fl.LinkError, match="not the last flight"):
+        link.read_log(2, 4096)
+    with pytest.raises(fl.LinkError, match="UNSUPPORTED"):
+        link.erase()
+
+
 def test_link_errors():
     link = fl.FcLink(FakeFC({1: b"\xff" * 4096}, armed=True), timeout=0.3)
     with pytest.raises(fl.LinkError, match="ARMED"):
@@ -142,3 +176,4 @@ def test_cli_decode(tmp_path, capsys):
     F = sio.loadmat(tmp_path / "flightlog_sample.mat", squeeze_me=True, struct_as_record=False)["F"]
     assert F.att.q.shape[0] == 4 and F.info.fw == "0.5.0"
     assert main(["log", "list"]) == 2                # no port
+    assert main(["log", "erase", "--ble"]) == 2      # erase is USB only

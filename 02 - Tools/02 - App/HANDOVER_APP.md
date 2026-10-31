@@ -10,7 +10,8 @@ that contract, and what the app should build to use it:
 
 - battery monitor and failsafes;
 - the flight log in the drone's flash;
-- log download over USB.
+- log download: **the last flight over Bluetooth on every platform**, and
+  **the whole memory over USB** in the web app and on Android.
 
 The small items are already done in the app (§1). This file covers the larger
 ones.
@@ -21,10 +22,10 @@ ones.
 > | File | What it is |
 > |---|---|
 > | `00 - FC_FW/App/log/log_format.h` | on-flash log format 1: sector header, record types and layouts |
-> | `00 - FC_FW/App/app/log_task.c` | USB log commands: answers, refusals, ACK after the data |
+> | `00 - FC_FW/App/app/log_task.c` | log commands over USB and BLE: answers, refusals, ACK after the data, BLE limits |
 > | `00 - FC_FW/App/telemetry/proto_v2.h` | `PV2_FT_LOG_ENTRY`, `PV2_FT_LOG_DATA`, `PV2_FT_CMD`, `PV2_OP_LOG_*`, `pv2_log_entry_t` |
 > | `02 - Tools/01 - Python/acwing_tools/flightlog.py` | working client (`FcLink`) and decoder (`decode_log`): port these |
-> | `02 - Tools/01 - Python/tests/test_flightlog.py` | `FakeFC`: an emulated drone that answers the USB log commands |
+> | `02 - Tools/01 - Python/tests/test_flightlog.py` | `FakeFC` / `FakeBle`: emulated drones answering the log commands over USB and BLE |
 > | `02 - Tools/01 - Python/tests/data/flightlog_sample.bin` | a log written by the firmware's own code: the test vector |
 > | `03 - Docs/firmware/battery.md`, `03 - Docs/firmware/logging.md` | behaviour, explained |
 
@@ -35,8 +36,8 @@ ones.
 1. [Already done in the app](#1-already-done-in-the-app)
 2. [Battery: what the firmware does now](#2-battery-what-the-firmware-does-now)
 3. [Battery: work left in the app](#3-battery-work-left-in-the-app)
-4. [USB transport](#4-usb-transport)
-5. [USB log protocol](#5-usb-log-protocol)
+4. [Download paths: BLE and USB](#4-download-paths-ble-and-usb)
+5. [Log protocol](#5-log-protocol)
 6. [Log format 1 and the decoder](#6-log-format-1-and-the-decoder)
 7. [Flight logs screen](#7-flight-logs-screen)
 8. [Simulator](#8-simulator)
@@ -119,7 +120,40 @@ default), with CAPS bit 8 CURRENT when a current sensor is wired:
 | B5 | **Cells**: CAPS.cells may be 0 at connection and become known later (POWER.cells); the Safety card already prefers POWER.cells. Check the Cockpit and the Telemetry screen do the same | |
 | B6 | **BATTERY wizard copy**: step 2 should say "after charging the pack you flew last" and show 0 mAh as "no flight recorded yet" | the firmware refuses SET_REF(6,1) in that case |
 
-## 4. USB transport
+## 4. Download paths: BLE and USB
+
+| Path | Platforms | What can be downloaded | Speed |
+|---|---|---|---|
+| **Bluetooth** (the existing BLE session) | **all**: PWA, Android, iOS/iPadOS | **the last flight only**: LOG_LIST lists one log, LOG_READ accepts only that log | a few kB/s to ~20 kB/s depending on the phone: a 5-minute flight (~1 MB at ~3.4 kB/s of log) in about 1–3 minutes |
+| **USB** (CDC virtual COM port) | **web app (Chrome, Edge) and Android** | every log, plus erase | 0.3–1 MB/s: a full 16 MB in under a minute |
+
+iOS has no USB path: apps cannot open a USB CDC device without MFi. Show only
+"Last flight (Bluetooth)" there.
+
+### 4.1 Bluetooth
+
+- Same GATT service and session as the flight link. Commands are written
+  **raw** to the CMD characteristic (`op, seq, args`, as every other v2
+  command; LOG_READ is 12 bytes, within the 20-byte limit). The answers
+  (LOG_ENTRY, LOG_DATA, ACK) arrive in the TLM notifications like any other
+  frame: the existing `StreamParser` already handles them. Add LOG_ENTRY and
+  LOG_DATA to `decodeFrame()`.
+- `Drone.send()` retries after 600 ms and gives up soon after: fine for
+  LOG_LIST, not for LOG_READ, whose ACK comes only after the whole chunk.
+  For LOG_READ, keep waiting as long as LOG_DATA frames arrive (reset the
+  timeout on each one). A retry with the same seq is harmless: the firmware's
+  ACK cache ignores it while the read runs.
+- The firmware sends the log frames on its high-priority ring, up to 60 % of
+  it, so ACKs and events keep their room. While a download runs the STATE
+  stream is starved and the STATUS `bleDrop` counter grows: expected. Lower
+  the STATE rate during the download (`[0x02, 240]`, 1 Hz) and restore it at
+  the end.
+- Refused while armed (LIST and READ). Arming during a download stops it with
+  `REJECTED / ARMED`. ERASE is `UNSUPPORTED` over BLE.
+- "Last flight" = the newest log. With logMode 2 (always) it is the whole
+  power-on session, which can be long: show its size before downloading.
+
+### 4.2 USB
 
 The FC's USB-C port is a **USB CDC virtual COM port**.
 
@@ -137,7 +171,7 @@ no RC, no app-link supervision (see §10).
 |---|---|---|
 | Desktop PWA (Chrome, Edge) | **Web Serial** (`navigator.serial.requestPort({ filters: [{ usbVendorId: 0x0483, usbProductId: 0x5740 }] })`) | to build |
 | Android (Capacitor) | a USB-serial plugin (CDC-ACM, e.g. one built on usb-serial-for-android); USB host permission dialog | to build; Web Serial on Android Chrome may also work, but check it on the devices you target |
-| iOS / iPadOS | **not possible**: apps cannot open a USB CDC device without MFi | show "Use a computer, or download over Bluetooth" (see §10) |
+| iOS / iPadOS | not offered | – |
 | Simulator | an emulated USB drone (§8) | to build |
 
 Implementation notes:
@@ -156,7 +190,7 @@ Implementation notes:
   route USB through the `drone` singleton's flight state; give the log screen
   its own small client (§5).
 
-## 5. USB log protocol
+## 5. Log protocol
 
 | Command | Op | Arguments (LE) | Answer, in order |
 |---|---|---|---|
@@ -178,6 +212,9 @@ Implementation notes:
 
 **LOG_DATA (6 + n B):** `id u16, offset u32, data[n]`, with n ≤ 240.
 
+The same commands and answers on both paths; over BLE the commands are not
+wrapped in a CMD frame and the limits of §4.1 apply.
+
 Rules:
 
 - **The ACK comes after the data**, so the ACK means "complete". Wait for
@@ -186,17 +223,18 @@ Rules:
 
   | Result / reason | Meaning |
   |---|---|
-  | `REJECTED / ARMED` (1/8) | READ or ERASE while armed: "Disarm to download" |
+  | `REJECTED / ARMED` (1/8) | READ or ERASE while armed (and LIST over BLE), or armed during a READ: "Disarm to download" |
+  | `REJECTED / OUT_OF_RANGE` (1/14) | BLE: READ of a log that is not the last flight |
   | `REJECTED / SENSOR_MISSING` (1/16) | no log flash on this board |
   | `INVALID / OUT_OF_RANGE` (3/14) | unknown id or offset past the end |
   | `BUSY` (2) | a READ is already running |
   | `INVALID` (3) | ERASE without the magic |
-  | `UNSUPPORTED` (4) | any other opcode |
+  | `UNSUPPORTED` (4) | any other opcode over USB; ERASE over BLE |
 
-- **Read in chunks**, for example 256 KB per LOG_READ as the Python client
-  does. Check that the offsets are contiguous and the byte count matches. On a
-  gap or a timeout, re-read that chunk only. USB FS gives roughly 0.3–1 MB/s:
-  a full 16 MB in less than a minute.
+- **Read in chunks**: 256 KB per LOG_READ over USB, 32 KB over BLE (as the
+  Python client does), so a lost frame costs one chunk. Check that the
+  offsets are contiguous and the byte count matches. On a gap or a timeout,
+  re-read that chunk only.
 - **Timeouts:**
   - 2 s without any frame while a command is pending → retry with a new seq;
   - ERASE can take minutes once IN_PROGRESS has arrived, so extend the wait
@@ -204,9 +242,10 @@ Rules:
 - **The drone pauses its recording** while the PC/app talks to it and for 5 s
   after the last command. The log being written is closed at the first
   command, so it can be downloaded at once.
-- **No LOG_* over BLE yet.** The firmware answers them only on USB (§10).
 - **Reference client:** `FcLink` in `acwing_tools/flightlog.py`: `_run()`,
-  `list_logs()`, `read_log()`, `erase()`. About 100 lines to port.
+  `list_logs()`, `read_log()`, `erase()`, with `raw=True` for BLE
+  (`acwing-tools log get --ble` downloads the last flight from a PC). About
+  100 lines to port.
 
 ## 6. Log format 1 and the decoder
 
@@ -260,15 +299,23 @@ Settings › Drone & firmware › Logs already has the "Flight logs on the drone
 and "Download" strings (`about.logsOnDrone`, `about.download`), unused so far.
 Suggested screen:
 
-1. **Connect over USB.** A button, or detect an already granted port. Show
-   the platform limits of §4 (iOS).
-2. **List.** One row per log: start time (relative to power-on, plus the
-   download date once stored), duration estimate (`bytes / 3.4 kB/s`, exact
-   after decoding), size. Badges: "truncated", "recording". Actions: download,
-   download all.
-3. **Download.** Progress per log and in total, cancel, retry of the failed
-   chunk. Store the raw `.bin`: IndexedDB on the PWA, the Filesystem plugin on
-   Capacitor. The raw file is what the PC tools read.
+1. **Last flight (Bluetooth)**, on every platform, when connected and
+   disarmed: size, estimated download time, "Download". Also reachable from
+   the end of a flight (after LANDED/DISARMED: "Download this flight").
+2. **All logs (USB)**, web app and Android only:
+   - connect: a button, or detect an already granted port;
+   - list: one row per log with start time (relative to power-on, plus the
+     download date once stored), duration estimate (`bytes / 3.4 kB/s`, exact
+     after decoding) and size; badges "truncated" and "recording"; actions
+     download and download all;
+   - **erase all**, with confirmation, only when disarmed, with "erasing…"
+     until the final ACK.
+3. **Download**, both paths:
+   - progress and cancel; retry of the failed chunk;
+   - store the raw `.bin` (IndexedDB on the PWA, the Filesystem plugin on
+     Capacitor): it is what the PC tools read;
+   - a log downloaded twice (same drone serial, same log id and start time)
+     is kept once.
 4. **Viewer** for a stored log:
    - summary: duration, min cell, mAh, max current, events;
    - charts on the existing chart component: height with set point and ToF;
@@ -280,14 +327,15 @@ Suggested screen:
    - `.bin` (for `acwing-tools log decode` and MATLAB);
    - a CSV per record type, with the same columns as `save_csv()` in Python
      so files are interchangeable.
-6. **Erase all**, with confirmation, only when disarmed, with "erasing…"
-   until the final ACK.
 
 Show the drone's **logMode** on this screen too (the selector already exists
 in Settings). With logMode = 0 nothing is recorded.
 
 ## 8. Simulator
 
+- **SimDrone over BLE**: answer LOG_LIST and LOG_READ with the BLE limits
+  (newest log only, ERASE unsupported, refused when armed), as `FakeBle` in
+  `tests/test_flightlog.py`.
 - **`SimUsbTransport`**: answers LOG_LIST, LOG_READ and LOG_ERASE from in-memory
   logs, the way `FakeFC` does in `tests/test_flightlog.py`:
   - entries before the ACK;
@@ -317,18 +365,25 @@ RAM log; ACwing FC: W25Q log):
      failed chunk.
 3. **Refusals:** READ while armed → "Disarm to download"; unknown id →
    "OUT_OF_RANGE"; a board without log flash → the screen says so.
-4. **Recording:**
+4. **BLE, last flight** (all platforms, iOS included):
+   - LOG_LIST over BLE → exactly one entry, the newest log, then the ACK;
+   - downloading it gives the same bytes as over USB;
+   - READ of an older id → refused; ERASE → unsupported;
+   - arming during the download stops it ("Disarm to download");
+   - the flight controls keep working after the download (STATE rate
+     restored).
+5. **Recording:**
    - logMode 1: arm, wait 10 s, disarm → a new log about 11 s long that
      starts with INFO and has ARMED and DISARMED events;
    - logMode 0 → no new log.
-5. **Erase:** IN_PROGRESS then OK; the list is empty and SYSTEM.log is 0 %.
-6. **Battery (simulator now, board later):**
+6. **Erase (USB):** IN_PROGRESS then OK; the list is empty and SYSTEM.log is 0 %.
+7. **Battery (simulator now, board later):**
    - crossing battWarn, battCrit and battEmerg gives one toast/voice each;
    - the failsafe banner appears at CRITICAL;
    - at EMERGENCY the mode/HOLD/RTH/TAKEOFF controls are disabled with the
      reason, and KILL works;
    - with capacity 0 and a current sensor, the "set capacity" hint appears.
-7. **Params:**
+8. **Params:**
    - 23 and 24 appear under Safety › Battery, and 70 under Drone & firmware;
    - 23 and 70 are hidden on a drone without CURRENT or FLASH_LOG;
    - battCells 7 → "value out of range".
@@ -337,8 +392,8 @@ RAM log; ACwing FC: W25Q log):
 
 | Point | Needs in the firmware | Comment |
 |---|---|---|
-| **Log download over BLE** (the only way on iOS) | route LOG_LIST/READ/ERASE received on the BLE CMD characteristic to the LogTask, and send LOG_ENTRY/LOG_DATA on the BLE HI ring with pacing | about 10 kB/s: minutes per flight, about 30 min for a full flash; worth it for "last flight only". Decide before building §7 for iOS |
+| Older logs over BLE | lift the "last flight only" limit in `log_task.c` | decided against for now: a full flash over BLE takes about half an hour |
 | **USB as a flight link** (telemetry, RC, app link) | CMD frames from USB into `app_link`, frames to USB as well as BLE | needed on the ACwing FC for the PC tools anyway (no ST-LINK virtual COM port there) |
 | Wall-clock time in the log | an RTC set by the app at connection (a new command) | today times are relative to power-on |
-| `HANDOVER_FW.md` | add params 23, 24, 70, events 8 and 33, the USB log commands and the scaleI note to the contract | so the two documents agree |
+| `HANDOVER_FW.md` | add params 23, 24, 70, events 8 and 33, the log commands (BLE and USB) and the scaleI note to the contract | so the two documents agree |
 | Firmware update over USB (DFU) | the STM32 ROM bootloader already does DFU on this port (BOOT0) | the "Update firmware" button could use WebUSB DFU later |

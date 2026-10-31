@@ -46,5 +46,7 @@ and Python) without special drivers.
 - **littlefs.** Robust and wear-levelled, but a general file system is more
   code and RAM than an append-only log needs, and the PC still needs a
   protocol to fetch files.
-- **Download over BLE.** Possible later through the same commands, but at
-  BLE rates (≈ 10 kB/s) 16 MB take half an hour.
+- **The whole memory over BLE.** At BLE rates 16 MB take about half an
+  hour. Instead (2026-10-31) BLE serves **the last flight only**, with the
+  same commands, on every platform; USB serves everything, in the web app,
+  on Android and on the PC.

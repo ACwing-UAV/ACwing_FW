@@ -65,6 +65,7 @@ virtual COM port: on the Nucleo bench, the USB_USER connector):
 acwing-tools log list --port COM7                     # logs on the drone
 acwing-tools log get --port COM7 --out-dir logs       # all -> acwing_flight_<id>.bin
 acwing-tools log decode logs/acwing_flight_00003.bin --csv out --mat out
+acwing-tools log get --ble                            # last flight over Bluetooth
 ```
 
 ```matlab

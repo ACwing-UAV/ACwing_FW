@@ -9,6 +9,10 @@ protocol are defined by the firmware:
 * ``App/app/log_task.h`` – USB CDC link. The PC sends protocol v2 frames of
   type 0x20 (``CMD``: ``op, seq, args``); the drone answers with
   LOG_ENTRY (0x10), LOG_DATA (0x11) and ACK (0x0E) frames.
+* Over **BLE** the same commands are written raw to the CMD characteristic
+  and the answers come with the telemetry notifications. BLE gives access to
+  the **last flight only** (LOG_LIST lists one log, LOG_READ accepts only that
+  one, LOG_ERASE is USB only); the whole memory goes over USB.
 
   ============ ===== =================================== ====================
   command      op    arguments                           answer
@@ -204,7 +208,8 @@ OP_LOG_LIST, OP_LOG_READ, OP_LOG_ERASE = 0x50, 0x51, 0x52
 FT_ACK, FT_LOG_ENTRY, FT_LOG_DATA, FT_CMD = 0x0E, 0x10, 0x11, 0x20
 ACK_OK, ACK_IN_PROGRESS = 0, 5
 ACK_RESULTS = {0: "OK", 1: "REJECTED", 2: "BUSY", 3: "INVALID", 4: "UNSUPPORTED", 5: "IN_PROGRESS"}
-REASONS = {8: "ARMED", 14: "OUT_OF_RANGE", 16: "SENSOR_MISSING (no log flash)"}
+REASONS = {8: "ARMED", 14: "OUT_OF_RANGE (unknown log, or not the last flight over BLE)",
+           16: "SENSOR_MISSING (no log flash)"}
 
 
 class LinkError(RuntimeError):
@@ -212,11 +217,16 @@ class LinkError(RuntimeError):
 
 
 class FcLink:
-    """Command/answer over the FC USB port (any object with ``read(n)`` and ``write(b)``)."""
+    """Command/answer over the FC USB port (any object with ``read(n)`` and ``write(b)``).
 
-    def __init__(self, port, timeout: float = 2.0):
+    ``raw=True``: commands are written as they are (``op, seq, args``), as on the
+    BLE CMD characteristic, instead of being wrapped in a CMD frame.
+    """
+
+    def __init__(self, port, timeout: float = 2.0, raw: bool = False):
         self.port = port
         self.timeout = timeout
+        self.raw = raw
         self.rest = b""
         self.seq = 0
 
@@ -224,6 +234,26 @@ class FcLink:
     def open(cls, name: str, timeout: float = 2.0) -> "FcLink":
         from .serial_io import open_serial
         return cls(open_serial(name, 115200, timeout=0.05), timeout)
+
+    @classmethod
+    def open_ble(cls, target: str = "", timeout: float = 5.0) -> "FcLink":
+        """BLE link (needs bleak): the last flight only."""
+        from .ble_io import BleSource
+
+        class _Port:
+            def __init__(self, src):
+                self.src = src
+
+            def write(self, b):
+                self.src.send_command(b)
+
+            def read(self, n):
+                return self.src.read()
+
+            def close(self):
+                self.src.close()
+        # STATE at 1 Hz (decimation 240): the log frames get the radio time
+        return cls(_Port(BleSource(target, decim=240)), timeout, raw=True)
 
     def close(self):
         try:
@@ -233,7 +263,8 @@ class FcLink:
 
     def _send(self, op: int, args: bytes = b"") -> int:
         self.seq = (self.seq + 1) & 0xFF
-        self.port.write(encode_frame(FT_CMD, bytes([op, self.seq]) + bytes(args)))
+        cmd = bytes([op, self.seq]) + bytes(args)
+        self.port.write(cmd if self.raw else encode_frame(FT_CMD, cmd))
         return self.seq
 
     def _frames(self):

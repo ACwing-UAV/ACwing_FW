@@ -13,7 +13,7 @@ the PC over the FC's USB port. Recording and download are done by the
 | W25Q128JV driver | `App/drivers/w25q/w25q.c` |
 | RAM "flash" for the bench | `App/log/log_flash_ram.c` |
 | USB link (framing) and CDC binding | `App/telemetry/usb_link.c`, `App/bsp/usb_cdc.c`, `App/bsp/usb/` |
-| PC: download and decode | `acwing-tools log …` (Python), `acwingLogDownload` / `acwingLogDecode` (MATLAB) |
+| PC: download and decode | `acwing-tools log …` (Python, USB or BLE), `acwingLogDownload` (USB) / `acwingLogDecode` (MATLAB) |
 
 ## Data path
 
@@ -23,6 +23,7 @@ flowchart LR
   BT["BattTask<br/>LR_POWER 10 Hz"] -- "queue 512 B" --> LT
   LT["LogTask · Low<br/>page buffer 256 B"] -- "page program,<br/>sector erase" --> FL[("W25Q128JV 16 MB<br/>(bench: 48 KB RAM)")]
   PC(["PC: acwing-tools log"]) <-- "USB CDC<br/>A5 5A frames" --> LT
+  APP(["ACwing Pilot"]) <-- "BLE: last flight<br/>(via the AppTask)" --> LT
 ```
 
 - **Producers never block.** Each producing task has its own lock-free
@@ -142,6 +143,26 @@ CRC, so a corrupted frame does not swallow the next command.
 CAPS bit 11 FLASH_LOG is set when a log store is mounted, and SYSTEM.log is
 the percentage of sectors in use.
 
+## Over Bluetooth: the last flight
+
+The same LOG_LIST and LOG_READ work over BLE, on every platform the app runs
+on (iOS included, where USB is not available), limited to **the last
+flight**:
+
+- the commands are written raw to the CMD characteristic (`op, seq, args`);
+  the AppTask, which owns the BLE rings, forwards them to the LogTask through
+  an SPSC queue, and moves the answers (LOG_ENTRY, LOG_DATA, ACK) to the HI
+  ring through a second queue;
+- LOG_LIST lists only the newest log; LOG_READ accepts only that log
+  (`REJECTED / OUT_OF_RANGE` otherwise); LOG_ERASE is `UNSUPPORTED`;
+- both are refused while armed, and arming stops a running download;
+- log frames may fill the HI ring up to 60 %, so ACKs and events keep their
+  room; while a download runs, the STATE stream (LO ring) is starved.
+
+At a few kB/s up to ~20 kB/s (depending on the phone), a 5-minute flight
+(about 1 MB) takes 1–3 minutes. The whole memory and the erase stay on USB,
+which is about 50 times faster. From a PC: `acwing-tools log get --ble`.
+
 ## On the PC
 
 ```bash
@@ -150,6 +171,7 @@ acwing-tools log get --port /dev/ttyACM0           # all logs -> acwing_flight_<
 acwing-tools log get 12 13 --port COM7 --out-dir logs
 acwing-tools log decode logs/acwing_flight_00012.bin --csv out --mat out
 acwing-tools log erase --port COM7 --yes
+acwing-tools log get --ble                         # the last flight over Bluetooth (needs bleak)
 ```
 
 `decode` prints a summary (duration, battery from start to end, minimum cell,
@@ -177,5 +199,6 @@ The Python and MATLAB decoders give the same numbers on the same file.
 - **Not run on hardware yet**: the USB CDC device (ST USB device library
   2.11.6, HSI48 trimmed by the CRS on the USB SOF) and the ADC binding.
 - **The app**: the ACwing Pilot app shows logMode and SYSTEM.log; the log
-  download screen is specified in
+  download screen (last flight over BLE everywhere, all logs over USB in the
+  web app and on Android) is specified in
   [`HANDOVER_APP.md`](https://github.com/andrea-cirillo/ACwing_FlightController_FW/blob/main/02%20-%20Tools/02%20-%20App/HANDOVER_APP.md).
