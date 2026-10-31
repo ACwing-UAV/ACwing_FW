@@ -466,7 +466,9 @@ export function BatteryWizard() {
   const d = cal?.data as D<"battery"> | undefined;
   const step = done(cal?.state) ? 2 : cal && cal.step >= 2 ? 1 : 0;
   const steps = [t("calib.battery.voltage"), t("calib.battery.current"), t("calib.battery.result")];
-  const cells = s.power?.cells ?? s.caps?.cells ?? 1;
+  const cells = s.power?.cells || s.caps?.cells || 1;
+  // the firmware refuses SET_REF(6,1) without a recorded flight (> 20 mAh since the data was saved)
+  const flown = !!d && d.usedMah > 0;
   const num = (x: string) => parseFloat(x.replace(",", "."));
   const visual = step === 0 ? (
     <div className="grid" style={{ width: "100%", gap: 12 }}>
@@ -482,13 +484,13 @@ export function BatteryWizard() {
     </div>
   ) : step === 1 ? (
     <div className="card tight" style={{ width: "100%" }}>
-      <div className="row first" style={{ minHeight: 70 }}><span className="grow label">{t("calib.battery.counted")}</span><span className="num" style={{ fontSize: 22 }}>{d ? `${d.usedMah} mAh` : "–"}</span></div>
+      <div className="row first" style={{ minHeight: 70 }}><span className="grow label">{t("calib.battery.counted")}</span><span className="num" style={{ fontSize: d && !flown ? 15 : 22, color: d && !flown ? "var(--muted)" : undefined }}>{d ? (flown ? `${d.usedMah} mAh` : t("calib.battery.noFlight")) : "–"}</span></div>
       <div className="row" style={{ minHeight: 70 }}>
         <label htmlFor="mah" className="grow label">{t("calib.battery.charged")}</label>
-        <input id="mah" className="input num" inputMode="numeric" style={{ width: 110, height: 46, fontSize: 20 }} value={mah} onChange={(e) => setMah(e.target.value)} />
+        <input id="mah" className="input num" inputMode="numeric" disabled={!flown} style={{ width: 110, height: 46, fontSize: 20 }} value={mah} onChange={(e) => setMah(e.target.value)} />
         <span className="muted">mAh</span>
       </div>
-      <div className="row" style={{ minHeight: 70 }}><span className="grow label muted">{t("calib.battery.scaleI")}</span><span className="num" style={{ fontSize: 22 }}>{d && num(mah) > 0 ? `× ${((d.scaleI * num(mah)) / d.usedMah).toFixed(2)}` : d ? `× ${d.scaleI.toFixed(2)}` : "–"}</span></div>
+      <div className="row" style={{ minHeight: 70 }}><span className="grow label muted">{t("calib.battery.scaleI")}</span><span className="num" style={{ fontSize: 22 }}>{d && flown && num(mah) > 0 ? `× ${((d.scaleI * num(mah)) / d.usedMah).toFixed(2)}` : d ? `× ${d.scaleI.toFixed(2)}` : "–"}</span></div>
     </div>
   ) : (
     <>
@@ -514,10 +516,11 @@ export function BatteryWizard() {
     <>
       <h2>{steps[1]}</h2>
       <p>{t("calib.battery.currentIntro")}</p>
+      {d && !flown && <div className="banner">{t("calib.battery.noFlightHint")}</div>}
       <span className="grow" />
       <div className="btn-row end">
         <button className="btn big" onClick={() => run(drone.calCapture())}>{t("common.skip")}</button>
-        <button className="btn primary big" disabled={!(num(mah) > 0)} onClick={() => run(drone.calSetRef(CalType.BATTERY, 1, num(mah)))}>{t("common.apply")}</button>
+        <button className="btn primary big" disabled={!flown || !(num(mah) > 0)} onClick={() => run(drone.calSetRef(CalType.BATTERY, 1, num(mah)))}>{t("common.apply")}</button>
       </div>
     </>
   ) : (

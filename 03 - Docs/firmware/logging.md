@@ -198,7 +198,10 @@ The Python and MATLAB decoders give the same numbers on the same file.
   the rev A port, together with the IMU on SPI.
 - **Not run on hardware yet**: the USB CDC device (ST USB device library
   2.11.6, HSI48 trimmed by the CRS on the USB SOF) and the ADC binding.
-- **The app**: the ACwing Pilot app shows logMode and SYSTEM.log; the log
-  download screen (last flight over BLE everywhere, all logs over USB in the
-  web app and on Android) is specified in
-  [`HANDOVER_APP.md`](https://github.com/andrea-cirillo/ACwing_FlightController_FW/blob/main/02%20-%20Tools/02%20-%20App/HANDOVER_APP.md).
+- **The app**: ACwing Pilot has a Flight logs screen (Settings › Drone &
+  firmware): the last flight over BLE on every platform, every log and erase
+  over USB through Web Serial (Chrome/Edge on PC and Mac, Android Chrome), a
+  viewer and `.bin`/CSV export identical to the Python tools. Tested against
+  the app's simulator and the firmware test vector, not yet against a board.
+  USB inside the native Android app is still open (needs a USB-serial plugin);
+  see [`HANDOVER_APP.md`](https://github.com/andrea-cirillo/ACwing_FlightController_FW/blob/main/02%20-%20Tools/02%20-%20App/HANDOVER_APP.md).

@@ -484,6 +484,50 @@ export function encodeChecks(m: ChecksMsg): Uint8Array {
   return w.done();
 }
 
+/** 0x10 LOG_ENTRY – 15 B, one per log, answer to LOG_LIST (then the ACK). */
+export interface LogEntryMsg {
+  id: number;
+  index: number;
+  count: number;
+  /** its beginning was overwritten by newer logs */
+  truncated: boolean;
+  /** being written (closed by the first log command) */
+  active: boolean;
+  sectors: number;
+  /** ms after the drone's power-on */
+  t0Ms: number;
+  bytes: number;
+}
+
+export function decodeLogEntry(p: Uint8Array): LogEntryMsg {
+  const r = new Reader(p);
+  const id = r.u16(), index = r.u8_(), count = r.u8_(), flags = r.u8_(), sectors = r.u16(), t0Ms = r.u32(), bytes = r.u32();
+  return { id, index, count, truncated: !!(flags & 1), active: !!(flags & 2), sectors, t0Ms, bytes };
+}
+
+export function encodeLogEntry(m: LogEntryMsg): Uint8Array {
+  return new Writer().u16(m.id).u8(m.index).u8(m.count).u8((m.truncated ? 1 : 0) | (m.active ? 2 : 0))
+    .u16(m.sectors).u32(m.t0Ms).u32(m.bytes).done();
+}
+
+/** 0x11 LOG_DATA – 6 + n B (n ≤ 240), answer to LOG_READ (then the ACK). */
+export interface LogDataMsg {
+  id: number;
+  offset: number;
+  data: Uint8Array;
+}
+export const LOG_DATA_MAX = 240;
+
+export function decodeLogData(p: Uint8Array): LogDataMsg {
+  const r = new Reader(p);
+  const id = r.u16(), offset = r.u32();
+  return { id, offset, data: p.slice(6) };
+}
+
+export function encodeLogData(m: LogDataMsg): Uint8Array {
+  return new Writer().u16(m.id).u32(m.offset).raw(m.data).done();
+}
+
 export type Decoded =
   | { type: typeof FT.STATE; msg: StateMsg }
   | { type: typeof FT.STATUS; msg: StatusMsg }
@@ -498,7 +542,9 @@ export type Decoded =
   | { type: typeof FT.PARAM; msg: ParamMsg }
   | { type: typeof FT.CALIB; msg: CalibMsg }
   | { type: typeof FT.ACK; msg: AckMsg }
-  | { type: typeof FT.CHECKS; msg: ChecksMsg };
+  | { type: typeof FT.CHECKS; msg: ChecksMsg }
+  | { type: typeof FT.LOG_ENTRY; msg: LogEntryMsg }
+  | { type: typeof FT.LOG_DATA; msg: LogDataMsg };
 
 /** Decodes a frame; unknown types (and REPLAY) return null and are ignored. */
 export function decodeFrame(type: number, p: Uint8Array): Decoded | null {
@@ -517,6 +563,8 @@ export function decodeFrame(type: number, p: Uint8Array): Decoded | null {
     case FT.CALIB: return { type, msg: decodeCalib(p) };
     case FT.ACK: return { type, msg: decodeAck(p) };
     case FT.CHECKS: return { type, msg: decodeChecks(p) };
+    case FT.LOG_ENTRY: return { type, msg: decodeLogEntry(p) };
+    case FT.LOG_DATA: return { type, msg: decodeLogData(p) };
     default: return null;
   }
 }

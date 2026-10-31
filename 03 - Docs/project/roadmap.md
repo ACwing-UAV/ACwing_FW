@@ -28,9 +28,11 @@ flowchart LR
 
 - FLOW_TOF calibration: ToF offset, flow scale, axis-sign check. Then POS_HOLD
   on the flow velocity.
-- ACwing Pilot app: flight-log download over USB, battery-failsafe banner and
-  EMERGENCY lock in the cockpit
-  ([`HANDOVER_APP.md`](https://github.com/andrea-cirillo/ACwing_FlightController_FW/blob/main/02%20-%20Tools/02%20-%20App/HANDOVER_APP.md)).
+- ACwing Pilot app: flight logs (BLE last flight, USB all logs, viewer,
+  export) and the battery items of
+  [`HANDOVER_APP.md`](https://github.com/andrea-cirillo/ACwing_FlightController_FW/blob/main/02%20-%20Tools/02%20-%20App/HANDOVER_APP.md)
+  are written and tested on the simulator: run them against the board. Still
+  open: USB in the native Android app.
 - Log commands over BLE (iOS cannot use USB CDC) and USB as a flight link,
   if the app needs them (HANDOVER_APP §10).
 - The PC telemetry (STATE, INIT, STATUS) over the USB CDC link too: on the

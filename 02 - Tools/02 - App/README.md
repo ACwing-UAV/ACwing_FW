@@ -30,6 +30,7 @@ UI languages: English (default), Italiano, Français, Deutsch, Español
 | `#/settings/<general\|controls\|safety\|calibration\|connection\|alerts\|about>` | Settings |
 | `#/calib/<1…8>` | Calibration wizards: accelerometer, level trim, gyroscope, compass, optical flow + ToF, battery, motors, ELRS sticks |
 | `#/help` | Flight controls reference |
+| `#/logs`, `#/logs/view/<key>` | Flight logs: last flight over Bluetooth, all logs over USB, logs on this device, viewer (charts, events), export `.bin` / CSV |
 
 Every screen has a phone layout and a tablet/PC layout. Inputs: touch sticks,
 keyboard (W/S, A/D, arrows, T takeoff, L land, H RTH, Space pause), gamepad
@@ -83,16 +84,19 @@ npm run cap:android    # build, sync, open Android Studio
 src/
   protocol/   ids.ts (numbers), frame.ts (framing, CRC), messages.ts (frame layouts),
               commands.ts (command layouts), protocol.test.ts
-  link/       transport.ts, bleTransport.ts (BLE on web/iOS/Android),
-              drone.ts (session store, ACK + retries), flightLog.ts (CSV)
-  sim/        simDrone.ts (reference drone), simTransport.ts
-  screens/    Connect, Cockpit, Telemetry, Help, settings/*
+  link/       transport.ts, bleTransport.ts (BLE on web/iOS/Android), serialTransport.ts (USB, Web Serial),
+              drone.ts (session store, ACK + retries), flightLog.ts (CSV of the telemetry seen by the app)
+  log/        the drone's flight log: format.ts (decoder, encoder, CSV as the Python tools),
+              client.ts (LOG_LIST/READ/ERASE), ports.ts (BLE, USB), store.ts (IndexedDB),
+              session.ts (Flight logs screen state), share.ts (export); testdata/ (firmware test vector)
+  sim/        simDrone.ts (reference drone, flight log included), simTransport.ts (BLE), simUsbTransport.ts (USB)
+  screens/    Connect, Cockpit, Telemetry, Help, Logs, settings/*
   calib/      Wizard.tsx (shared shell), wizards.tsx (8 calibrations)
   alerts/     events → toast, voice (speechSynthesis, app language), vibration; callouts
   input/      sticks/keyboard/gamepad mapping, haptics
   i18n/       en (source), it, fr, de, es
   settings/   app-side preferences (this device only)
-  ui/         hooks, kit (controls, toasts), icons, formatting, flight widgets
+  ui/         hooks, kit (controls, toasts), icons, formatting, flight widgets, timeChart
 ```
 
 Drone-side settings (parameters, calibrations) live on the drone; app-side
@@ -104,5 +108,12 @@ preferences (language, units, theme, stick feel, voice) live on the device.
 - Firmware side: protocol v2 implemented (firmware 0.4.0+); firmware 0.5.0
   adds battery failsafes, the flight log and USB log download
   ([HANDOVER_APP.md](HANDOVER_APP.md) lists the app work for them).
-- Not yet: USB and Wi‑Fi links, firmware update from the app, flight-log
-  download from the drone.
+- Flight logs (firmware 0.5.0): the last flight over Bluetooth on every
+  platform; every log and erase over USB in Chrome/Edge (PC, Mac, Android
+  Chrome) through Web Serial. Not on iPhone/iPad (no USB serial) nor inside
+  the native Android app yet (needs a USB-serial Capacitor plugin).
+- Not yet: USB and Wi‑Fi as flight links, firmware update from the app.
+
+In development builds (`npm run dev`) the simulated drone is reachable from the
+browser console as `acwingSim`, e.g. `acwingSim.usedMah = 440` to drain its
+battery, `acwingSim.battMonitorLost = true` to stop its battery monitor.

@@ -10,7 +10,7 @@ export function useSettings() {
   return useSyncExternalStore(appSettings.subscribe, appSettings.get);
 }
 
-/** Hash routes: #/connect, #/cockpit, #/telemetry, #/settings/<section>, #/calib/<type>, #/help */
+/** Hash routes: #/connect, #/cockpit, #/telemetry, #/settings/<section>, #/calib/<type>, #/help, #/logs[/last|/view/<key>] */
 export function useRoute(): string[] {
   const [hash, setHash] = useState(() => location.hash);
   useEffect(() => {

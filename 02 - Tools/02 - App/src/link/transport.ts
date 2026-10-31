@@ -1,6 +1,6 @@
-/** A byte pipe to one drone: BLE today, USB/Wi-Fi bridge later, simulator for development. */
+/** A byte pipe to one drone: BLE, USB (flight log only today), simulator for development. */
 export interface Transport {
-  readonly kind: "ble" | "sim";
+  readonly kind: "ble" | "sim" | "usb";
   readonly deviceName: string;
   /** Opens the link and starts delivering raw notification bytes. */
   open(onData: (chunk: Uint8Array) => void, onClose: (reason: string) => void): Promise<void>;

@@ -6,10 +6,11 @@ import { CockpitScreen } from "./screens/CockpitScreen";
 import { TelemetryScreen } from "./screens/TelemetryScreen";
 import { SettingsScreen } from "./screens/settings/SettingsScreen";
 import { HelpScreen } from "./screens/HelpScreen";
+import { LogsScreen } from "./screens/LogsScreen";
 import { CalibRoute } from "./calib/wizards";
 
 export function App() {
-  const [page, arg] = useRoute();
+  const [page, arg, arg2] = useRoute();
   const st = useSettings();
   useEffect(() => {
     document.documentElement.dataset.theme = st.theme;
@@ -24,6 +25,7 @@ export function App() {
     case "settings": screen = <SettingsScreen section={arg} />; break;
     case "calib": screen = <CalibRoute key={arg} type={Number(arg)} />; break;
     case "help": screen = <HelpScreen />; break;
+    case "logs": screen = <LogsScreen sub={arg} arg={arg2} />; break;
     default: screen = <ConnectScreen />;
   }
   return (

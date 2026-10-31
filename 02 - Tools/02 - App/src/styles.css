@@ -102,6 +102,7 @@ a { color: var(--accent); }
 .btn.big { min-height: 54px; font-size: 16px; border-radius: 12px; }
 .btn.icon { width: 44px; padding: 0; }
 .btn.small { min-height: 36px; padding: 0 12px; font-size: 13px; border-radius: 8px; background: var(--surface-2); }
+.btn.small.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
 .btn.block { width: 100%; }
 .btn-row { display: flex; gap: 10px; flex-wrap: wrap; }
 .btn-row.end { justify-content: flex-end; }
@@ -135,6 +136,8 @@ dl.facts { margin: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 
 dl.facts dt { color: var(--muted); }
 dl.facts dd { margin: 0; font-family: var(--display); font-size: 16px; }
 .kpi { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; display: flex; flex-direction: column; gap: 2px; }
+/* the KPI container shares the class name: keep it a plain grid */
+.grid.kpi { display: grid; background: none; border: none; border-radius: 0; padding: 0; }
 .kpi .k { font-size: 12px; color: var(--muted); }
 .kpi .v { font-family: var(--display); font-weight: 700; font-size: 26px; line-height: 1.15; }
 .kpi .s { font-size: 12px; color: var(--muted); }

@@ -173,7 +173,8 @@ export function TelemetryScreen() {
           {gps && <div className="kpi"><span className="k">{t("telemetry.homeDist")}</span><span className="v">{fmt.dist(f?.homeDistM)}</span><span className="s">{t("common.gpsOnly")}</span></div>}
           {!gps && <div className="kpi"><span className="k">{t("telemetry.tofAlt")}</span><span className="v">{n?.tofM != null ? fmt.alt(n.tofM, 2) : "–"}</span><span className="s">{n?.flowQ != null ? `${t("telemetry.opticalFlow")} ${n.flowQ}%` : ""}</span></div>}
           <div className="kpi"><span className="k">{t("telemetry.radioLink")}</span><span className="v">{y?.lq != null ? `LQ ${y.lq}%` : s.rssi !== null ? `${s.rssi} dBm` : "–"}</span><span className="s">{y?.lq != null ? `${y.rssi} dBm · SNR ${y.snr} dB` : "Bluetooth"}</span></div>
-          <div className="kpi"><span className="k">{t("telemetry.estRemaining")}</span><span className="v">{p?.remainS != null ? `≈ ${Math.round(p.remainS / 60)} min` : "–"}</span><span className="s">{gps && f?.rthEtaS != null ? t("telemetry.rthNeeds", { t: fmt.mmss(f.rthEtaS) }) : ""}</span></div>
+          <div className="kpi"><span className="k">{t("telemetry.estRemaining")}</span><span className="v">{p?.remainS != null ? `≈ ${Math.round(p.remainS / 60)} min` : "–"}</span>
+            {armed && p && p.remainS == null && caps && caps.sensors & SENSOR.CURRENT && drone.param("battCapacity") < 1 ? <a className="s" href="#/settings/safety">{t("cockpit.setCapacity")}</a> : null}<span className="s">{gps && f?.rthEtaS != null ? t("telemetry.rthNeeds", { t: fmt.mmss(f.rthEtaS) }) : ""}</span></div>
         </div>
         {vp.phone ? (
           <>

@@ -10,13 +10,23 @@
 import { encodeFrame, Reader } from "../protocol/frame";
 import * as M from "../protocol/messages";
 import { parseCommand } from "../protocol/commands";
+import { LogWriter, LR } from "../log/format";
 import {
   FT, OP, AckResult, Reason, FlightMode, ArmState, AutoAction, FS, FF, InputSource, SENSOR, Model, FrameType,
   BattWarn, EventLevel, EventCode, CalType, CalState, CheckId, CheckState, PARAMS, PARAM_BY_ID, ARM_MAGIC, KILL_MAGIC,
-  PROPS_OFF_MAGIC,
+  PROPS_OFF_MAGIC, WIPE_MAGIC,
 } from "../protocol/ids";
 
 export type SimModel = "outdoor" | "indoor";
+type LogPortKind = "ble" | "usb";
+interface SimLog {
+  id: number;
+  t0Ms: number;
+  w: LogWriter;
+  active: boolean;
+  /** bytes of a closed log, built once for the reads */
+  cache?: Uint8Array;
+}
 
 const D2R = Math.PI / 180;
 const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
@@ -71,6 +81,8 @@ export class SimDrone {
   private scaleV = 110.0;
   private scaleI = 1.0;
   private lastFlightScaleI = 1.0; // scaleI the last flight's mAh were counted with (as the firmware stores it)
+  private lastFlightMah = 1240;   // mAh of the last flight (> 20 mAh), 0 = none recorded
+  private mahAtArm = 0;
   private battLevel = 0;          // BattWarn latched as in the firmware (left only when disarmed)
   private battLock = false;       // EMERGENCY: landing locked, only KILL overrides
 
@@ -98,6 +110,30 @@ export class SimDrone {
   private ackCache = new Map<string, Uint8Array>();
   private rates = { flight: 10, power: 5, nav: 5, motors: 5, system: 2, checks: 2, caps: 0.2, status: 10, state: 60 };
 
+  // ---- battery monitor (firmware 0.5.0): set to simulate a stopped BattTask (EVENT 33) ----
+  battMonitorLost = false;
+  private battMonitorLostSent = false;
+
+  // ---- flight log (firmware 0.5.0, HANDOVER_APP.md §4-§5) ----
+  private logs: SimLog[] = [];
+  private logOpen: SimLog | null = null;
+  private logNextId = 1;
+  private logSerial = 1;
+  private logCmdT = -1e9;
+  private disarmT = -1e9;
+  private preEvents: { t: number; level: number; code: number; arg: number }[] = [];
+  private logRd: { port: LogPortKind; seq: number; id: number; off: number; end: number } | null = null;
+  private logErase: { seq: number; until: number } | null = null;
+  private logPending = new Set<string>();
+  private logAcks = new Map<string, Uint8Array>();
+  private usbOut: Uint8Array[] = [];
+  /** LOG_DATA frames (240 B) per 20 ms tick: BLE ≈ 24 kB/s, USB ≈ 480 kB/s */
+  logFramesPerTick: Record<LogPortKind, number> = { ble: 2, usb: 40 };
+  /** wall-clock ms of the last tick: the USB simulator ticks the drone only when no BLE simulator does */
+  lastTickAt = 0;
+  /** the drone was powered on this long before the simulation started */
+  private readonly bootS = 42;
+
   constructor(model: SimModel) {
     this.model = model;
     this.outdoor = model === "outdoor";
@@ -111,6 +147,8 @@ export class SimDrone {
       this.saved.set(p.id, p.def);
     });
     this.homeSet = this.outdoor;
+    // two flights already in the log flash
+    this.logs.push(this.syntheticLog(25, 1.0), this.syntheticLog(48, 1.4));
   }
 
   /** Called when a client subscribes: CAPS + INIT immediately, as the firmware does. */
@@ -132,6 +170,13 @@ export class SimDrone {
 
   private event(level: number, code: number, text: string, arg = 0) {
     this.emit(FT.EVENT, M.encodeEvent({ level, code, arg, text }));
+    const t = this.uptimeMs();
+    if (this.logOpen) this.logOpen.w.record(LR.EVENT, { t_ms: t, level, code, arg });
+    else this.preEvents = [...this.preEvents.filter((e) => t - e.t < 2000), { t, level, code, arg }].slice(-8);
+  }
+
+  private uptimeMs() {
+    return Math.round((this.t + this.bootS) * 1000);
   }
 
   private p(key: string) {
@@ -163,6 +208,7 @@ export class SimDrone {
       this.lastAppMsg = this.t;
       return;
     }
+    if (op === OP.LOG_LIST || op === OP.LOG_READ || op === OP.LOG_ERASE) return this.logCommand("ble", op, seq, r);
     // A repeated sequence number gets the same ACK again and is NOT executed twice.
     const key = `${op}:${seq}`;
     const cached = this.ackCache.get(key);
@@ -188,9 +234,10 @@ export class SimDrone {
         // throttle "low": bottom of the stick in ACRO/ANGLE, not above centre in the hold modes (centre = hold altitude)
         const holdMode = this.mode === FlightMode.ALT_HOLD || this.mode === FlightMode.POS_HOLD;
         if (this.appInput && this.t - this.lastAppMsg < 0.5 && this.rc.throttle > (holdMode ? 100 : -900)) return rej(Reason.THROTTLE_NOT_LOW);
-        if (this.battLevel >= BattWarn.CRITICAL) return rej(Reason.BATTERY_LOW);
+        if (this.battLevel >= BattWarn.CRITICAL || this.battMonitorLost) return rej(Reason.BATTERY_LOW);
         if (this.p("armRequireChecks") && !this.checks().ready) return rej(Reason.CHECKS_FAILING);
         this.armed = true;
+        this.mahAtArm = this.usedMah;
         this.landedT = 0;
         if (this.outdoor && !this.homeSet) this.homeSet = true;
         this.event(EventLevel.INFO, EventCode.ARMED, "Armed");
@@ -341,6 +388,11 @@ export class SimDrone {
 
   private disarm() {
     this.armed = false;
+    if (this.usedMah - this.mahAtArm > 20) {
+      this.lastFlightMah = Math.round(this.usedMah - this.mahAtArm);
+      this.lastFlightScaleI = this.scaleI;
+    }
+    this.disarmT = this.t;
     this.auto = AutoAction.NONE;
     this.failsafe = 0;
     this.battLock = false;
@@ -377,7 +429,7 @@ export class SimDrone {
         this.cal = { ...base, state: CalState.WAITING_USER, data: { kind: "flow", tofMm: 12, heightMm: 0, flowQ: 0, matchPct: 0, axesDone: 0, scaleX: 1, scaleY: 1, tofOffMm: 0 } };
         break;
       case CalType.BATTERY:
-        this.cal = { ...base, state: CalState.WAITING_USER, data: { kind: "battery", vbatV: this.vbat(), scaleV: this.scaleV, scaleI: this.scaleI, usedMah: 1240 } };
+        this.cal = { ...base, state: CalState.WAITING_USER, data: { kind: "battery", vbatV: this.vbat(), scaleV: this.scaleV, scaleI: this.scaleI, usedMah: this.lastFlightMah } };
         break;
       case CalType.MOTORS:
         this.cal = { ...base, state: CalState.WAITING_USER, data: { kind: "motors", motor: 0, spinning: false, revMask: this.motorRev, okMask: 0 } };
@@ -442,13 +494,16 @@ export class SimDrone {
     if (!c || c.type !== type) return [AckResult.REJECTED, Reason.NOT_CALIBRATING];
     const d = c.data;
     if (d.kind === "battery" && idx === 0) {
-      if (v < 2.5 || v > 30) return [AckResult.INVALID, Reason.OUT_OF_RANGE];
+      // the firmware refuses a voltage more than ±30 % from its own reading
+      if (v < 2.5 || v > 30 || Math.abs(v / this.vbat() - 1) > 0.3) return [AckResult.INVALID, Reason.OUT_OF_RANGE];
       this.scaleV = +(this.scaleV * (v / this.vbat())).toFixed(1);
       d.scaleV = this.scaleV;
       d.vbatV = v;
       c.step = 2;
     } else if (d.kind === "battery" && idx === 1) {
-      if (v < 50 || v > 20000) return [AckResult.INVALID, Reason.OUT_OF_RANGE];
+      if (!d.usedMah) return [AckResult.REJECTED, Reason.OUT_OF_RANGE]; // no flight recorded
+      const ratio = v / d.usedMah;
+      if (v < 50 || v > 20000 || ratio < 0.5 || ratio > 2) return [AckResult.INVALID, Reason.OUT_OF_RANGE];
       // the firmware scales the current with the scale the flight was counted with
       this.scaleI = +((this.lastFlightScaleI * v) / d.usedMah).toFixed(4);
       d.scaleI = this.scaleI;
@@ -566,8 +621,11 @@ export class SimDrone {
 
   tick(dt: number) {
     this.t += dt;
+    this.lastTickAt = Date.now();
     this.stepFlight(dt);
     this.stepCal(dt);
+    this.stepBattMonitor();
+    this.stepLog(dt);
     if (this.motorTest && this.t > this.motorTest.until) this.motorTest = null;
     this.schedule(dt);
   }
@@ -814,14 +872,16 @@ export class SimDrone {
   }
 
   private emitPower() {
+    if (this.battMonitorLost) return; // the BattTask stopped: no POWER
     const v = this.vbat();
     const cell = v / this.cells;
     const pct = clamp(Math.round(((cell - 3.3) / 0.9) * 100), 0, 100);
     const warn = this.battLevel;
-    const cap = this.outdoor ? 3000 : 450;
+    // remaining time: only armed, with a current sensor and a capacity (param 23), as the firmware
+    const cap = this.p("battCapacity");
     this.emit(FT.POWER, M.encodePower({
       vbatV: v, currentA: this.current, usedMah: Math.round(this.usedMah), cells: this.cells, cellV: cell, pct,
-      remainS: this.armed ? Math.round(((cap * 0.8 - this.usedMah) / Math.max(0.1, this.current * 1000)) * 3600) : null, warn,
+      remainS: this.armed && cap > 0 && this.sensors & SENSOR.CURRENT ? Math.max(0, Math.round(((cap * 0.8 - this.usedMah) / Math.max(0.1, this.current * 1000)) * 3600)) : null, warn,
     }));
   }
 
@@ -851,16 +911,261 @@ export class SimDrone {
   private emitSystem() {
     this.emit(FT.SYSTEM, M.encodeSystem({
       lq: this.elrsLinked ? 100 : null, rssi: -68, snr: 9, pktRateHz: this.elrsLinked ? 250 : 0, txPowerMw: this.elrsLinked ? 100 : 0, cpuPct: 46,
-      loopHz: 960, jitterUs: 6, logPct: 12, imuTempC: 38.4, vibrationG: this.inAir ? 0.21 : 0.02, accClip: 0, attUncDeg: 0.6,
+      loopHz: 960, jitterUs: 6, logPct: this.logPct(), imuTempC: 38.4, vibrationG: this.inAir ? 0.21 : 0.02, accClip: 0, attUncDeg: 0.6,
       estFlags: 0x01 | (this.compassCalibrated ? 0 : 0x08), magInterfPct: this.compassCalibrated ? 4 : 18,
     }));
+  }
+
+  /* ================================================================ */
+  /* Battery monitor                                                   */
+  /* ================================================================ */
+
+  private stepBattMonitor() {
+    if (this.battMonitorLost && !this.battMonitorLostSent) {
+      this.battMonitorLostSent = true;
+      this.event(EventLevel.ERROR, EventCode.BATTERY_MONITOR_LOST, "Battery monitor lost");
+    }
+    if (!this.battMonitorLost) this.battMonitorLostSent = false;
+  }
+
+  /* ================================================================ */
+  /* Flight log                                                        */
+  /* ================================================================ */
+
+  private logPct() {
+    const bytes = this.logs.reduce((n, l) => n + l.w.bytes, 0);
+    return Math.min(100, Math.round((bytes / (16 * 1024 * 1024)) * 100));
+  }
+
+  /** Records as LogTask does: logMode 1 = while armed (+1 s), 2 = always; paused 5 s after a log command. */
+  private stepLog(dt: number) {
+    const mode = Math.round(this.p("logMode"));
+    const paused = this.t - this.logCmdT < 5 && !this.armed;
+    let want = mode === 2 || (mode === 1 && (this.armed || this.t - this.disarmT < 1));
+    if (paused) want = false;
+    if (want && !this.logOpen) this.openLog();
+    if (!want && this.logOpen) this.closeLog();
+    const L = this.logOpen;
+    if (L) {
+      const tick = (key: string, hz: number, fn: () => void) => {
+        this.acc[key] = (this.acc[key] ?? 0) + dt * hz;
+        while (this.acc[key] >= 1) {
+          this.acc[key] -= 1;
+          fn();
+        }
+      };
+      tick("log50", 50, () => this.logFast(L.w));
+      tick("log10", 10, () => this.logSlow(L.w));
+    }
+    this.stepLogRead();
+  }
+
+  private openLog() {
+    const t0 = this.uptimeMs();
+    const id = this.logNextId++;
+    const L: SimLog = { id, t0Ms: t0, w: new LogWriter(id, t0, this.logSerial), active: true };
+    L.w.record(LR.INFO, { fw0: 0, fw1: 5, fw2: 0, hw_rev: "S".charCodeAt(0), format: 1, t0_ms: t0, sensors: this.sensors, name: this.name });
+    this.preEvents.filter((e) => t0 - e.t < 2000).forEach((e) => L.w.record(LR.EVENT, { t_ms: e.t, level: e.level, code: e.code, arg: e.arg }));
+    this.preEvents = [];
+    this.logs.push(L);
+    this.logOpen = L;
+  }
+
+  private closeLog() {
+    if (!this.logOpen) return;
+    this.logOpen.active = false;
+    this.logSerial += this.logOpen.w.bytes / 4096;
+    this.logOpen = null;
+  }
+
+  private logFast(w: LogWriter) {
+    const t = this.uptimeMs();
+    const q = eulerToQuat(this.roll * D2R, this.pitch * D2R, -this.heading * D2R);
+    w.record(LR.ATT, {
+      t_ms: t, qw: q[0] * 32767, qx: q[1] * 32767, qy: q[2] * 32767, qz: q[3] * 32767,
+      gx: noise(8), gy: noise(8), gz: noise(8), ax: noise(20), ay: noise(20), az: 1000 + noise(20),
+    });
+    const tof = this.alt < 4 ? Math.max(12, this.alt * 1000 + 12) : 0xffff;
+    w.record(LR.VERT, {
+      t_ms: t, h_mm: this.alt * 1000, vz_mms: this.vz * 1000, h_sp_mm: this.inAir ? this.takeoffTarget * 1000 : 0, vz_sp_mms: 0,
+      thrust: this.inAir ? 120 + this.vz * 30 : this.armed ? 20 : 0, tof_mm: this.sensors & SENSOR.TOF ? tof : 0xffff,
+      flow_q: this.sensors & SENSOR.FLOW ? clamp(Math.round(84 - this.alt * 8), 0, 100) : 0xff, baro_pa: Math.round((1013.25 - this.alt * 0.12 - 6.4) * 100),
+      flags: 1 | (tof !== 0xffff ? 2 : 0) | (this.inAir ? 0 : 4) | (this.sensors & SENSOR.FLOW ? 8 : 0) | (this.inAir ? 16 : 0),
+    });
+  }
+
+  private logSlow(w: LogWriter) {
+    const t = this.uptimeMs();
+    w.record(LR.FLIGHT, {
+      t_ms: t, armed: this.armed ? 1 : 0, mode: this.mode, autom: this.auto, failsafe: this.failsafe, flags: (this.inAir ? 1 : 2),
+      thr: this.rc.throttle / 10, yaw: this.rc.yaw / 10, pitch: this.rc.pitch / 10, roll: this.rc.roll / 10,
+      silence_ms: Math.min(65535, (this.t - this.lastAppMsg) * 1000),
+    });
+    w.record(LR.EST, { t_ms: t, bx: 3, by: 2, bz: -5, att_unc_cdeg: 60, vib_mg: this.inAir ? 210 : 20, loop_hz: 960, jitter_us: 6, cpu_pct: 46, mag_interf_pct: this.compassCalibrated ? 4 : 18 });
+    if (!this.battMonitorLost) {
+      const v = this.vbat();
+      w.record(LR.POWER, {
+        t_ms: t, vbat_mv: v * 1000, current_ca: this.current * 100, used_mah: this.usedMah, cell_mv: (v / this.cells) * 1000,
+        cell_rest_mv: (v / this.cells + this.current * 0.012) * 1000, pct: clamp(Math.round(((v / this.cells - 3.3) / 0.9) * 100), 0, 100),
+        level: this.battLevel, r_cell_mohm: 30, cells: this.cells | 0x80,
+      });
+    }
+  }
+
+  /** A finished flight of `durS` seconds at `hM` metres, for the logs already on the drone. */
+  private syntheticLog(durS: number, hM: number): SimLog {
+    const id = this.logNextId++;
+    const t0 = 5000 + id * 3000;
+    const w = new LogWriter(id, t0, this.logSerial);
+    w.record(LR.INFO, { fw0: 0, fw1: 5, fw2: 0, hw_rev: "S".charCodeAt(0), format: 1, t0_ms: t0, sensors: this.sensors, name: this.name });
+    const ev = (t: number, code: number, arg = 0) => w.record(LR.EVENT, { t_ms: t, level: 0, code, arg });
+    ev(t0, EventCode.ARMED);
+    ev(t0 + 1500, EventCode.TAKEOFF_STARTED, hM * 100);
+    let mah = 0;
+    for (let i = 0; i <= durS * 50; i++) {
+      const ts = i / 50, t = t0 + i * 20;
+      const up = clamp((ts - 1.5) / 2, 0, 1), down = clamp((durS - 3 - ts) / 2, 0, 1);
+      const h = hM * Math.min(up, down) + (up * down > 0.99 ? 0.03 * Math.sin(ts * 1.7) : 0);
+      const inAir = h > 0.02;
+      const roll = inAir ? 3 * Math.sin(ts * 0.9) : 0, pitch = inAir ? 2 * Math.sin(ts * 0.6 + 1) : 0;
+      const q = eulerToQuat(roll * D2R, pitch * D2R, -(270 + 10 * Math.sin(ts * 0.2)) * D2R);
+      w.record(LR.ATT, { t_ms: t, qw: q[0] * 32767, qx: q[1] * 32767, qy: q[2] * 32767, qz: q[3] * 32767, gx: roll * 4, gy: pitch * 4, gz: 2, az: 1000 + noise(15) });
+      w.record(LR.VERT, { t_ms: t, h_mm: h * 1000, vz_mms: 0, h_sp_mm: inAir ? hM * 1000 : 0, thrust: inAir ? 128 : 25, tof_mm: h * 1000 + 12, flow_q: inAir ? 78 : 90, baro_pa: 100680, flags: 0x0b | (inAir ? 16 : 4) });
+      if (i % 5 === 0) {
+        const cur = inAir ? (this.outdoor ? 14 : 3.2) : 0.4;
+        mah += (cur * 1000 * 0.1) / 3600;
+        const cell = 4.15 - mah / (this.outdoor ? 3000 : 450) * 0.7 - cur * (this.outdoor ? 0.003 : 0.05);
+        w.record(LR.FLIGHT, { t_ms: t, armed: 1, mode: 3, autom: ts < 3.5 ? 1 : ts > durS - 3 ? 2 : 0, flags: inAir ? 1 : 2, thr: 0 });
+        w.record(LR.EST, { t_ms: t, bx: 3, by: 2, bz: -5, att_unc_cdeg: 55, vib_mg: inAir ? 190 : 15, loop_hz: 960, jitter_us: 5, cpu_pct: 44, mag_interf_pct: 6 });
+        w.record(LR.POWER, { t_ms: t, vbat_mv: cell * this.cells * 1000, current_ca: cur * 100, used_mah: mah, cell_mv: cell * 1000, cell_rest_mv: (cell + cur * 0.01) * 1000, pct: clamp(Math.round(((cell - 3.3) / 0.9) * 100), 0, 100), r_cell_mohm: 30, cells: this.cells | 0x80 });
+      }
+    }
+    ev(t0 + (durS - 0.5) * 1000, EventCode.LANDED);
+    ev(t0 + durS * 1000, EventCode.DISARMED);
+    this.logSerial += w.bytes / 4096;
+    return { id, t0Ms: t0, w, active: false };
+  }
+
+  /** Bytes the USB simulator has to deliver. */
+  drainUsb(): Uint8Array[] {
+    const o = this.usbOut;
+    this.usbOut = [];
+    return o;
+  }
+
+  /** A CMD frame payload received on the (simulated) USB port: only the log commands are served. */
+  usbCommand(payload: Uint8Array) {
+    if (payload.length < 2) return;
+    const r = new Reader(payload);
+    const op = r.u8_(), seq = r.u8_();
+    if (op === OP.HEARTBEAT) return;
+    if (op === OP.LOG_LIST || op === OP.LOG_READ || op === OP.LOG_ERASE) return this.logCommand("usb", op, seq, r);
+    this.logOut("usb", FT.ACK, M.encodeAck({ op, seq, result: AckResult.UNSUPPORTED, reason: Reason.NONE }));
+  }
+
+  private logOut(port: LogPortKind, type: number, payload: Uint8Array) {
+    (port === "usb" ? this.usbOut : this.out).push(encodeFrame(type, payload));
+  }
+
+  private logAck(port: LogPortKind, op: number, seq: number, result: number, reason = Reason.NONE) {
+    const f = encodeFrame(FT.ACK, M.encodeAck({ op, seq, result, reason }));
+    const key = `${port}:${op}:${seq}`;
+    if (result !== AckResult.IN_PROGRESS) {
+      this.logPending.delete(key);
+      this.logAcks.set(key, f);
+      if (this.logAcks.size > 32) this.logAcks.delete(this.logAcks.keys().next().value!);
+    }
+    (port === "usb" ? this.usbOut : this.out).push(f);
+  }
+
+  private entry(L: SimLog, index: number, count: number): M.LogEntryMsg {
+    return { id: L.id, index, count, truncated: false, active: L.active, sectors: L.w.bytes / 4096, t0Ms: L.t0Ms, bytes: L.w.bytes };
+  }
+
+  /** LOG_LIST / LOG_READ / LOG_ERASE as log_task.c (BLE: last flight only, no erase). */
+  private logCommand(port: LogPortKind, op: number, seq: number, r: Reader) {
+    const key = `${port}:${op}:${seq}`;
+    if (this.logPending.has(key)) return; // its answer is on the way
+    const cached = this.logAcks.get(key);
+    if (cached) return void (port === "usb" ? this.usbOut : this.out).push(cached);
+    this.logCmdT = this.t;
+    const ack = (res: number, why = Reason.NONE) => this.logAck(port, op, seq, res, why);
+    // as log_task.c: the log being written is closed by a BLE LIST, a READ or an ERASE (after their checks)
+    const lastLog = () => {
+      this.closeLog();
+      return this.logs.filter((l) => l.w.bytes > 0).at(-1);
+    };
+    switch (op) {
+      case OP.LOG_LIST: {
+        if (this.armed && port === "ble") return ack(AckResult.REJECTED, Reason.ARMED);
+        const last = port === "ble" ? lastLog() : undefined;
+        const list = port === "ble" ? (last ? [last] : []) : this.logs.filter((l) => l.w.bytes > 0);
+        list.forEach((l, i) => this.logOut(port, FT.LOG_ENTRY, M.encodeLogEntry(this.entry(l, i, list.length))));
+        return ack(AckResult.OK);
+      }
+      case OP.LOG_READ: {
+        if (this.armed) return ack(AckResult.REJECTED, Reason.ARMED);
+        if (this.logRd) return ack(AckResult.BUSY);
+        if (!r.has(10)) return ack(AckResult.INVALID);
+        const last = lastLog();
+        const id = r.u16(), off = r.u32();
+        let len = r.u32();
+        if (port === "ble" && (!last || last.id !== id)) return ack(AckResult.REJECTED, Reason.OUT_OF_RANGE);
+        const L = this.logs.find((l) => l.id === id);
+        const size = L?.w.bytes ?? 0;
+        if (!size || off > size) return ack(AckResult.INVALID, Reason.OUT_OF_RANGE);
+        if (len === 0 || len > size - off) len = size - off;
+        this.logPending.add(key);
+        this.logRd = { port, seq, id, off, end: off + len };
+        return;
+      }
+      case OP.LOG_ERASE: {
+        if (port === "ble") return ack(AckResult.UNSUPPORTED);
+        if (this.armed) return ack(AckResult.REJECTED, Reason.ARMED);
+        if (!r.has(4) || WIPE_MAGIC.some((b) => r.u8_() !== b)) return ack(AckResult.INVALID);
+        this.closeLog();
+        this.logPending.add(key);
+        ack(AckResult.IN_PROGRESS);
+        this.logErase = { seq, until: this.t + 1.5 };
+        return;
+      }
+    }
+  }
+
+  private stepLogRead() {
+    if (this.logErase && this.t >= this.logErase.until) {
+      this.logs = [];
+      this.logAck("usb", OP.LOG_ERASE, this.logErase.seq, AckResult.OK);
+      this.logErase = null;
+    }
+    const rd = this.logRd;
+    if (!rd) return;
+    if (this.armed) {
+      this.logRd = null;
+      return this.logAck(rd.port, OP.LOG_READ, rd.seq, AckResult.REJECTED, Reason.ARMED);
+    }
+    const L = this.logs.find((l) => l.id === rd.id);
+    const data = L ? (L.cache ??= L.w.data()) : undefined;
+    if (!data) {
+      this.logRd = null;
+      return this.logAck(rd.port, OP.LOG_READ, rd.seq, AckResult.REJECTED);
+    }
+    for (let k = 0; k < this.logFramesPerTick[rd.port] && rd.off < rd.end; k++) {
+      const n = Math.min(M.LOG_DATA_MAX, rd.end - rd.off);
+      this.logOut(rd.port, FT.LOG_DATA, M.encodeLogData({ id: rd.id, offset: rd.off, data: data.subarray(rd.off, rd.off + n) }));
+      rd.off += n;
+    }
+    if (rd.off >= rd.end) {
+      this.logRd = null;
+      this.logAck(rd.port, OP.LOG_READ, rd.seq, AckResult.OK);
+    }
   }
 
   checks(): M.ChecksMsg {
     const cell = this.vbat() / this.cells;
     const gnss = !!(this.sensors & SENSOR.GNSS);
     const items: M.CheckItem[] = [
-      { id: CheckId.BATTERY, state: cell < this.p("battCrit") || this.battLevel >= BattWarn.CRITICAL ? CheckState.FAIL : cell < this.p("battWarn") || this.battLevel >= BattWarn.LOW ? CheckState.WARN : CheckState.OK, value: Math.round(cell * 1000) },
+      this.battMonitorLost ? { id: CheckId.BATTERY, state: CheckState.FAIL, value: 0 } : { id: CheckId.BATTERY, state: cell < this.p("battCrit") || this.battLevel >= BattWarn.CRITICAL ? CheckState.FAIL : cell < this.p("battWarn") || this.battLevel >= BattWarn.LOW ? CheckState.WARN : CheckState.OK, value: Math.round(cell * 1000) },
       { id: CheckId.IMU, state: CheckState.OK, value: 0 },
       { id: CheckId.COMPASS, state: this.compassCalibrated ? CheckState.OK : CheckState.WARN, value: this.compassCalibrated ? 4 : 18 },
       { id: CheckId.GNSS, state: gnss ? CheckState.OK : CheckState.NA, value: gnss ? 14 : 0 },

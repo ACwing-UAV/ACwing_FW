@@ -26,6 +26,9 @@ const P: Record<string, string> = {
   wifi: "M2 8.8a15 15 0 0 1 20 0M5 12.6a10 10 0 0 1 14 0M8.5 16.4a5 5 0 0 1 7 0M12 20h.01",
   download: "M12 3v12M6 11l6 6 6-6M4 21h16",
   rec: "M12 7a5 5 0 1 0 0 10 5 5 0 0 0 0-10z",
+  trash: "M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3",
+  share: "M12 3v12M7 8l5-5 5 5M5 13v7h14v-7",
+  log: "M6 3h9l4 4v14H6zM14 3v5h5M9 13h7M9 17h7",
 };
 
 export function Icon({ name, size = 20, label, stroke = 1.8 }: { name: keyof typeof P | string; size?: number; label?: string; stroke?: number }) {
