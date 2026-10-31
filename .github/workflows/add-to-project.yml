@@ -1,11 +1,28 @@
-- name: Add To GitHub projects
-  uses: actions/add-to-project@v2.0.0
-  with:
-    # URL of the project to add issues to
-    project-url: https://github.com/orgs/ACwing-UAV/projects/1
-    # A GitHub personal access token with write access to the project
-    github-token: ADD_TO_PROJECT_TOKEN
-    # A comma-separated list of labels to use as a filter for issue to be added
-    labeled: # optional
-    # The behavior of the labels filter, AND to match all labels, OR to match any label, NOT to exclude any listed label (default is OR)
-    label-operator: # optional
+# Adds every new issue and pull request of this repository to the ACwing project:
+# https://github.com/orgs/ACwing-UAV/projects/1
+# Needs the organization secret ADD_TO_PROJECT_TOKEN: fine-grained token owned by
+# ACwing-UAV, Organization permissions -> Projects: Read and write
+# (repository permissions: Issues and Pull requests read-only). It expires:
+# renew it and update the secret, otherwise this workflow fails.
+name: Add to project
+
+on:
+  issues:
+    types: [opened, reopened, transferred]
+  # pull_request_target (not pull_request) so that pull requests from forks can
+  # read the secret too. Safe here: no code of the pull request is checked out.
+  pull_request_target:
+    types: [opened, reopened]
+
+permissions: {}
+
+jobs:
+  add-to-project:
+    # Dependabot runs do not get Actions secrets: skip its pull requests
+    if: github.actor != 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/add-to-project@v2.0.0
+        with:
+          project-url: https://github.com/orgs/ACwing-UAV/projects/1
+          github-token: ${{ secrets.ADD_TO_PROJECT_TOKEN }}
