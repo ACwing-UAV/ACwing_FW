@@ -81,7 +81,6 @@ ACwing_FW/
 │       └── README.md               run, simulator, native builds
 ├── 03 - Docs/                      documentation site sources (MkDocs Material): theory, firmware,
 │   │                               tools, guides, decisions (ADR); renders on GitHub as well
-│   ├── 00 - Brand/                 ACwing logos (SVG/PNG), copied from the hardware repository
 │   ├── api/                        API reference landing page; Doxygen output goes to api/fc, api/flow
 │   └── requirements.txt            pinned MkDocs versions
 ├── .github/workflows/docs.yml      CI: Doxygen + mkdocs build --strict, publish to GitHub Pages
