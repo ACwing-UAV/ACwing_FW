@@ -9,7 +9,7 @@
 
 These are the ACwing logos used by the documentation of this repository. They are copies of the files in the
 hardware repository, which holds the master vector source and the tools that generate them:
-[`ACwing_FlightController_HW` → `00 - Docs/05 - Brand`](https://github.com/andrea-cirillo/ACwing_FlightController_HW/tree/main/00%20-%20Docs/05%20-%20Brand).
+[`ACwing_HW` → `00 - Docs/05 - Brand`](https://github.com/ACwing-UAV/ACwing_HW/tree/main/00%20-%20Docs/05%20-%20Brand).
 Change the logos there, then copy them here, so both repositories keep the same files.
 
 | File | Use |
