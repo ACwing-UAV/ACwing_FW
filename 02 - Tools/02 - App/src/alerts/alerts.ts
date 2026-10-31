@@ -6,7 +6,7 @@
 import { drone, type EventEntry } from "../link/drone";
 import { appSettings, type AppSettings } from "../settings/appSettings";
 import { LANGS, translate } from "../i18n";
-import { EventLevel } from "../protocol/ids";
+import { EventCode, EventLevel } from "../protocol/ids";
 import { toast } from "../ui/kit";
 import { haptic } from "../input/haptics";
 
@@ -44,7 +44,9 @@ function onEvent(e: EventEntry) {
   const critical = e.level >= EventLevel.ERROR;
   if (w && !st.warn[w] && !critical) return;
   const text = eventText(e);
-  const level = e.level >= EventLevel.CRITICAL ? "critical" : e.level >= EventLevel.ERROR ? "error" : e.level >= EventLevel.WARN ? "warn" : "info";
+  // the battery monitor stopping is a pre-flight blocker and, in flight, a critical alert (HANDOVER_APP B4)
+  const crit = e.level >= EventLevel.CRITICAL || e.code === EventCode.BATTERY_MONITOR_LOST;
+  const level = crit ? "critical" : e.level >= EventLevel.ERROR ? "error" : e.level >= EventLevel.WARN ? "warn" : "info";
   toast(text, level);
   if (e.level >= EventLevel.WARN || SPOKEN_INFO.has(e.code)) speak(text, e.level >= EventLevel.ERROR);
   if (e.level >= EventLevel.WARN && st.vibrate) haptic("warn");

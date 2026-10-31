@@ -2,7 +2,7 @@
 
 The **ACwing Pilot** app (`02 - Tools/02 - App/`) talks to the drone with
 protocol v2. The contract is
-[`HANDOVER_FW.md`](https://github.com/andrea-cirillo/ACwing_FlightController_FW/blob/main/02%20-%20Tools/02%20-%20App/HANDOVER_FW.md),
+[`HANDOVER_FW.md`](https://github.com/ACwing-UAV/ACwing_FW/blob/main/02%20-%20Tools/02%20-%20App/HANDOVER_FW.md),
 and the app simulator `src/sim/simDrone.ts` is the reference for behaviour.
 
 Protocol v2 only **adds** frames `0x05…0x0F` and commands `≥ 0x10` on the GATT

@@ -6,6 +6,10 @@
 import type { Transport } from "../link/transport";
 import { SimDrone, type SimModel } from "./simDrone";
 
+let latest: WeakRef<SimDrone> | null = null;
+/** The drone of the most recent BLE simulator, so the simulated USB link sees the same logs. */
+export const lastSimDrone = () => latest?.deref() ?? null;
+
 export class SimTransport implements Transport {
   readonly kind = "sim" as const;
   readonly drone: SimDrone;
@@ -15,6 +19,9 @@ export class SimTransport implements Transport {
 
   constructor(model: SimModel, private chunk = 20) {
     this.drone = new SimDrone(model);
+    latest = new WeakRef(this.drone);
+    // development builds: the simulated drone is reachable from the console (window.acwingSim), e.g. to drain its battery
+    if (import.meta.env?.DEV && typeof window !== "undefined") (window as unknown as { acwingSim: SimDrone }).acwingSim = this.drone;
   }
 
   get deviceName() {
@@ -31,7 +38,9 @@ export class SimTransport implements Transport {
       this.drone.tick(dt);
       for (const f of this.drone.drain()) for (const b of f) this.pending.push(b);
       // deliver in MTU-sized pieces that ignore frame boundaries
-      while (this.pending.length) onData(Uint8Array.from(this.pending.splice(0, this.chunk)));
+      const all = Uint8Array.from(this.pending);
+      this.pending = [];
+      for (let i = 0; i < all.length; i += this.chunk) onData(all.slice(i, i + this.chunk));
     }, 20);
   }
 

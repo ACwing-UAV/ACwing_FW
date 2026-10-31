@@ -13,7 +13,7 @@ software are designed in the project:
 - **Hardware.** A modular set of PCBs: a universal flight controller
   (**ACwing FC**), a 1S power board, and GNSS and optical-flow expansions.
   They are in the hardware repository,
-  [ACwing_FlightController_HW](https://github.com/andrea-cirillo/ACwing_FlightController_HW).
+  [ACwing_HW](https://github.com/ACwing-UAV/ACwing_HW).
 - **Software, in this repository:**
   - the firmware of the flight controller and of the ACwing Flow bridge;
   - the PC tools used to develop, calibrate and validate it;
@@ -24,7 +24,7 @@ motors on 1S. Its first milestone is **attitude control**.
 
 | ACwing part | What it is | Where |
 |---|---|---|
-| ACwing FC | flight controller: STM32WB55, LSM6DSV16X IMU, barometer, compass, BLE, two 4-in-1 ESC links | [hardware repository](https://github.com/andrea-cirillo/ACwing_FlightController_HW) |
+| ACwing FC | flight controller: STM32WB55, LSM6DSV16X IMU, barometer, compass, BLE, two 4-in-1 ESC links | [hardware repository](https://github.com/ACwing-UAV/ACwing_HW) |
 | ACwing ESC 1S | 1S power board: 4 brushed motor stages, current sensor, USB-C charger | hardware repository |
 | ACwing GPS, ACwing Flow | expansions: GNSS + compass (outdoor); optical flow + ToF height (indoor) | hardware repository |
 | **FC firmware** | attitude IEKF, altitude Kalman filter, flight core (arming, failsafes, TAKEOFF/LAND), battery monitor and failsafes, flight log with USB download, protocol v2 for the app, telemetry over USB and BLE | `00 - FC_FW` |
@@ -89,13 +89,13 @@ ACwing FC. Motors are disabled (`MOTORS_ENABLE = 0`).
 | understand the vehicle and its sensors | [Vehicle model and dynamics](theory/vehicle-model.md) |
 | understand the attitude filter | [Attitude IEKF](theory/iekf.md), then [IEKF on the microcontroller](theory/iekf-embedded.md) |
 | understand the altitude estimate | [Altitude Kalman filter](theory/altitude-kf.md) |
-| see how the firmware is organised | [Architecture](firmware/architecture.md), API reference of the [FC](https://andrea-cirillo.github.io/ACwing_FlightController_FW/api/fc/) and [Flow](https://andrea-cirillo.github.io/ACwing_FlightController_FW/api/flow/) firmware |
+| see how the firmware is organised | [Architecture](firmware/architecture.md), API reference of the [FC](https://acwing-uav.github.io/ACwing_FW/api/fc/) and [Flow](https://acwing-uav.github.io/ACwing_FW/api/flow/) firmware |
 | build and flash | [Building and flashing](firmware/build.md); for the Flow board, [ACwing Flow bridge](firmware/flow-bridge.md) |
 | see the attitude live, record logs | [PC tools and live viewer](tools/pc-tools.md) |
 | calibrate the magnetometer | [Magnetometer calibration](tools/mag-calibration.md) |
 | validate the embedded filter | [Validation against the reference](tools/validation.md) |
 | use BLE | [BLE telemetry](firmware/ble.md) |
-| fly from the app, or work on its protocol | [ACwing Pilot protocol v2](firmware/protocol-v2.md) and the [handover](https://github.com/andrea-cirillo/ACwing_FlightController_FW/blob/main/02%20-%20Tools/02%20-%20App/HANDOVER_FW.md) |
+| fly from the app, or work on its protocol | [ACwing Pilot protocol v2](firmware/protocol-v2.md) and the [handover](https://github.com/ACwing-UAV/ACwing_FW/blob/main/02%20-%20Tools/02%20-%20App/HANDOVER_FW.md) |
 | understand the battery failsafes, calibrate the battery | [Battery and failsafes](firmware/battery.md) |
 | download and read a flight log | [Flight log and USB](firmware/logging.md) |
 | know why something is the way it is | [Decisions](decisions/index.md) |

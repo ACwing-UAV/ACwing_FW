@@ -37,6 +37,11 @@ export const FT = {
   CALIB: 0x0d,
   ACK: 0x0e,
   CHECKS: 0x0f,
+  // flight log (firmware 0.5.0): answers to LOG_LIST / LOG_READ, over BLE and USB
+  LOG_ENTRY: 0x10,
+  LOG_DATA: 0x11,
+  /** PC/app → drone over USB only: payload = op, seq, args (the bytes a BLE CMD write carries) */
+  CMD: 0x20,
 } as const;
 
 /** Command opcodes, app → drone, written on CMD. Format: [op][seq][payload…] (except legacy 0x01/0x02). */
@@ -70,11 +75,19 @@ export const OP = {
   STREAM_RATES: 0x40,
   REQUEST: 0x41,
   SET_NAME: 0x42,
+  // flight log (firmware 0.5.0). BLE: last flight only, no erase. USB: every log, erase.
+  LOG_LIST: 0x50,
+  LOG_READ: 0x51,
+  LOG_ERASE: 0x52,
 } as const;
 
 export const ARM_MAGIC = [0xa5, 0x5a] as const;
 export const KILL_MAGIC = [0x4b, 0x49, 0x4c, 0x4c] as const; // "KILL"
 export const PROPS_OFF_MAGIC = 0x50; // 'P'
+export const WIPE_MAGIC = [0x57, 0x49, 0x50, 0x45] as const; // "WIPE", LOG_ERASE
+
+/** FC USB port: CDC virtual COM port (ST development pair until a product id is assigned). */
+export const USB_IDS = { vendorId: 0x0483, productId: 0x5740 } as const;
 
 /** ACK result codes */
 export enum AckResult {

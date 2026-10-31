@@ -12,7 +12,7 @@
 import { StreamParser } from "../protocol/frame";
 import { decodeFrame, quatToEuler, type AckMsg, type CapsMsg, type FlightMsg, type PowerMsg, type NavMsg, type MotorsMsg, type SystemMsg, type StatusMsg, type ChecksMsg, type CalibMsg, type EventMsg } from "../protocol/messages";
 import { Cmd, type RcInput } from "../protocol/commands";
-import { FT, OP, AckResult, SENSOR, PARAM_BY_ID } from "../protocol/ids";
+import { FT, OP, AckResult, SENSOR, PARAM_BY_ID, EventCode } from "../protocol/ids";
 import type { Transport } from "./transport";
 import { appSettings } from "../settings/appSettings";
 
@@ -32,7 +32,7 @@ export interface Attitude {
 export interface DroneState {
   link: LinkState;
   deviceName: string;
-  transport: "ble" | "sim" | null;
+  transport: Transport["kind"] | null;
   rssi: number | null;
   mtu: number | null;
   lastRx: number;
@@ -50,6 +50,8 @@ export interface DroneState {
   calib: CalibMsg | null;
   params: Record<number, { value: number; dirty: boolean }>;
   events: EventEntry[];
+  /** EVENT 33 (firmware 0.5.0): the battery task stopped, battery unknown, ARM refused. Cleared when POWER comes back. */
+  battMonitorLostAt: number | null;
   /** history for the charts: one sample every 500 ms, last 2 min */
   history: { t: number; alt: number; vz: number; vbat: number; current: number }[];
 }
@@ -57,7 +59,7 @@ export interface DroneState {
 const initial = (): DroneState => ({
   link: "idle", deviceName: "", transport: null, rssi: null, mtu: null, lastRx: 0, rxBytesPerS: 0, crcErrors: 0,
   caps: null, flight: null, power: null, nav: null, motors: null, system: null, status: null, checks: null,
-  attitude: null, calib: null, params: {}, events: [], history: [],
+  attitude: null, calib: null, params: {}, events: [], history: [], battMonitorLostAt: null,
 });
 
 export class CommandError extends Error {
@@ -81,6 +83,7 @@ export class Drone {
   private rxBytes = 0;
   private eventId = 0;
   private eventListeners = new Set<(e: EventEntry) => void>();
+  private frameListeners = new Set<(type: number, payload: Uint8Array) => void>();
 
   /* ---- store (useSyncExternalStore) ---- */
   subscribe = (fn: () => void) => {
@@ -91,6 +94,12 @@ export class Drone {
   onEvent(fn: (e: EventEntry) => void) {
     this.eventListeners.add(fn);
     return () => this.eventListeners.delete(fn);
+  }
+
+  /** Every received frame, raw (the flight-log client uses LOG_ENTRY, LOG_DATA and ACK). */
+  onFrame(fn: (type: number, payload: Uint8Array) => void) {
+    this.frameListeners.add(fn);
+    return () => this.frameListeners.delete(fn);
   }
 
   private set(patch: Partial<DroneState>) {
@@ -151,6 +160,7 @@ export class Drone {
     const patch: Partial<DroneState> = { lastRx: now };
     if (this.s.link === "lost") patch.link = "connected";
     for (const f of this.parser.push(chunk)) {
+      if (this.frameListeners.size) this.frameListeners.forEach((l) => l(f.type, f.payload));
       const d = decodeFrame(f.type, f.payload);
       if (!d) continue;
       switch (d.type) {
@@ -162,7 +172,10 @@ export class Drone {
         case FT.STATUS: patch.status = d.msg; break;
         case FT.CAPS: patch.caps = d.msg; break;
         case FT.FLIGHT: patch.flight = d.msg; break;
-        case FT.POWER: patch.power = d.msg; break;
+        case FT.POWER:
+          patch.power = d.msg;
+          if (this.s.battMonitorLostAt && now - this.s.battMonitorLostAt > 3000) patch.battMonitorLostAt = null;
+          break;
         case FT.NAV: patch.nav = d.msg; break;
         case FT.MOTORS: patch.motors = d.msg; break;
         case FT.SYSTEM: patch.system = d.msg; break;
@@ -173,6 +186,7 @@ export class Drone {
           break;
         case FT.EVENT: {
           const e: EventEntry = { ...d.msg, at: now, id: ++this.eventId };
+          if (e.code === EventCode.BATTERY_MONITOR_LOST) patch.battMonitorLostAt = now;
           // the firmware repeats important events 3 times: keep one
           const dup = this.s.events.find((x) => x.code === e.code && x.arg === e.arg && now - x.at < 600);
           if (!dup) {
@@ -235,6 +249,14 @@ export class Drone {
   /** Cockpit open: stream the sticks. null = stop (heartbeat only). */
   setRc(rc: RcInput | null) {
     this.rc = rc;
+  }
+
+  /** Writes a command without waiting for its ACK (the caller listens with onFrame). Returns the seq used. */
+  sendRaw(build: (seq: number) => Uint8Array): number {
+    if (!this.transport || this.s.link === "idle") throw new CommandError("offline", 0);
+    const seq = this.nextSeq();
+    this.fire(build(seq), true);
+    return seq;
   }
 
   /** Sends a command and resolves with its ACK. `build` receives the sequence number. */

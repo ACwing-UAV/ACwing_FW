@@ -9,7 +9,7 @@ Python package `acwing_tools`, MATLAB viewer `acwingLiveViewer`, logs
 keep the name of the algorithm.
 
 ```
-ACwing_FlightController_FW/
+ACwing_FW/
 ├── 00 - FC_FW/                     STM32CubeIDE project of the flight-controller firmware (import this folder)
 │   ├── App/                        application code, hardware-independent where possible
 │   │   ├── app/                    app_main (FreeRTOS tasks, IRQ glue), app_config.h (ALL parameters),

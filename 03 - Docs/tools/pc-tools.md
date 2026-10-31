@@ -8,7 +8,7 @@ MATLAB setup:
 run('<repo>/02 - Tools/00 - Matlab/initPath.m')   % once per session
 ```
 
-Python setup (details in [`02 - Tools/01 - Python/README.md`](https://github.com/andrea-cirillo/ACwing_FlightController_FW/blob/main/02%20-%20Tools/01%20-%20Python/README.md)):
+Python setup (details in [`02 - Tools/01 - Python/README.md`](https://github.com/ACwing-UAV/ACwing_FW/blob/main/02%20-%20Tools/01%20-%20Python/README.md)):
 
 ```bash
 cd "02 - Tools/01 - Python"
@@ -46,7 +46,7 @@ L = acwingLiveViewer("ble");                            % BLE, board found autom
 tlmSniffer("COM6")      % bytes -> frames -> STATUS -> diagnosis
 ```
 
-**Python equivalents** (installation in [`02 - Tools/01 - Python/README.md`](https://github.com/andrea-cirillo/ACwing_FlightController_FW/blob/main/02%20-%20Tools/01%20-%20Python/README.md)):
+**Python equivalents** (installation in [`02 - Tools/01 - Python/README.md`](https://github.com/ACwing-UAV/ACwing_FW/blob/main/02%20-%20Tools/01%20-%20Python/README.md)):
 
 ```bash
 acwing-tools viewer COM6                  # live viewer; --log-dir DIR, --baud B

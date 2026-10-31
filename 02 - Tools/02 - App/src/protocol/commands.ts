@@ -3,8 +3,8 @@
  * Format: [op u8][seq u8][payload…]. Legacy ops 0x01/0x02 keep their phase-2 format.
  * Every command with a sequence number is answered by an ACK frame, except RC and HEARTBEAT.
  */
-import { OP, ARM_MAGIC, KILL_MAGIC, PROPS_OFF_MAGIC, BLE } from "./ids";
-import { Reader, Writer } from "./frame";
+import { OP, FT, ARM_MAGIC, KILL_MAGIC, PROPS_OFF_MAGIC, WIPE_MAGIC, BLE } from "./ids";
+import { Reader, Writer, encodeFrame } from "./frame";
 
 export interface RcInput {
   throttle: number; // -1000..1000 (bottom..top of the stick)
@@ -56,7 +56,14 @@ export const Cmd = {
     cmd(OP.STREAM_RATES, seq, (w) => w.u8(r.flight).u8(r.power).u8(r.nav).u8(r.motors).u8(r.system)),
   request: (seq: number, frameType: number) => cmd(OP.REQUEST, seq, (w) => w.u8(frameType)),
   setName: (seq: number, name: string) => cmd(OP.SET_NAME, seq, (w) => w.str(name, 16)),
+  logList: (seq: number) => cmd(OP.LOG_LIST, seq),
+  /** length 0 = to the end of the log */
+  logRead: (seq: number, id: number, offset: number, length: number) => cmd(OP.LOG_READ, seq, (w) => w.u16(id).u32(offset).u32(length)),
+  logErase: (seq: number) => cmd(OP.LOG_ERASE, seq, (w) => w.raw(WIPE_MAGIC)),
 };
+
+/** USB only: a command travels inside a CMD frame (type 0x20) with the same bytes a BLE CMD write carries. */
+export const encodeCmdFrame = (cmdBytes: Uint8Array) => encodeFrame(FT.CMD, cmdBytes);
 
 /* ------------------------------------------------------------------ */
 /* Decoder (simulator and tests; the firmware does the same in C)      */

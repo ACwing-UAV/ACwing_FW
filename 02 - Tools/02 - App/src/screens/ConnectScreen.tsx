@@ -92,7 +92,10 @@ export function ConnectScreen() {
           <p className="small muted" style={{ margin: 0, lineHeight: 1.45 }}>{t("connect.bleHint")}</p>
         </>
       ) : (
-        <div className="banner">{tab === "usb" ? t("connect.usbSoon") : t("connect.wifiSoon")}</div>
+        <div className="banner" style={{ alignItems: "center" }}>
+          <span style={{ flex: 1 }}>{tab === "usb" ? t("connect.usbSoon") : t("connect.wifiSoon")}</span>
+          {tab === "usb" && <a className="btn small" href="#/logs">{t("logs.title")}</a>}
+        </div>
       )}
       {!connected && (
         <div className="card">
@@ -121,11 +124,12 @@ export function ConnectScreen() {
             {c.id === CheckId.COMPASS && c.state !== CheckState.OK ? (
               <a href="#/calib/4" style={{ color: "var(--warn)", fontSize: 13 }}>{t("connect.calibrate")}</a>
             ) : (
-              <span className="v">{checkValue(c, t, caps?.cells ?? 0)}</span>
+              <span className="v">{checkValue(c, t, s.power?.cells || caps?.cells || 0)}</span>
             )}
           </li>
         ))}
       </ul>
+      {s.battMonitorLostAt !== null && <div className="banner crit" role="alert">{t("connect.battMonitorLost")}</div>}
       {caps && !(caps.sensors & SENSOR.GNSS) && <span className="small muted">{t("connect.indoorNote")}</span>}
       <span style={{ flex: 1 }} />
       {armed ? (

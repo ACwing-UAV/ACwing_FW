@@ -425,6 +425,7 @@ export function About() {
           <div className="row first" style={{ minHeight: 48 }}><h2>{t("about.logs")}</h2></div>
           <ParamSelect k="logMode" hint={t("about.logModeHint")} />
           {has(SENSOR.FLASH_LOG) && <Row label={t("about.logUsed")}><span className="value">{s.system ? `${s.system.logPct}%` : "–"}</span></Row>}
+          <Row label={t("about.logsOnDrone")} hint={t("logs.aboutHint")}><a className="btn small" href="#/logs"><Icon name="download" size={16} />{t("about.download")}</a></Row>
           <Row label={t("about.app")}><span className="value">v0.1.0</span></Row>
           <Row label={t("about.reset")}><button className="btn small" style={{ borderColor: "var(--crit)", color: "var(--crit-text)" }} disabled={!c} onClick={() => setAsk(true)}>{t("about.resetBtn")}</button></Row>
         </section>

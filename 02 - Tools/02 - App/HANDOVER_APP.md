@@ -16,6 +16,17 @@ that contract, and what the app should build to use it:
 The small items are already done in the app (§1). This file covers the larger
 ones.
 
+> **Status in the app (after this handover was implemented).** Done: battery
+> B1–B6 (§3), log protocol over BLE and USB (§4–§5), decoder and CSV
+> byte-identical to the Python tools on the test vector (§6), Flight logs
+> screen with viewer and export (§7), simulator over BLE and USB with a log
+> encoder (§8), the HANDOVER_FW.md additions (§10, last row). Tests:
+> `src/log/*.test.ts`, `src/link/battery.test.ts`.
+> **Not done:** USB on the **native Android app** (needs a CDC-ACM Capacitor
+> plugin; the Android WebView has no Web Serial). Android users download all
+> logs from Chrome (Web Serial) or use Bluetooth for the last flight; the
+> screen says so. The other §10 points need firmware work first.
+
 > **Executable reference.** Where this text and the code disagree, the code
 > wins and this file must be fixed:
 >

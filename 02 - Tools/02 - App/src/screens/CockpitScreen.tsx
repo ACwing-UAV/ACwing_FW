@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useT } from "../i18n";
 import { drone } from "../link/drone";
-import { ArmState, AutoAction, FlightMode, InputSource, SENSOR, BattWarn } from "../protocol/ids";
+import { ArmState, AutoAction, FlightMode, InputSource, SENSOR, BattWarn, FS } from "../protocol/ids";
 import { attachKeyboard, gamepad, keyboardAxes, sticksToAxes, toRc } from "../input/controls";
 import { go, useDrone, useSettings, useViewport } from "../ui/hooks";
 import { Icon, Mark } from "../ui/icons";
@@ -34,6 +34,30 @@ export function CockpitScreen() {
   const beginner = drone.param("beginner") > 0.5;
   const compact = vp.compactCockpit;
   const connected = s.link !== "idle";
+
+  // ---- battery (firmware 0.5.0, HANDOVER_APP §3) ----
+  const p0 = s.power;
+  const cells = p0?.cells || caps?.cells || 0; // CAPS.cells may be 0 until the pack is detected
+  const battFs = armed && !!f && !!(f.failsafe & FS.BATTERY);
+  /** EMERGENCY: landing locked until disarm; modes, HOLD, RTH and TAKEOFF are refused, only KILL works */
+  const battLock = armed && (p0?.warn ?? 0) >= BattWarn.EMERGENCY;
+  const monitorLost = s.battMonitorLostAt !== null;
+  const needCapacity = armed && !!p0 && p0.remainS === null && !!(caps && caps.sensors & SENSOR.CURRENT) && drone.param("battCapacity") < 1;
+  const lockTitle = battLock ? t("cockpit.battLocked") : undefined;
+
+  // ---- end of a flight: offer the log download (Bluetooth, last flight) ----
+  const [logPrompt, setLogPrompt] = useState(false);
+  const wasArmed = useRef(armed);
+  useEffect(() => {
+    if (wasArmed.current && !armed && caps && caps.sensors & SENSOR.FLASH_LOG && drone.param("logMode") >= 0.5) {
+      setLogPrompt(true);
+      const id = setTimeout(() => setLogPrompt(false), 20000);
+      wasArmed.current = armed;
+      return () => clearTimeout(id);
+    }
+    if (armed) setLogPrompt(false);
+    wasArmed.current = armed;
+  }, [armed, caps]);
 
   // throttle stick: springs to centre in the hold modes, stays put (and starts at the bottom) otherwise
   const throttleIsLeft = st.stickMode === 2;
@@ -89,10 +113,10 @@ export function CockpitScreen() {
   };
 
   const modes = [
-    { m: FlightMode.ACRO, dis: beginner },
-    { m: FlightMode.ANGLE, dis: false },
-    { m: FlightMode.ALT_HOLD, dis: false },
-    { m: FlightMode.POS_HOLD, dis: !gps && !flow },
+    { m: FlightMode.ACRO, dis: beginner || battLock },
+    { m: FlightMode.ANGLE, dis: battLock },
+    { m: FlightMode.ALT_HOLD, dis: battLock },
+    { m: FlightMode.POS_HOLD, dis: (!gps && !flow) || battLock },
   ];
   const att = s.attitude ?? { rollRight: 0, pitchUp: 0, yaw: 0 };
   const heading = f?.headingDeg ?? 0;
@@ -128,10 +152,10 @@ export function CockpitScreen() {
 
   const actions = (
     <div className="ck-actions">
-      <button className="btn" onClick={() => run(drone.takeoff(drone.param("takeoffAlt")))} disabled={!armed || inAir}><Icon name="up" size={18} />{t("cockpit.autoTakeoff")}</button>
+      <button className="btn" onClick={() => run(drone.takeoff(drone.param("takeoffAlt")))} disabled={!armed || inAir || battLock} title={lockTitle}><Icon name="up" size={18} />{t("cockpit.autoTakeoff")}</button>
       <button className="btn" onClick={() => run(drone.land())} disabled={!inAir}><Icon name="land" size={18} />{t("cockpit.autoLand")}</button>
-      {gps && <button className="btn warn" onClick={() => run(drone.rth())} disabled={!inAir}><Icon name="home" size={18} />{t("cockpit.rth")}</button>}
-      <button className="btn" onClick={() => run(drone.hold())} disabled={!inAir} style={gps ? undefined : { gridColumn: "span 2" }}><Icon name="pause" size={18} />{t("cockpit.pause")}</button>
+      {gps && <button className="btn warn" onClick={() => run(drone.rth())} disabled={!inAir || battLock} title={lockTitle}><Icon name="home" size={18} />{t("cockpit.rth")}</button>}
+      <button className="btn" onClick={() => run(drone.hold())} disabled={!inAir || battLock} title={lockTitle} style={gps ? undefined : { gridColumn: "span 2" }}><Icon name="pause" size={18} />{t("cockpit.pause")}</button>
     </div>
   );
 
@@ -156,7 +180,7 @@ export function CockpitScreen() {
         <a href="#/connect" aria-label={t("common.back")} style={{ display: "flex" }}><Mark /></a>
         <div className="name">
           <b>{caps?.name ?? s.deviceName ?? "ACwing"}</b>
-          <span className="small muted">{caps ? `FC rev ${caps.hwRev} · ${p?.cells ?? caps.cells}S · ${t(`about.frames.${caps.frame}`)}` : ""}</span>
+          <span className="small muted">{caps ? `FC rev ${caps.hwRev} · ${cells || "?"}S · ${t(`about.frames.${caps.frame}`)}` : ""}</span>
         </div>
         <span className={`chip ${armed ? "armed" : "disarmed"}`}>{armed ? t("cockpit.armed") : t("cockpit.disarmed")}</span>
         <button className="chip mode" onClick={() => setModePick((v) => !v)} aria-expanded={modePick} style={{ cursor: "pointer" }}>
@@ -195,6 +219,28 @@ export function CockpitScreen() {
       )}
 
       {radio && <div className="override banner warn" style={{ top: compact ? 100 : 130, zIndex: 3 }}>{t("cockpit.radioOverride")}</div>}
+      {(battFs || battLock || (monitorLost && armed)) && (
+        <div className="override banner crit" role="alert" style={{ top: compact ? 100 : 130, zIndex: 5, alignItems: "center" }}>
+          <span style={{ flex: 1 }}>
+            {monitorLost && !battFs && !battLock ? t("cockpit.battMonitorLost")
+              : battLock ? t("cockpit.battEmergency")
+              : f!.auto === AutoAction.LAND ? t("cockpit.battLanding")
+              : f!.auto === AutoAction.RTH ? t("cockpit.battRth")
+              : t("cockpit.battLandSoon")}
+          </span>
+          {battFs && !battLock && (f!.auto === AutoAction.LAND || f!.auto === AutoAction.RTH) && (
+            <button className="btn small" onClick={() => run(drone.setMode(f!.mode))}>{t("cockpit.takeControl")}</button>
+          )}
+        </div>
+      )}
+      {logPrompt && !armed && (
+        <div className="override banner" role="status" style={{ top: compact ? 100 : 130, zIndex: 3, alignItems: "center" }}>
+          <Icon name="log" size={18} />
+          <span style={{ flex: 1 }}>{t("logs.flightSaved")}</span>
+          <a className="btn small primary" href="#/logs/last">{t("logs.downloadThis")}</a>
+          <button className="btn small" aria-label={t("common.close")} onClick={() => setLogPrompt(false)}><Icon name="close" size={14} /></button>
+        </div>
+      )}
       {s.link === "lost" && <div className="override banner crit" style={{ top: compact ? 52 : 70, zIndex: 4 }}>{t("link.lost")}</div>}
 
       {!compact && <div className="tape"><HeadingTape heading={heading} width={Math.min(520, vp.w * 0.46)} /></div>}
@@ -213,10 +259,10 @@ export function CockpitScreen() {
             <a className="btn icon" href="#/telemetry" aria-label={t("icons.telemetry")}><Icon name="pulse" size={22} /></a>
           </div>
           <div className="ck-side r">
-            <button className="btn icon" aria-label={t("cockpit.autoTakeoff")} disabled={!armed || inAir} onClick={() => run(drone.takeoff(drone.param("takeoffAlt")))}><Icon name="up" size={22} /></button>
-            {gps && <button className="btn icon warn" aria-label={t("cockpit.rthLong")} disabled={!inAir} onClick={() => run(drone.rth())}><Icon name="home" size={22} /></button>}
+            <button className="btn icon" aria-label={t("cockpit.autoTakeoff")} disabled={!armed || inAir || battLock} onClick={() => run(drone.takeoff(drone.param("takeoffAlt")))}><Icon name="up" size={22} /></button>
+            {gps && <button className="btn icon warn" aria-label={t("cockpit.rthLong")} disabled={!inAir || battLock} onClick={() => run(drone.rth())}><Icon name="home" size={22} /></button>}
             <button className="btn icon" aria-label={t("cockpit.autoLand")} disabled={!inAir} onClick={() => run(drone.land())}><Icon name="land" size={22} /></button>
-            <button className="btn icon" aria-label={t("cockpit.pause")} disabled={!inAir} onClick={() => run(drone.hold())}><Icon name="pause" size={22} /></button>
+            <button className="btn icon" aria-label={t("cockpit.pause")} disabled={!inAir || battLock} onClick={() => run(drone.hold())}><Icon name="pause" size={22} /></button>
           </div>
           <div className="ck-bottom">
             {armControl}
@@ -284,7 +330,9 @@ export function CockpitScreen() {
             <div className="grid" style={{ gridTemplateColumns: "repeat(4, minmax(0,1fr))", gap: 8 }}>
               <div className="kpi" style={{ padding: "8px 10px" }}><span className="k">{t("cockpit.avgCell")}</span><span className="num" style={{ fontSize: 16, fontWeight: 600 }}>{p ? `${p.cellV.toFixed(2)} V` : "–"}</span></div>
               <div className="kpi" style={{ padding: "8px 10px" }}><span className="k">{t("cockpit.used")}</span><span className="num" style={{ fontSize: 16, fontWeight: 600 }}>{p ? `${p.usedMah} mAh` : "–"}</span></div>
-              <div className="kpi" style={{ padding: "8px 10px" }}><span className="k">{t("cockpit.remaining")}</span><span className="num" style={{ fontSize: 16, fontWeight: 600 }}>{p?.remainS != null ? `≈ ${Math.round(p.remainS / 60)} min` : "–"}</span></div>
+              <div className="kpi" style={{ padding: "8px 10px" }}><span className="k">{t("cockpit.remaining")}</span>{needCapacity
+                ? <a href="#/settings/safety" className="small" style={{ fontWeight: 600 }}>{t("cockpit.setCapacity")}</a>
+                : <span className="num" style={{ fontSize: 16, fontWeight: 600 }}>{p?.remainS != null ? `≈ ${Math.round(p.remainS / 60)} min` : "–"}</span>}</div>
               <div className="kpi" style={{ padding: "8px 10px" }}><span className="k">{gps ? t("cockpit.wind") : "ToF"}</span><span className="num" style={{ fontSize: 16, fontWeight: 600 }}>{gps ? fmt.speed(s.nav?.windMs) : fmt.alt(tof, 2)}</span></div>
             </div>
             <div className="ck-status" role="status">

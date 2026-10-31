@@ -123,6 +123,9 @@ CRC-16/CCITT-FALSE (poly 0x1021, init 0xFFFF, no reflection, no xor-out) over
 | `0x0D` | **CALIB** | 6 + data B | 10 Hz while a calibration is active + on every state change | new |
 | `0x0E` | **ACK** | 4 B | answer to every command with a sequence number | new |
 | `0x0F` | **CHECKS** | 2 + 4·n B | 2 Hz disarmed, 0.5 Hz armed, on REQUEST | new |
+| `0x10` | **LOG_ENTRY** | 15 B | answer to LOG_LIST, one per log (§5.1) | firmware 0.5.0 |
+| `0x11` | **LOG_DATA** | 6 + n B (n ≤ 240) | answer to LOG_READ (§5.1) | firmware 0.5.0 |
+| `0x20` | **CMD** | 2 + args | **app → drone over USB only**: the bytes a BLE CMD write carries (§5.1) | firmware 0.5.0 |
 
 The app reads STATE for the attitude (HUD, telemetry) and STATUS for the BLE
 diagnostics (`bleDrop`, `bleMtu`); it ignores INIT content.
@@ -182,6 +185,15 @@ is merely supported: the app hides every feature whose sensor bit is 0.
 | 9 | u8 | pct | 0…100, firmware estimate (voltage under load + used mAh) |
 | 10 | u16 | remain | s of flight left, `0xFFFF` = n/a |
 | 12 | u8 | warn | `0` OK, `1` LOW (< battWarn), `2` CRITICAL (< battCrit), `3` EMERGENCY (< battEmerg) |
+
+Firmware 0.5.0 behaviour, which the app follows: POWER is sent only by boards
+that measure the battery (otherwise never, and `REQUEST(POWER)` is
+`UNSUPPORTED`: the app works without POWER). `cellAvg` is the sagged voltage
+the failsafes use. `warn` is **latched**: up after 2 s below a threshold, down
+only when disarmed — the app shows `warn`, it does not recompute a level.
+`pct` is corrected by coulomb counting once `battCapacity` is set; `remain` is
+`0xFFFF` unless armed with a current sensor and a capacity (the app then links
+to the capacity setting). `cells` may be 0 until the pack is detected.
 
 ### 0x08 NAV (31 B)
 
@@ -328,6 +340,43 @@ INIT) and `0x02 N` (STATE decimation) keep their phase-2 format without seq.
 | `0x40` | STREAM_RATES | `flight, power, nav, motors, system` u8 Hz | clamp to the ranges in §3; 0 = keep current. Reserved: the app uses the defaults today |
 | `0x41` | REQUEST | `frameType u8` | send that frame once now (CAPS, CHECKS, INIT, FLIGHT, POWER, NAV, MOTORS, SYSTEM); others `UNSUPPORTED` |
 | `0x42` | SET_NAME | `name char[16]` (zero padded UTF-8) | store in flash, re-send CAPS |
+| `0x50` | LOG_LIST | – | §5.1: LOG_ENTRY × n, **then** ACK |
+| `0x51` | LOG_READ | `id u16, offset u32, length u32` (0 = to the end) | §5.1: LOG_DATA …, **then** ACK |
+| `0x52` | LOG_ERASE | `57 49 50 45` ("WIPE") | §5.1: USB only; ACK `IN_PROGRESS`, then ACK `OK` |
+
+### 5.1 Flight log (firmware 0.5.0)
+
+Implemented by the firmware (`App/app/log_task.c`, `App/log/log_format.h`) and
+used by the app's Flight logs screen. Reference client and decoder:
+`src/log/client.ts`, `src/log/format.ts` (ports of
+`02 - Tools/01 - Python/acwing_tools/flightlog.py`); reference drone:
+`src/sim/simDrone.ts` (`logCommand`) and `src/sim/simUsbTransport.ts`.
+
+| Path | Who | What |
+|---|---|---|
+| BLE (CMD characteristic, raw `op, seq, args`) | every platform | **last flight only**: LOG_LIST lists the newest log, LOG_READ of another id → `REJECTED/OUT_OF_RANGE`, LOG_ERASE → `UNSUPPORTED`, LOG_LIST refused while armed |
+| USB CDC (VID/PID `0483:5740`, any baud rate), commands in **CMD frames `0x20`** | web app on PC/Mac (Web Serial), Android Chrome | every log, erase. Every other opcode → `UNSUPPORTED` (USB is not a flight link yet) |
+
+`LOG_ENTRY` (15 B): `id u16, index u8, count u8, flags u8 (bit0 truncated,
+bit1 being written), sectors u16, t0 u32 (ms after power-on), bytes u32`.
+`LOG_DATA`: `id u16, offset u32, data[≤ 240]`.
+
+Rules both sides rely on:
+
+- **The ACK comes after the data**: it means "complete". The app reads in
+  chunks (32 KB over BLE, 256 KB over USB), checks that offsets are
+  contiguous and the byte count matches, and re-reads only a failed chunk.
+- 2 s without a log frame while a command is pending → the app retries with a
+  new seq. LOG_ERASE: after `IN_PROGRESS` the app waits up to 300 s.
+- A repeated `(op, seq)` while a read runs is ignored (ACK cache pending); after
+  the end it gets the cached ACK.
+- Refusals: `REJECTED/ARMED` (READ/ERASE armed, LIST over BLE armed, armed
+  during a READ), `REJECTED/SENSOR_MISSING` (no log flash), `INVALID/OUT_OF_RANGE`
+  (unknown id or offset past the end), `BUSY` (a READ is running).
+- BLE: log frames use up to 60 % of the high-priority ring; the app lowers the
+  STATE rate to 1 Hz during a download (`[0x02, 240]`) and restores it after.
+- The first log command closes the log being written; recording pauses for
+  5 s after the last log command.
 
 What the app sends right after connecting: `REQUEST CAPS`, `REQUEST CHECKS`,
 `PARAM_LIST`, `[0x02 N]` (STATE decimation from the user's telemetry rate:
@@ -484,6 +533,8 @@ reuse). Stored in flash with a version/CRC; on a bad CRC load defaults.
 | 20 | battWarn | 3.6 | 3.3 | 3.9 | V/cell | |
 | 21 | battCrit | 3.5 | 3.2 | 3.8 | V/cell | |
 | 22 | battEmerg | 3.3 | 3.0 | 3.6 | V/cell | |
+| 23 | battCapacity | 0 | 0 | 20000 | mAh | 0 = unknown: no remaining time, `pct` from voltage only (CURRENT models) — firmware 0.5.0 |
+| 24 | battCells | 0 | 0 | 6 | cells | 0 = detected when the pack is connected — firmware 0.5.0 |
 | 30 | gfMaxAlt | 30 | 5 | 120 | m | all models (baro) |
 | 31 | gfCeiling | 2.5 | 1 | 4 | m | ToF models |
 | 32 | gfMaxDist | 150 | 20 | 500 | m | GNSS models |
@@ -492,6 +543,7 @@ reuse). Stored in flash with a version/CRC; on a bad CRC load defaults.
 | 41 | rthStickCancel | 1 | 0 | 1 | bool | GNSS models |
 | 50 | armRequireChecks | 1 | 0 | 1 | bool | |
 | 60 | compassPrimary | 1 | 0 | 1 | enum | 0 FC compass, 1 GPS compass (MAG_GPS models) |
+| 70 | logMode | 1 | 0 | 2 | enum | flight log: 0 off, 1 each flight (arm → 1 s after disarm), 2 always (FLASH_LOG models) — firmware 0.5.0 |
 
 Rules: battWarn > battCrit > battEmerg (if a SET breaks the order →
 `INVALID/OUT_OF_RANGE`). Enum values the model cannot do (RTH without GNSS)
@@ -506,7 +558,7 @@ no item in FAIL.
 
 | id | item | value (i16) | OK / WARN / FAIL |
 |---|---|---|---|
-| 1 | Battery | average cell mV | FAIL < battCrit, WARN < battWarn |
+| 1 | Battery | average cell mV; **0** = no battery measured | N/A without a monitor; WARN with value 0 = no battery (USB power); FAIL with value 0 = battery monitor stopped; else FAIL < battCrit (or latched CRITICAL), WARN < battWarn (or latched LOW) |
 | 2 | IMU & level | 0 | FAIL if IMU missing / not calibrated (accel never calibrated) |
 | 3 | Compass | interference % | WARN > 15 % or compass recommended; FAIL if uncalibrated on GNSS models |
 | 4 | GNSS | satellites | N/A without GNSS; WARN < 3D or < 8 sats |
@@ -596,8 +648,18 @@ Both axes → DONE, step 3. Rejected without FLOW (`SENSOR_MISSING`).
 `CAL_START(6)` → WAITING_USER, step 1, `vbat` live with the current scale.
 `CAL_SET_REF(6, 0, volts_measured)` (2.5…30 V) → new `scaleV` =
 scaleV·(measured / read), step 2. Then either
-`CAL_SET_REF(6, 1, mAh_put_back_by_charger)` (50…20000) → `scaleI` =
-mAh / usedMah, or `CAL_CAPTURE` (skip) → DONE, step 3. CAL_SAVE.
+`CAL_SET_REF(6, 1, mAh_put_back_by_charger)` (50…20000) → `scaleI`, or
+`CAL_CAPTURE` (skip) → DONE, step 3. CAL_SAVE.
+
+Firmware 0.5.0 (the app follows it): the drone stores the mAh of the last
+flight together with the scaleI they were counted with, and computes
+`scaleI = scaleI_flight × mAh_charged / mAh_counted` (equal to
+`mAh / usedMah` only when scaleI was 1). CALIB `usedMah` is that last-flight
+count, 0 if no flight above 20 mAh since the data was saved. Refused: a voltage
+more than ±30 % from the reading (`INVALID/OUT_OF_RANGE`), a current ratio
+outside 0.5–2 (`INVALID/OUT_OF_RANGE`), `CAL_SET_REF(6,1,…)` without a
+recorded flight (`REJECTED/OUT_OF_RANGE`). The app greys the mAh field and
+says "no flight recorded yet" when `usedMah` is 0.
 
 ### 10.7 MOTORS (type 7) – order and direction, **props off**
 
@@ -629,6 +691,7 @@ CAL_SAVE.
 | 5 | INFO | MODE_CHANGED | mode | |
 | 6 | INFO | RTH_STARTED | – | command or failsafe |
 | 7 | INFO | HOME_SET | – | |
+| 8 | WARN | TAKEOFF_ABORTED | – | no lift-off within 6 s, back on the ground — firmware 0.5.0 |
 | 20 | ERROR | FAILSAFE_APP_LINK | action | long app-link failsafe |
 | 21 | ERROR | FAILSAFE_RADIO | action | |
 | 22 | ERROR | FAILSAFE_BATTERY | action | |
@@ -638,6 +701,7 @@ CAL_SAVE.
 | 30 | WARN | BATTERY_LOW | cell mV | crossing battWarn |
 | 31 | ERROR | BATTERY_CRITICAL | cell mV | crossing battCrit |
 | 32 | CRITICAL | BATTERY_EMERGENCY | cell mV | crossing battEmerg |
+| 33 | ERROR | BATTERY_MONITOR_LOST | – | the battery task stopped: battery unknown, ARM refused (`BATTERY_LOW`) — firmware 0.5.0. The app shows a red pre-flight blocker and, in flight, a critical banner |
 | 40 | WARN | MAG_INTERFERENCE | % | > 30 %, rate-limited 1/30 s |
 | 41 | WARN | HIGH_VIBRATION | mg | rate-limited |
 | 42 | WARN | MOTOR_HOT | motor | > 80 °C |
@@ -668,7 +732,8 @@ is the same on every device.
 | **Calibration wizards** (8) | CALIB (all types); POWER; CAPS.nMotors/frame; PARAM 60 | CAL_START, CAL_CAPTURE, CAL_SET_REF, CAL_ABORT, CAL_SAVE, MOTOR_TEST, MOTOR_REVERSE, PARAM_SET 60 |
 | **Settings › Connection** | SYSTEM (lq, rssi, snr, pktRate, txPower); STATUS (bleMtu, bleDrop) | `[0x02 N]` (telemetry rate) |
 | **Settings › Alerts & voice** | EVENT, FLIGHT, POWER (callouts are generated in the app) | – |
-| **Settings › Drone & firmware** | CAPS (fw, hwRev, serial, model, sensors, nMotors, frame, cells); SYSTEM.log | PARAM_DEFAULTS + PARAM_SAVE (reset) |
+| **Settings › Drone & firmware** | CAPS (fw, hwRev, serial, model, sensors, nMotors, frame, cells); SYSTEM.log; PARAM 70 | PARAM_DEFAULTS + PARAM_SAVE (reset), PARAM_SET 70 |
+| **Flight logs** (last flight, all logs, viewer, export) | LOG_ENTRY, LOG_DATA, ACK; CAPS.sensors (FLASH_LOG); SYSTEM.log; FLIGHT.arm | BLE: LOG_LIST, LOG_READ, `[0x02 N]`; USB: the same in CMD frames, LOG_ERASE |
 
 ## 13. Indoor and outdoor models
 
@@ -774,10 +839,16 @@ simulator (Connect › Simulator).
 
 - **Firmware update over BLE** – not in v2 (Settings shows "with the USB
   tools"). A later DFU service can be added without touching this protocol.
-- **USB and Wi-Fi links** for the app – tabs exist in the UI, marked "not
-  available yet". The frames are transport-independent.
-- **Flight logs download** from the drone flash – `log %` is shown; a
-  LOG_LIST/LOG_READ pair (`0x50`/`0x51`) is reserved for a later version.
+- **USB as a flight link** (telemetry, RC, app-link supervision) – the FC's
+  USB port carries only the log commands today (§5.1); the Connect screen's
+  USB tab stays "not available yet" until the firmware routes CMD frames from
+  USB into the app link and sends the frames to USB too. **Wi-Fi** bridge: not
+  available yet. The frames are transport-independent.
+- **Older logs over BLE** – only the last flight (a full flash over BLE would
+  take about half an hour); the whole memory goes over USB.
+- **Wall-clock time in the logs** – times are relative to power-on; the app
+  stamps each download with the phone's date. An RTC set by the app at
+  connection would need a new command.
 - **MOTOR_REMAP** and **STREAM_RATES** are defined and accepted by the
   simulator but the app UI does not send them yet.
 - **Open point for the firmware owner:** if a field cannot be produced with

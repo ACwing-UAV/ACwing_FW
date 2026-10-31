@@ -4,7 +4,7 @@
 |---|---|---|---|
 | Barometer | LPS22DF (X-NUCLEO-IKS4A1) or LPS22HB (ACwing FC rev A), slave 1 of the LSM6DSV16X **sensor hub**, 50 Hz, in the same FIFO | `imu_lsm6dsv16x.c`, model from WHO_AM_I. Optional: if it is missing, the IMU starts without it | bench and FC |
 | ToF height | VL53L1X at 0x29 on the Qwiic bus (ACwing Flow), long mode, 33 ms (30 Hz) | `vl53l1x.c` (from ST's ULD, BSD-3) | ACwing Flow |
-| Optical flow | PMW3901 behind the STM32C011 bridge at 0x3B, 100 Hz motion burst | `flow_bridge.c` on the FC; bridge firmware in [`01 - FLOW_FW`](https://github.com/andrea-cirillo/ACwing_FlightController_FW/blob/main/01%20-%20FLOW_FW/README.md), same register map (checked by its host test). An unprogrammed bridge leaves FLOW at 0 in CAPS | ACwing Flow |
+| Optical flow | PMW3901 behind the STM32C011 bridge at 0x3B, 100 Hz motion burst | `flow_bridge.c` on the FC; bridge firmware in [`01 - FLOW_FW`](https://github.com/ACwing-UAV/ACwing_FW/blob/main/01%20-%20FLOW_FW/README.md), same register map (checked by its host test). An unprogrammed bridge leaves FLOW at 0 in CAPS | ACwing Flow |
 | Gyroscope, accelerometer | LSM6DSV16X, I²C1 on the bench (SPI on the ACwing FC), FIFO at 960 Hz | `imu_lsm6dsv16x.c` | bench and FC |
 | Compass | LIS2MDL (bench) / IIS2MDC (FC), slave 0 of the sensor hub, 100 Hz, in the same FIFO | `imu_lsm6dsv16x.c` | bench and FC |
 
