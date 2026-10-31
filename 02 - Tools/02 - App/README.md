@@ -41,7 +41,7 @@ disappears and "Return to home" becomes "Land".
 
 ## Run
 
-Requirements: Node.js ≥ 20.
+Requirements: **Node.js 24 LTS** (recommended, pinned in `.nvmrc`) or 26 LTS. Minimum 22.12: Vitest 5 and the Capacitor 8 CLI do not run on Node 20, which is also end-of-life.
 
 ```bash
 cd "02 - Tools/02 - App"

@@ -5,6 +5,9 @@
   "description": "ACwing Pilot: flight, telemetry, settings and calibration app for ACwing drones (web/PWA, iOS, Android)",
   "author": "Andrea Cirillo",
   "type": "module",
+  "engines": {
+    "node": "^22.12.0 || ^24.0.0 || >=26.0.0"
+  },
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
