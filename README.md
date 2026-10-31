@@ -17,8 +17,10 @@
 
 **ACwing** is an open project for small multirotors. The hardware (flight
 controller, power board, GNSS and optical-flow expansions) is in
-[ACwing_FlightController_HW](https://github.com/andrea-cirillo/ACwing_FlightController_HW).
-This repository holds the software:
+[ACwing_HW](https://github.com/ACwing-UAV/ACwing_HW), the mechanics in
+[ACwing_Mechs](https://github.com/ACwing-UAV/ACwing_Mechs); the
+[ACwing](https://github.com/ACwing-UAV/ACwing) system repository pins the
+versions that belong together. This repository holds the software:
 
 | Folder | What |
 |---|---|
@@ -29,9 +31,9 @@ This repository holds the software:
 
 ## Documentation
 
-The documentation is published at **[andrea-cirillo.github.io/ACwing_FlightController_FW](https://andrea-cirillo.github.io/ACwing_FlightController_FW/)**,
+The documentation is published at **[acwing-uav.github.io/ACwing_FW](https://acwing-uav.github.io/ACwing_FW/)**,
 built from [`03 - Docs`](03%20-%20Docs/index.md); the pages also read directly on
-GitHub. The [API reference](https://andrea-cirillo.github.io/ACwing_FlightController_FW/api/fc/) (Doxygen) exists only on the published site.
+GitHub. The [API reference](https://acwing-uav.github.io/ACwing_FW/api/fc/) (Doxygen) exists only on the published site.
 
 | Start here | |
 |---|---|
@@ -41,7 +43,7 @@ GitHub. The [API reference](https://andrea-cirillo.github.io/ACwing_FlightContro
 | Firmware | [architecture](03%20-%20Docs/firmware/architecture.md) · [flight core](03%20-%20Docs/firmware/flight-core.md) · [sensors](03%20-%20Docs/firmware/sensors.md) · [battery](03%20-%20Docs/firmware/battery.md) · [flight log and USB](03%20-%20Docs/firmware/logging.md) · [protocol v2](03%20-%20Docs/firmware/protocol-v2.md) · [BLE](03%20-%20Docs/firmware/ble.md) · [Flow bridge](03%20-%20Docs/firmware/flow-bridge.md) · [build](03%20-%20Docs/firmware/build.md) · [testing](03%20-%20Docs/firmware/testing.md) |
 | Tools | [PC tools and live viewer](03%20-%20Docs/tools/pc-tools.md) · [magnetometer calibration](03%20-%20Docs/tools/mag-calibration.md) · [validation](03%20-%20Docs/tools/validation.md) |
 | Why it is built this way | [decisions (ADR)](03%20-%20Docs/decisions/index.md) |
-| API | Doxygen: [FC firmware](https://andrea-cirillo.github.io/ACwing_FlightController_FW/api/fc/) · [Flow bridge](https://andrea-cirillo.github.io/ACwing_FlightController_FW/api/flow/) · [how it is built](03%20-%20Docs/api/index.md) |
+| API | Doxygen: [FC firmware](https://acwing-uav.github.io/ACwing_FW/api/fc/) · [Flow bridge](https://acwing-uav.github.io/ACwing_FW/api/flow/) · [how it is built](03%20-%20Docs/api/index.md) |
 
 ## Quick start
 

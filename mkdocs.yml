@@ -6,9 +6,9 @@
 site_name: ACwing firmware
 site_description: Flight-controller and ACwing Flow firmware, estimators, protocol and PC tools
 site_author: Andrea Cirillo
-site_url: https://andrea-cirillo.github.io/ACwing_FlightController_FW/
-repo_url: https://github.com/andrea-cirillo/ACwing_FlightController_FW
-repo_name: ACwing_FlightController_FW
+site_url: https://acwing-uav.github.io/ACwing_FW/
+repo_url: https://github.com/ACwing-UAV/ACwing_FW
+repo_name: ACwing_FW
 edit_uri: edit/main/03%20-%20Docs/
 docs_dir: "03 - Docs"
 site_dir: site
