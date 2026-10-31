@@ -204,4 +204,4 @@ The Python and MATLAB decoders give the same numbers on the same file.
   viewer and `.bin`/CSV export identical to the Python tools. Tested against
   the app's simulator and the firmware test vector, not yet against a board.
   USB inside the native Android app is still open (needs a USB-serial plugin);
-  see [`HANDOVER_APP.md`](https://github.com/andrea-cirillo/ACwing_FlightController_FW/blob/main/02%20-%20Tools/02%20-%20App/HANDOVER_APP.md).
+  see [`HANDOVER_APP.md`](https://github.com/ACwing-UAV/ACwing_FW/blob/main/02%20-%20Tools/02%20-%20App/HANDOVER_APP.md).
