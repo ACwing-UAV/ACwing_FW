@@ -20,8 +20,8 @@ exclude_docs: |
 
 theme:
   name: material
-  logo: 00 - Brand/ACwing_mark_white.png
-  favicon: 00 - Brand/ACwing_mark_black.png
+  logo: https://raw.githubusercontent.com/ACwing-UAV/ACwing/main/brand/ACwing_mark_white.png
+  favicon: https://raw.githubusercontent.com/ACwing-UAV/ACwing/main/brand/ACwing_mark_black.png
   palette:
     - media: "(prefers-color-scheme: light)"
       scheme: default
@@ -88,7 +88,7 @@ nav:
       - Roadmap: project/roadmap.md
       - References: project/references.md
       - Writing the documentation: project/documentation.md
-      - Brand files: 00 - Brand/README.md
+      - Brand files: https://github.com/ACwing-UAV/ACwing/tree/main/brand
 
 markdown_extensions:
   # 2-space nested lists, as GitHub renders them

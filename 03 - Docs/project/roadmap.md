@@ -30,7 +30,7 @@ flowchart LR
   on the flow velocity.
 - ACwing Pilot app: flight logs (BLE last flight, USB all logs, viewer,
   export) and the battery items of
-  [`HANDOVER_APP.md`](https://github.com/andrea-cirillo/ACwing_FlightController_FW/blob/main/02%20-%20Tools/02%20-%20App/HANDOVER_APP.md)
+  [`HANDOVER_APP.md`](https://github.com/ACwing-UAV/ACwing_FW/blob/main/02%20-%20Tools/02%20-%20App/HANDOVER_APP.md)
   are written and tested on the simulator: run them against the board. Still
   open: USB in the native Android app.
 - Log commands over BLE (iOS cannot use USB CDC) and USB as a flight link,

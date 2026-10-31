@@ -172,7 +172,7 @@ now; STICKS and MOTORS are `SENSOR_MISSING`.
 Additions that the handover does not list yet. The app knows the parameters
 and the events; the log download over USB and the rest of the app work are
 described in
-[`HANDOVER_APP.md`](https://github.com/andrea-cirillo/ACwing_FlightController_FW/blob/main/02%20-%20Tools/02%20-%20App/HANDOVER_APP.md).
+[`HANDOVER_APP.md`](https://github.com/ACwing-UAV/ACwing_FW/blob/main/02%20-%20Tools/02%20-%20App/HANDOVER_APP.md).
 
 | Kind | Id | Meaning |
 |---|---|---|
