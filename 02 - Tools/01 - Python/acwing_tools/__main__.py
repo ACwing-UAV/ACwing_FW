@@ -11,10 +11,13 @@ Commands (MATLAB equivalent in brackets):
   fit-hard-iron  hard-iron sphere fit                     [fitHardIron]
   mag-check      is the firmware mag calibration still valid?  [magCheck]
   info           summary of a capture (.bin) or log (.mat)
+  log            flight logs over the FC USB port: list, get, erase, decode
+                                                          [acwingLogDecode]
 """
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 
 
@@ -132,6 +135,65 @@ def _cmd_info(a):
     return 0
 
 
+def _cmd_log(a):
+    from . import flightlog as fl
+    if a.action == "decode":
+        if not a.target:
+            print("log decode: give a downloaded log .bin", file=sys.stderr)
+            return 2
+        for path in a.target:
+            with open(path, "rb") as fh:
+                L = fl.decode_log(fh.read())
+            print(f"{path}:")
+            print("\n".join("  " + x for x in fl.summary(L)))
+            stem = os.path.splitext(os.path.basename(path))[0]
+            if a.csv:
+                for f in fl.save_csv(L, a.csv, stem):
+                    print(f"  -> {f}")
+            if a.mat:
+                out = os.path.join(a.mat, stem + ".mat") if os.path.isdir(a.mat) else a.mat
+                fl.save_mat(L, out)
+                print(f"  -> {out}")
+        return 0
+    if not a.port:
+        print(f"log {a.action}: give the FC USB port (e.g. COM7 or /dev/ttyACM0) with --port", file=sys.stderr)
+        return 2
+    try:
+        link = fl.FcLink.open(a.port)
+    except Exception as exc:                                    # pragma: no cover
+        print(f"ERROR: {exc}", file=sys.stderr)
+        return 2
+    try:
+        if a.action == "list":
+            logs = link.list_logs()
+            if not logs:
+                print("No logs on the drone.")
+            for e in logs:
+                fl_ = ("truncated " if e.truncated else "") + ("recording" if e.active else "")
+                print(f"  log {e.id:5d}  {e.bytes / 1024:8.0f} kB  started {e.t0_ms / 1000:8.1f} s after power-on  {fl_}")
+        elif a.action == "get":
+            ids = [int(x) for x in a.target] if a.target else None
+
+            def prog(i, o, n):
+                print(f"\r  log {i}: {100 * o // max(n, 1):3d} %", end="", flush=True)
+            files = fl.download_all(link, a.out_dir, ids, prog)
+            print()
+            for f in files:
+                print(f"  -> {f}")
+        elif a.action == "erase":
+            if not a.yes:
+                print("log erase deletes every log on the drone: add --yes", file=sys.stderr)
+                return 2
+            link.erase()
+            print("Erased.")
+    except fl.LinkError as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
+        return 1
+    finally:
+        link.close()
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="acwing_tools", description=__doc__,
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -197,6 +259,16 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("log")
     s.add_argument("--no-plot", action="store_true")
     s.set_defaults(func=_cmd_fit)
+
+    s = sub.add_parser("log", help="flight logs: list / get / erase over the FC USB port, decode a .bin")
+    s.add_argument("action", choices=("list", "get", "erase", "decode"))
+    s.add_argument("target", nargs="*", help="get: log ids (default all); decode: downloaded .bin files")
+    s.add_argument("--port", help="FC USB port (CDC), e.g. COM7 or /dev/ttyACM0")
+    s.add_argument("--out-dir", default=".", help="get: folder for the .bin files")
+    s.add_argument("--csv", metavar="DIR", help="decode: one CSV per record type into DIR")
+    s.add_argument("--mat", metavar="FILE_OR_DIR", help="decode: save as .mat (variable F)")
+    s.add_argument("--yes", action="store_true", help="erase: confirm")
+    s.set_defaults(func=_cmd_log)
 
     s = sub.add_parser("info", help="summary of a capture .bin or a log .mat")
     s.add_argument("file")

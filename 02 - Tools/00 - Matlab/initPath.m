@@ -6,6 +6,7 @@ root = fileparts(mfilename('fullpath'));
 addpath(fullfile(root, 'Telemetry'));
 addpath(fullfile(root, 'Viewer'));
 addpath(fullfile(root, 'MagCalib'));
+addpath(fullfile(root, 'FlightLog'));                                  % flight log download / decode
 addpath(fullfile(root, 'FiltersComparison'));                          % capture / sniffer / comparison
 addpath(fullfile(root, 'FiltersComparison', 'IEKF_originalVersion'));  % ORIGINAL filter: iekfAttitude.m, expSO3.m, ...
 addpath(fullfile(root, 'FiltersComparison', 'IEKF_embeddedVersion'));  % extended filter (C mirror)
