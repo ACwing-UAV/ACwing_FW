@@ -13,6 +13,8 @@ record replaces the old one, and the old one is marked *Superseded*.
 | [0004](0004-linear-altitude-kf.md) | Altitude: a linear Kalman filter in cascade on the attitude | Accepted |
 | [0005](0005-drivers-and-bsp.md) | Portable `drivers/` separate from board-specific `bsp/` | Accepted |
 | [0006](0006-flow-bridge-mcu.md) | A bridge MCU for the PMW3901, firmware on registers | Accepted |
+| [0007](0007-battery-task.md) | Battery monitor in its own task, decisions in the flight core | Accepted |
+| [0008](0008-flash-log-and-usb-cdc.md) | Flight log as a sector ring, downloaded over USB CDC | Accepted |
 
 **New record.** Copy the template below to `NNNN-short-title.md`, add it to
 this table and to `nav` in `mkdocs.yml`.

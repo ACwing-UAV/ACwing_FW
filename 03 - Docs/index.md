@@ -27,7 +27,7 @@ motors on 1S. Its first milestone is **attitude control**.
 | ACwing FC | flight controller: STM32WB55, LSM6DSV16X IMU, barometer, compass, BLE, two 4-in-1 ESC links | [hardware repository](https://github.com/andrea-cirillo/ACwing_FlightController_HW) |
 | ACwing ESC 1S | 1S power board: 4 brushed motor stages, current sensor, USB-C charger | hardware repository |
 | ACwing GPS, ACwing Flow | expansions: GNSS + compass (outdoor); optical flow + ToF height (indoor) | hardware repository |
-| **FC firmware** | attitude IEKF, altitude Kalman filter, flight core (arming, failsafes, TAKEOFF/LAND), protocol v2 for the app, telemetry over USB and BLE | `00 - FC_FW` |
+| **FC firmware** | attitude IEKF, altitude Kalman filter, flight core (arming, failsafes, TAKEOFF/LAND), battery monitor and failsafes, flight log with USB download, protocol v2 for the app, telemetry over USB and BLE | `00 - FC_FW` |
 | **Flow firmware** | STM32C011 bridge: PMW3901 optical flow → I²C target for the FC | `01 - FLOW_FW` |
 | **PC tools** | live viewer, capture, calibration, validation, in MATLAB and Python | `02 - Tools/00 - Matlab`, `02 - Tools/01 - Python` |
 | **ACwing Pilot** | flight, telemetry, settings and calibration app (web/PWA, iOS, Android) | `02 - Tools/02 - App` |
@@ -74,7 +74,7 @@ flowchart LR
 | Phase | Content | Status |
 |---|---|---|
 | 1 | Embedded attitude estimation: IEKF on SO(3), multi-rate FreeRTOS pipeline, telemetry, PC tools, validation against the reference filter | **concluded**, validated on the board (≤ 0.003 σ against the reference) |
-| 2 | BLE telemetry to the PC; ACwing Pilot app protocol v2: commands, parameters, calibrations, checks, app-link failsafe; altitude (baro + ToF) with TAKEOFF / LAND / HOLD; ACwing Flow bridge firmware | BLE **validated on the board**. Protocol v2, altitude and Flow bridge implemented and host-tested, **not yet run on the board** |
+| 2 | BLE telemetry to the PC; ACwing Pilot app protocol v2: commands, parameters, calibrations, checks, app-link failsafe; altitude (baro + ToF) with TAKEOFF / LAND / HOLD; ACwing Flow bridge firmware; battery monitor, calibration and failsafes; flight log with USB download | BLE **validated on the board**. The rest implemented and host-tested, **not yet run on the board** |
 | 3 | Control: rate loop at 960 Hz, attitude loop at 240 Hz, motor power stage, thrust model in the estimators | planned |
 
 Today the firmware runs on the ST evaluation kit, P-NUCLEO-WB55 with the
@@ -96,6 +96,8 @@ ACwing FC. Motors are disabled (`MOTORS_ENABLE = 0`).
 | validate the embedded filter | [Validation against the reference](tools/validation.md) |
 | use BLE | [BLE telemetry](firmware/ble.md) |
 | fly from the app, or work on its protocol | [ACwing Pilot protocol v2](firmware/protocol-v2.md) and the [handover](https://github.com/andrea-cirillo/ACwing_FlightController_FW/blob/main/02%20-%20Tools/02%20-%20App/HANDOVER_FW.md) |
+| understand the battery failsafes, calibrate the battery | [Battery and failsafes](firmware/battery.md) |
+| download and read a flight log | [Flight log and USB](firmware/logging.md) |
 | know why something is the way it is | [Decisions](decisions/index.md) |
 | fix a problem | [Troubleshooting](guides/troubleshooting.md) |
 | change this documentation | [Writing the documentation](project/documentation.md) |

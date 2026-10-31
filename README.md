@@ -22,7 +22,7 @@ This repository holds the software:
 
 | Folder | What |
 |---|---|
-| [`00 - FC_FW`](00%20-%20FC_FW) | flight-controller firmware (STM32CubeIDE project `ACwing_FC_FW`): attitude IEKF on SO(3), altitude Kalman filter, flight core with arming, failsafes and TAKEOFF/LAND, ACwing Pilot protocol v2, telemetry over USB and BLE |
+| [`00 - FC_FW`](00%20-%20FC_FW) | flight-controller firmware (STM32CubeIDE project `ACwing_FC_FW`): attitude IEKF on SO(3), altitude Kalman filter, flight core with arming, failsafes and TAKEOFF/LAND, battery monitor and failsafes, flight log with USB download, ACwing Pilot protocol v2, telemetry over USB and BLE |
 | [`01 - FLOW_FW`](01%20-%20FLOW_FW) | ACwing Flow bridge firmware (STM32C011): PMW3901 optical flow → I²C target |
 | [`02 - Tools`](02%20-%20Tools) | PC tools in MATLAB and Python (live viewer, calibration, validation) and the ACwing Pilot app |
 | [`03 - Docs`](03%20-%20Docs) | the documentation: theory, firmware, tools, guides, decisions |
@@ -38,7 +38,7 @@ GitHub. The [API reference](https://andrea-cirillo.github.io/ACwing_FlightContro
 | [Home](03%20-%20Docs/index.md) | what ACwing is, status, where to start |
 | [Repository structure](03%20-%20Docs/overview/repository.md) | every folder and file |
 | Theory | [vehicle model](03%20-%20Docs/theory/vehicle-model.md) · [attitude IEKF](03%20-%20Docs/theory/iekf.md) · [IEKF on the microcontroller](03%20-%20Docs/theory/iekf-embedded.md) · [altitude Kalman filter](03%20-%20Docs/theory/altitude-kf.md) |
-| Firmware | [architecture](03%20-%20Docs/firmware/architecture.md) · [flight core](03%20-%20Docs/firmware/flight-core.md) · [sensors](03%20-%20Docs/firmware/sensors.md) · [protocol v2](03%20-%20Docs/firmware/protocol-v2.md) · [BLE](03%20-%20Docs/firmware/ble.md) · [Flow bridge](03%20-%20Docs/firmware/flow-bridge.md) · [build](03%20-%20Docs/firmware/build.md) · [testing](03%20-%20Docs/firmware/testing.md) |
+| Firmware | [architecture](03%20-%20Docs/firmware/architecture.md) · [flight core](03%20-%20Docs/firmware/flight-core.md) · [sensors](03%20-%20Docs/firmware/sensors.md) · [battery](03%20-%20Docs/firmware/battery.md) · [flight log and USB](03%20-%20Docs/firmware/logging.md) · [protocol v2](03%20-%20Docs/firmware/protocol-v2.md) · [BLE](03%20-%20Docs/firmware/ble.md) · [Flow bridge](03%20-%20Docs/firmware/flow-bridge.md) · [build](03%20-%20Docs/firmware/build.md) · [testing](03%20-%20Docs/firmware/testing.md) |
 | Tools | [PC tools and live viewer](03%20-%20Docs/tools/pc-tools.md) · [magnetometer calibration](03%20-%20Docs/tools/mag-calibration.md) · [validation](03%20-%20Docs/tools/validation.md) |
 | Why it is built this way | [decisions (ADR)](03%20-%20Docs/decisions/index.md) |
 | API | Doxygen: [FC firmware](https://andrea-cirillo.github.io/ACwing_FlightController_FW/api/fc/) · [Flow bridge](https://andrea-cirillo.github.io/ACwing_FlightController_FW/api/flow/) · [how it is built](03%20-%20Docs/api/index.md) |
@@ -58,8 +58,9 @@ GitHub. The [API reference](https://andrea-cirillo.github.io/ACwing_FlightContro
   the MATLAB reference (≤ 0.003 σ).
 - **Phase 2:**
   - BLE telemetry is validated on the board.
-  - App protocol v2, failsafes, altitude with TAKEOFF/LAND and the Flow
-    bridge are implemented and host-tested, not yet run on the board.
+  - App protocol v2, failsafes, altitude with TAKEOFF/LAND, the Flow
+    bridge, the battery monitor and the flight log with USB download are
+    implemented and host-tested, not yet run on the board.
 - **Phase 3, control loops and motors: planned.** Motors are disabled
   (`MOTORS_ENABLE = 0`).
 

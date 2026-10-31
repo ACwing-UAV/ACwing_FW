@@ -12,6 +12,7 @@ INPUT                  = "03 - Docs/api/doxygen/fc_main.md" \
                          "00 - FC_FW/App/control" \
                          "00 - FC_FW/App/filters" \
                          "00 - FC_FW/App/telemetry" \
+                         "00 - FC_FW/App/log" \
                          "00 - FC_FW/App/drivers" \
                          "00 - FC_FW/App/bsp"
 USE_MDFILE_AS_MAINPAGE = "03 - Docs/api/doxygen/fc_main.md"

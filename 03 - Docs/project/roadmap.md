@@ -2,7 +2,7 @@
 
 ```mermaid
 flowchart LR
-  P1["Phase 1<br/>attitude IEKF<br/><b>done, on the board</b>"] --> P2["Phase 2<br/>BLE, app protocol v2,<br/>altitude, Flow bridge<br/><b>BLE on the board;<br/>the rest host-tested</b>"]
+  P1["Phase 1<br/>attitude IEKF<br/><b>done, on the board</b>"] --> P2["Phase 2<br/>BLE, app protocol v2,<br/>altitude, Flow bridge,<br/>battery, flight log, USB<br/><b>BLE on the board;<br/>the rest host-tested</b>"]
   P2 --> P3["Phase 3<br/>control loops,<br/>motors, thrust model"]
   P2 --> FC["ACwing FC rev A<br/>port"]
   FC --> P3
@@ -19,13 +19,19 @@ flowchart LR
   ([ACwing Flow bridge](../firmware/flow-bridge.md#on-the-first-board)).
 - Tune the altitude filter ($\sigma_a$, $\sigma_b$) and the height loop on the
   first flights ([Altitude Kalman filter](../theory/altitude-kf.md#limits-and-next-steps)).
+- USB CDC on the Nucleo USB_USER port: enumeration, `acwing-tools log list/get`
+  with the RAM log ([Flight log and USB](../firmware/logging.md#status-and-limits)).
+- Battery chain with a bench supply on A0 (`APP_BATT_ADC 1`): levels,
+  events, LAND, calibration ([Battery](../firmware/battery.md#testing)).
 
 ## Firmware features
 
 - FLOW_TOF calibration: ToF offset, flow scale, axis-sign check. Then POS_HOLD
   on the flow velocity.
-- POWER frame and battery failsafes once the ADC (VBAT, current) is read;
-  BATTERY calibration.
+- ACwing Pilot app: show parameters 23, 24, 70 (battCapacity, battCells,
+  logMode) and use the USB link (log download, telemetry over USB).
+- The PC telemetry (STATE, INIT, STATUS) over the USB CDC link too: on the
+  ACwing FC there is no ST-LINK virtual COM port.
 - GNSS (ACwing GPS board): NAV, home, RTH, distance geofence, GPS compass.
 - ELRS receiver: input arbitration, radio failsafe, STICKS calibration.
 
@@ -51,7 +57,11 @@ When the first boards are built:
 - IMU on SPI, with a new `bsp/` binding;
 - IIS2MDC compass and LPS22HB barometer on the sensor hub;
 - IMU axes remapped to the board axes, as noted in the FC README;
-- `APP_HW_REV` = 'A'.
+- `APP_HW_REV` = 'A' (enables the battery ADC on PA5/PA4 and the W25Q log);
+- SPI1 binding of the W25Q128JV log flash (CS PE4), sharing the bus lock with
+  the IMU; `erase_chip` for a fast LOG_ERASE;
+- move the configuration pages below the CPU2 stack on the 512 KB part
+  (STM32WB55CEU6), if that part is chosen.
 
 ## Phase 3: control
 

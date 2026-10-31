@@ -57,7 +57,8 @@ ARM is accepted only if every rule of §7.1 of the handover holds:
 - the drone is not armed, no calibration is running, and it is on the ground;
 - the throttle is low on the active input: ≤ −900 in ACRO/ANGLE, ≤ +100 in
   ALT_HOLD/POS_HOLD, checked only if RC arrived in the last 0.5 s;
-- the battery is not in FAIL;
+- the battery is not in FAIL, and the battery monitor (if the board has one)
+  reports a level below CRITICAL and is alive;
 - CHECKS are `ready` when `armRequireChecks` = 1.
 
 On top of the handover, the core **never arms without a running attitude
@@ -95,6 +96,15 @@ gantt
 
 The motor test stops on any other command, at its timeout, or when the
 silence exceeds 1 s.
+
+## Battery failsafe
+
+The BattTask signals every change of the battery level; the core decides.
+CRITICAL in the air → LAND (RTH with GNSS and home), FLIGHT.failsafe bit 2,
+EVENT 31 then 22, the pilot can take over; EMERGENCY → LAND locked until
+disarm, only KILL overrides; a silent BattTask → EVENT 33 and no arming. While
+the battery failsafe lands the drone, an app-link loss is only flagged. The
+details are in [Battery and failsafes](battery.md#failsafes).
 
 ## TAKEOFF, LAND, HOLD
 

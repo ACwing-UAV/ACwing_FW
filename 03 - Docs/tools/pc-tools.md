@@ -57,3 +57,20 @@ acwing-tools sniff COM6                   # byte-level link check
 
 The Python viewer shows the same panel and writes the same `.mat` log (variable
 `L`) and raw `.bin`. Logs are interchangeable between MATLAB and Python.
+
+**Flight logs** from the drone's log flash, over the FC USB port (a CDC
+virtual COM port: on the Nucleo bench, the USB_USER connector):
+
+```bash
+acwing-tools log list --port COM7                     # logs on the drone
+acwing-tools log get --port COM7 --out-dir logs       # all -> acwing_flight_<id>.bin
+acwing-tools log decode logs/acwing_flight_00003.bin --csv out --mat out
+```
+
+```matlab
+files = acwingLogDownload("COM7", "all", "logs");
+F = acwingLogDecode(files{1});
+```
+
+The format, the recording policy and the protocol are in
+[Flight log and USB](../firmware/logging.md).
