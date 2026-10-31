@@ -22,7 +22,7 @@
 #include "calib_mgr.h"
 
 #define APP_FW_MAJOR  0u
-#define APP_FW_MINOR  4u
+#define APP_FW_MINOR  5u
 #define APP_FW_PATCH  0u
 
 typedef struct {
@@ -32,6 +32,10 @@ typedef struct {
     uint32_t uid[3];              /**< MCU unique id -> serial "ACW-xxxxxxxx"         */
     /** INIT frame of the estimator (copy; 0 if not ready yet) */
     size_t (*get_init)(uint8_t *dst, size_t cap);
+    uint8_t  batt_monitor;        /**< a BattTask runs: POWER, CHECKS item 1, BATTERY calibration */
+    uint16_t board_sensors;       /**< CAPS bits of the board itself (CURRENT, FLASH_LOG)        */
+    /** flash log used %, 0xFF = no log; may be NULL */
+    uint8_t (*log_pct)(void);
 } app_task_cfg_t;
 
 /** Before the scheduler starts: loads the flash image (parameters, name,

@@ -46,6 +46,13 @@
 #include "alt_est.h"
 #include "ext_sens.h"
 #include "proto_v2.h"
+#include "batt_task.h"
+#include "batt_adc.h"
+#include "log_task.h"
+#include "log_feed.h"
+#include "log_queue.h"
+#include "log_flash_ram.h"
+#include "usb_cdc.h"
 #include <string.h>
 #include <math.h>
 
@@ -377,6 +384,32 @@ static void publish_est(uint32_t now)
     fsh_est_write(&o);
 }
 
+/* flight log: 50 Hz attitude and vertical, 10 Hz flight state and estimator
+ * (records are queued only while a log is open, see log_feed.h) */
+static void log_records(uint32_t now, const float q[4], const fc_vert_t *v, const fc_setpoint_t *sp)
+{
+    static uint32_t last50, last10;
+    if (!log_q_active()) return;
+    if ((now - last50) >= 20u) {
+        last50 = now;
+        logf_att(now, q, s_est.omega, s_est.acc_mean);
+        logf_vert(now, v, sp, s_tof_mm, s_alt.baro_ok ? (uint32_t)(s_alt.pressure + 0.5f) : 0u);
+    }
+    if ((now - last10) >= 100u) {
+        last10 = now;
+        fc_state_t f;
+        memset(&f, 0, sizeof f);
+        fc_snapshot(&f);
+        logf_flight(now, &f);
+        const float *P = s_est.f.P;
+        float m = P[0];
+        if (P[IEKF_NX + 1] > m) m = P[IEKF_NX + 1];
+        if (P[2 * IEKF_NX + 2] > m) m = P[2 * IEKF_NX + 2];
+        logf_est(now, s_est.f.b, sqrtf(m > 0.0f ? m : 0.0f) * 57.29578f, sqrtf(s_vib2) * 1000.0f,
+                 s_loop_hz, s_jitter_us, s_cpu_pct, fabsf(s_est.f.last_mag_dev) * 100.0f);
+    }
+}
+
 /* flight core + vertical sources, ~250 Hz from the ImuTask loop */
 static void flight_service(uint32_t *lastSvc)
 {
@@ -411,6 +444,7 @@ static void flight_service(uint32_t *lastSvc)
         if (sp.armed && !wasArmed) s_acc_clip = 0u;     /* SYSTEM.accClip counts since arm */
         wasArmed = sp.armed;
         /* sp goes to the attitude / rate loops and the mixer in phase 3 */
+        log_records(now, q, &v, &sp);
     }
     publish_est(now);
 }
@@ -689,6 +723,31 @@ static size_t get_init(uint8_t *dst, size_t cap)
 
 static void motor_test_hook(uint8_t m, float duty) { motors_test(m, duty); }
 
+/* log flash of this board (APP_LOG_FLASH) */
+static const log_flash_t *log_flash(void)
+{
+#if APP_LOG_FLASH == 1
+    static uint8_t     ram[APP_LOG_RAM_KB * 1024u];
+    static log_flash_t f;
+    static uint8_t     init;
+    if (!init) { log_flash_ram_init(&f, ram, sizeof ram); init = 1u; }
+    return &f;
+#elif APP_LOG_FLASH == 2
+    /* W25Q128JV on SPI1 (shared with the IMU): bound with the rev A port (bsp/) */
+    return NULL;
+#else
+    return NULL;
+#endif
+}
+
+static uint16_t log_sensors(void)
+{
+    fsh_est_t e;
+    memset(&e, 0, sizeof e);
+    fsh_est_read(&e);
+    return (uint16_t)(e.sensors | ext_sensors());
+}
+
 void app_start(void)
 {
     dwt_init();
@@ -697,15 +756,19 @@ void app_start(void)
     imu_i2c_bus_init(&hi2c1);
 
     /* flash image: parameters, name, calibrations (posted to the ImuTask) */
+    const cal_set_t *saved;
     {
         static const float H[3] = MAG_HARD_IRON;
-        (void)app_task_boot(H);
+        saved = app_task_boot(H);
     }
+    const uint8_t batt = (uint8_t)(APP_BATT_ADC && batt_adc_init() == 0);
     {
         const fc_config_t fc = { .sensors = 0u, .n_motors = 4u, .motors_built = MOTORS_ENABLE,
-                                 .motors_arm = motors_arm, .motor_test = motor_test_hook };
+                                 .motors_arm = motors_arm, .motor_test = motor_test_hook,
+                                 .on_event = logf_event, .batt_monitor = batt };
         fc_init(&fc);
     }
+    logf_set_clock(osKernelGetTickCount);
 
     static const osThreadAttr_t aI = { .name = "imu", .priority = osPriorityRealtime,
                                        .stack_size = 3072 };
@@ -721,7 +784,39 @@ void app_start(void)
         ac.motors_built = MOTORS_ENABLE;
         ac.uid[0] = HAL_GetUIDw0(); ac.uid[1] = HAL_GetUIDw1(); ac.uid[2] = HAL_GetUIDw2();
         ac.get_init = get_init;
+        ac.batt_monitor = batt;
+        ac.board_sensors = (uint16_t)((batt && APP_BATT_CURRENT ? PV2_S_CURRENT : 0u) |
+                                      (log_flash() ? PV2_S_FLASH_LOG : 0u));
+        ac.log_pct = log_task_pct;
         app_task_start(&ac);
     }
     ext_sens_start();
+    if (batt) {
+        batt_task_cfg_t bc;
+        memset(&bc, 0, sizeof bc);
+        bc.batt.scale_v = saved->battery.scale_v;
+        bc.batt.scale_i = saved->battery.scale_i;
+        bc.batt.sens_v_per_a = APP_BATT_SENS_V_A;
+        bc.batt.has_current = APP_BATT_CURRENT;
+        bc.adc_read = batt_adc_read;
+        batt_task_start(&bc);
+    }
+    {
+#if APP_USB_CDC
+        const uint8_t usb = (uint8_t)(usb_cdc_init() == 0);
+#else
+        const uint8_t usb = 0u;
+#endif
+        log_task_cfg_t lc;
+        memset(&lc, 0, sizeof lc);
+        lc.flash = log_flash();
+        lc.hw_rev = APP_HW_REV;
+        lc.fw[0] = APP_FW_MAJOR; lc.fw[1] = APP_FW_MINOR; lc.fw[2] = APP_FW_PATCH;
+        lc.sensors = log_sensors;
+#if APP_USB_CDC
+        lc.usb_pump = usb ? usb_cdc_pump : NULL;
+#endif
+        (void)usb;
+        log_task_start(&lc);
+    }
 }

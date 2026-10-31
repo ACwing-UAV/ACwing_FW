@@ -139,4 +139,42 @@
  * (no velocity, no POS_HOLD, no FLOW_LOST failsafe); usable again 20 mm above. */
 #define APP_FLOW_MIN_H    0.08f
 
+/* ---------------- battery (BattTask) ---------------- */
+/* ADC1 injected group, VBAT + CUR + VREFINT, 16x oversampling.
+ * ACwing FC rev A: PA5 = VBAT_SNS (ADC1_IN10, 100k/10k), PA4 = ESC_CUR (ADC1_IN9).
+ * Bench (NUCLEO-WB55): off by default -- nothing is wired. To try it, wire a
+ * 100k/10k divider from a bench supply to A0 (PC0, ADC1_IN1) and optionally a
+ * voltage for the current to A1 (PC1, ADC1_IN2), then set APP_BATT_ADC 1. */
+#if APP_HW_REV == 'A'
+#define APP_BATT_ADC        1
+#define APP_BATT_VBAT_CH    10u
+#define APP_BATT_VBAT_PORT  GPIOA
+#define APP_BATT_VBAT_PIN   (1u << 5)
+#define APP_BATT_CUR_CH     9u
+#define APP_BATT_CUR_PORT   GPIOA
+#define APP_BATT_CUR_PIN    (1u << 4)
+#else
+#define APP_BATT_ADC        0
+#define APP_BATT_VBAT_CH    1u
+#define APP_BATT_VBAT_PORT  GPIOC
+#define APP_BATT_VBAT_PIN   (1u << 0)
+#define APP_BATT_CUR_CH     2u
+#define APP_BATT_CUR_PORT   GPIOC
+#define APP_BATT_CUR_PIN    (1u << 1)
+#endif
+#define APP_BATT_CURRENT    1          /**< a current sensor is wired (CAPS CURRENT)     */
+#define APP_BATT_SENS_V_A   0.1f       /**< ACwing ESC 1S: TSC213 + 2 mOhm = 0.1 V/A     */
+
+/* ---------------- flight log (LogTask) ---------------- */
+/* 0 none, 1 RAM (bench: the log is lost at power-off), 2 W25Q128JV on SPI1 (rev A) */
+#if APP_HW_REV == 'A'
+#define APP_LOG_FLASH       2
+#else
+#define APP_LOG_FLASH       1
+#endif
+#define APP_LOG_RAM_KB      48u        /**< RAM log on the bench: ~14 s at ~3.4 kB/s     */
+
+/* ---------------- USB device (CDC, log download) ---------------- */
+#define APP_USB_CDC         1          /**< NUCLEO-WB55: USB_USER connector (CN1)       */
+
 #endif /* APP_CONFIG_H */
