@@ -142,6 +142,8 @@ export function Safety() {
             <ParamNumber k="battWarn" hint={t("safety.alert")} suffix={t("safety.perCell")} />
             <ParamNumber k="battCrit" hint={gps ? t("safety.rthOrLand") : t("actions.land")} suffix={t("safety.perCell")} />
             <ParamNumber k="battEmerg" hint={t("safety.landNow")} suffix={t("safety.perCell")} />
+            <ParamNumber k="battCapacity" hint={t("safety.capacityHint")} suffix="mAh" />
+            <ParamSelect k="battCells" hint={t("safety.cellsHint")} />
           </section>
         </div>
         <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
@@ -421,6 +423,8 @@ export function About() {
         </section>
         <section className="card tight">
           <div className="row first" style={{ minHeight: 48 }}><h2>{t("about.logs")}</h2></div>
+          <ParamSelect k="logMode" hint={t("about.logModeHint")} />
+          {has(SENSOR.FLASH_LOG) && <Row label={t("about.logUsed")}><span className="value">{s.system ? `${s.system.logPct}%` : "–"}</span></Row>}
           <Row label={t("about.app")}><span className="value">v0.1.0</span></Row>
           <Row label={t("about.reset")}><button className="btn small" style={{ borderColor: "var(--crit)", color: "var(--crit-text)" }} disabled={!c} onClick={() => setAsk(true)}>{t("about.resetBtn")}</button></Row>
         </section>

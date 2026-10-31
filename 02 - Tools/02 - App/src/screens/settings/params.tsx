@@ -47,10 +47,11 @@ export function ParamSelect({ k, hint }: { k: string; hint?: string }) {
     <Row label={<label htmlFor={id}>{t(`params.${k}`)}</label>} hint={hint} badge={badgeFor(k)}>
       <select id={id} className="select" style={{ maxWidth: 200 }} value={Math.round(drone.param(k))} onChange={(e) => run(drone.setParam(k, +e.target.value))}>
         {(d.options ?? []).map((o) => {
-          const name = ACTION[k]?.[o] ?? String(o);
+          const name = ACTION[k]?.[o];
           // without GPS, "Return to home" is not available: the firmware lands instead
           if (name === "rth" && !gps && drone.getSnapshot().caps) return null;
-          return <option key={o} value={o}>{t(`actions.${name}`)}</option>;
+          // options without a name show the value and the unit (e.g. "3S")
+          return <option key={o} value={o}>{name ? t(`actions.${name}`) : `${o}${d.unit ?? ""}`}</option>;
         })}
       </select>
     </Row>
@@ -75,16 +76,19 @@ export function ParamNumber({ k, hint, suffix }: { k: string; hint?: string; suf
   useDrone();
   const run = useCommand();
   const d = PARAM_BY_KEY[k];
+  const visible = useVisible();
   const id = `p-${k}`;
   const v = drone.param(k);
+  const dec = d.step >= 1 ? 0 : 2;
+  if (!visible(k)) return null;
   return (
     <Row label={<label htmlFor={id}>{t(`params.${k}`)}</label>} hint={hint}>
-      <input id={id} key={v} className="input num" type="text" inputMode="decimal" defaultValue={v.toFixed(2)}
+      <input id={id} key={v} className="input num" type="text" inputMode="decimal" defaultValue={v.toFixed(dec)}
         onBlur={(e) => {
           const n = parseFloat(e.target.value.replace(",", "."));
           if (!Number.isFinite(n) || n < d.min || n > d.max) {
             toast(t("reasons.14"), "warn");
-            e.target.value = v.toFixed(2);
+            e.target.value = v.toFixed(dec);
           } else if (Math.abs(n - v) > 1e-4) run(drone.setParam(k, n));
         }} />
       {suffix && <span className="small muted" style={{ width: 52 }}>{suffix}</span>}

@@ -28,8 +28,11 @@ flowchart LR
 
 - FLOW_TOF calibration: ToF offset, flow scale, axis-sign check. Then POS_HOLD
   on the flow velocity.
-- ACwing Pilot app: show parameters 23, 24, 70 (battCapacity, battCells,
-  logMode) and use the USB link (log download, telemetry over USB).
+- ACwing Pilot app: flight-log download over USB, battery-failsafe banner and
+  EMERGENCY lock in the cockpit
+  ([`HANDOVER_APP.md`](https://github.com/andrea-cirillo/ACwing_FlightController_FW/blob/main/02%20-%20Tools/02%20-%20App/HANDOVER_APP.md)).
+- Log commands over BLE (iOS cannot use USB CDC) and USB as a flight link,
+  if the app needs them (HANDOVER_APP §10).
 - The PC telemetry (STATE, INIT, STATUS) over the USB CDC link too: on the
   ACwing FC there is no ST-LINK virtual COM port.
 - GNSS (ACwing GPS board): NAV, home, RTH, distance geofence, GPS compass.

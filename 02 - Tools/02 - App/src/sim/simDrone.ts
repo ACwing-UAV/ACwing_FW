@@ -70,6 +70,9 @@ export class SimDrone {
   private current = 0;
   private scaleV = 110.0;
   private scaleI = 1.0;
+  private lastFlightScaleI = 1.0; // scaleI the last flight's mAh were counted with (as the firmware stores it)
+  private battLevel = 0;          // BattWarn latched as in the firmware (left only when disarmed)
+  private battLock = false;       // EMERGENCY: landing locked, only KILL overrides
 
   // ---- inputs ----
   private rc = { throttle: -1000, yaw: 0, pitch: 0, roll: 0 };
@@ -174,6 +177,8 @@ export class SimDrone {
   private exec(op: number, r: Reader): [number, number] {
     const ok: [number, number] = [AckResult.OK, Reason.NONE];
     const rej = (why: number): [number, number] => [AckResult.REJECTED, why];
+    // battery EMERGENCY (firmware 0.5.0): the landing cannot be changed, only KILL
+    if (this.battLock && (op === OP.SET_MODE || op === OP.HOLD || op === OP.RTH || op === OP.TAKEOFF)) return rej(Reason.BATTERY_LOW);
     switch (op) {
       case OP.ARM: {
         if (r.u8_() !== ARM_MAGIC[0] || r.u8_() !== ARM_MAGIC[1]) return [AckResult.INVALID, Reason.NONE];
@@ -183,6 +188,7 @@ export class SimDrone {
         // throttle "low": bottom of the stick in ACRO/ANGLE, not above centre in the hold modes (centre = hold altitude)
         const holdMode = this.mode === FlightMode.ALT_HOLD || this.mode === FlightMode.POS_HOLD;
         if (this.appInput && this.t - this.lastAppMsg < 0.5 && this.rc.throttle > (holdMode ? 100 : -900)) return rej(Reason.THROTTLE_NOT_LOW);
+        if (this.battLevel >= BattWarn.CRITICAL) return rej(Reason.BATTERY_LOW);
         if (this.p("armRequireChecks") && !this.checks().ready) return rej(Reason.CHECKS_FAILING);
         this.armed = true;
         this.landedT = 0;
@@ -337,6 +343,7 @@ export class SimDrone {
     this.armed = false;
     this.auto = AutoAction.NONE;
     this.failsafe = 0;
+    this.battLock = false;
     this.event(EventLevel.INFO, EventCode.DISARMED, "Disarmed");
   }
 
@@ -442,7 +449,8 @@ export class SimDrone {
       c.step = 2;
     } else if (d.kind === "battery" && idx === 1) {
       if (v < 50 || v > 20000) return [AckResult.INVALID, Reason.OUT_OF_RANGE];
-      this.scaleI = +(v / d.usedMah).toFixed(4);
+      // the firmware scales the current with the scale the flight was counted with
+      this.scaleI = +((this.lastFlightScaleI * v) / d.usedMah).toFixed(4);
       d.scaleI = this.scaleI;
       c.step = 3;
       c.state = CalState.DONE;
@@ -575,7 +583,9 @@ export class SimDrone {
   private stepFlight(dt: number) {
     // ---- app link failsafe (radio in control: the app link does not matter) ----
     const silent = this.t - this.lastAppMsg;
-    if (this.armed && this.inAir && !this.elrsActive) {
+    // a battery failsafe that is landing the drone is not replaced by the app-link failsafe (firmware 0.5.0)
+    const battOwns = !!(this.failsafe & FS.BATTERY) && (this.auto === AutoAction.LAND || this.auto === AutoAction.RTH);
+    if (this.armed && this.inAir && !this.elrsActive && !battOwns) {
       if (silent > 3 && !this.fsLong) {
         const a = this.p("fsAppLong");
         this.auto = a === 2 && this.sensors & SENSOR.GNSS ? AutoAction.RTH : a === 0 ? AutoAction.HOLD : AutoAction.LAND;
@@ -593,11 +603,30 @@ export class SimDrone {
     }
 
     // ---- battery warnings ----
+    // as the firmware (HANDOVER §6 + firmware 0.5.0): one event per level crossed, the level is
+    // latched while armed; CRITICAL in air -> RTH (GNSS + home) or LAND once, EVENT 31 then 22;
+    // EMERGENCY -> LAND locked. The firmware also filters the cell voltage for 2 s first.
     const cell = this.vbat() / this.cells;
-    if (this.armed && cell < this.p("battCrit") && this.inAir && this.auto === AutoAction.NONE) {
-      this.auto = this.sensors & SENSOR.GNSS ? AutoAction.RTH : AutoAction.LAND;
-      this.failsafe |= FS.BATTERY;
-      this.event(EventLevel.ERROR, EventCode.BATTERY_CRITICAL, "Battery critical");
+    const lvl = cell < this.p("battEmerg") ? BattWarn.EMERGENCY : cell < this.p("battCrit") ? BattWarn.CRITICAL : cell < this.p("battWarn") ? BattWarn.LOW : BattWarn.OK;
+    if (lvl > this.battLevel) {
+      const mv = Math.round(cell * 1000);
+      if (lvl === BattWarn.LOW) this.event(EventLevel.WARN, EventCode.BATTERY_LOW, "Battery low", mv);
+      if (lvl === BattWarn.CRITICAL) this.event(EventLevel.ERROR, EventCode.BATTERY_CRITICAL, "Battery critical", mv);
+      if (lvl === BattWarn.EMERGENCY) this.event(EventLevel.CRITICAL, EventCode.BATTERY_EMERGENCY, "Battery emergency: landing", mv);
+      this.battLevel = lvl;
+    } else if (!this.armed && lvl < this.battLevel) this.battLevel = lvl;
+    if (this.armed && this.inAir) {
+      if (this.battLevel >= BattWarn.CRITICAL && !(this.failsafe & FS.BATTERY)) {
+        this.failsafe |= FS.BATTERY;
+        if (this.auto !== AutoAction.LAND && this.auto !== AutoAction.RTH)
+          this.auto = this.sensors & SENSOR.GNSS && this.homeSet ? AutoAction.RTH : AutoAction.LAND;
+        this.event(EventLevel.ERROR, EventCode.FAILSAFE_BATTERY, "Battery failsafe", this.auto);
+      }
+      if (this.battLevel >= BattWarn.EMERGENCY) {
+        this.battLock = true;
+        this.failsafe |= FS.BATTERY;
+        this.auto = AutoAction.LAND;
+      }
     }
 
     // ---- killed: falls ----
@@ -788,7 +817,7 @@ export class SimDrone {
     const v = this.vbat();
     const cell = v / this.cells;
     const pct = clamp(Math.round(((cell - 3.3) / 0.9) * 100), 0, 100);
-    const warn = cell < this.p("battEmerg") ? BattWarn.EMERGENCY : cell < this.p("battCrit") ? BattWarn.CRITICAL : cell < this.p("battWarn") ? BattWarn.LOW : BattWarn.OK;
+    const warn = this.battLevel;
     const cap = this.outdoor ? 3000 : 450;
     this.emit(FT.POWER, M.encodePower({
       vbatV: v, currentA: this.current, usedMah: Math.round(this.usedMah), cells: this.cells, cellV: cell, pct,
@@ -831,7 +860,7 @@ export class SimDrone {
     const cell = this.vbat() / this.cells;
     const gnss = !!(this.sensors & SENSOR.GNSS);
     const items: M.CheckItem[] = [
-      { id: CheckId.BATTERY, state: cell < this.p("battCrit") ? CheckState.FAIL : cell < this.p("battWarn") ? CheckState.WARN : CheckState.OK, value: Math.round(cell * 1000) },
+      { id: CheckId.BATTERY, state: cell < this.p("battCrit") || this.battLevel >= BattWarn.CRITICAL ? CheckState.FAIL : cell < this.p("battWarn") || this.battLevel >= BattWarn.LOW ? CheckState.WARN : CheckState.OK, value: Math.round(cell * 1000) },
       { id: CheckId.IMU, state: CheckState.OK, value: 0 },
       { id: CheckId.COMPASS, state: this.compassCalibrated ? CheckState.OK : CheckState.WARN, value: this.compassCalibrated ? 4 : 18 },
       { id: CheckId.GNSS, state: gnss ? CheckState.OK : CheckState.NA, value: gnss ? 14 : 0 },

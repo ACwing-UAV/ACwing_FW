@@ -176,5 +176,6 @@ The Python and MATLAB decoders give the same numbers on the same file.
   the rev A port, together with the IMU on SPI.
 - **Not run on hardware yet**: the USB CDC device (ST USB device library
   2.11.6, HSI48 trimmed by the CRS on the USB SOF) and the ADC binding.
-- **The app**: the ACwing Pilot app does not use the USB link yet; it only
-  shows SYSTEM.log.
+- **The app**: the ACwing Pilot app shows logMode and SYSTEM.log; the log
+  download screen is specified in
+  [`HANDOVER_APP.md`](https://github.com/andrea-cirillo/ACwing_FlightController_FW/blob/main/02%20-%20Tools/02%20-%20App/HANDOVER_APP.md).

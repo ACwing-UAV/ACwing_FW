@@ -143,9 +143,10 @@ the app simulator). Otherwise POWER.remain is `0xFFFF` (n/a).
 | 23 | **battCapacity** | 0 | 0–20000 mAh | **firmware extension**; 0 = unknown (no coulomb counting, no time left); listed only with CAPS CURRENT |
 | 24 | **battCells** | 0 | 0–6 | **firmware extension**; 0 = detect |
 
-The ids 23, 24 (and 70, logMode) are new: the app stores them, but its
-Settings screen does not show them until its parameter table (`ids.ts`) gets
-the entries.
+The ids 23, 24 (and 70, logMode) are firmware extensions. The ACwing Pilot
+app shows them in Settings › Safety › Battery (and › Drone & firmware for
+logMode); the remaining app work is in
+[`HANDOVER_APP.md`](https://github.com/andrea-cirillo/ACwing_FlightController_FW/blob/main/02%20-%20Tools/02%20-%20App/HANDOVER_APP.md).
 
 ## CHECKS item 1 and ARM
 

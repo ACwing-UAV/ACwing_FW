@@ -488,7 +488,7 @@ export function BatteryWizard() {
         <input id="mah" className="input num" inputMode="numeric" style={{ width: 110, height: 46, fontSize: 20 }} value={mah} onChange={(e) => setMah(e.target.value)} />
         <span className="muted">mAh</span>
       </div>
-      <div className="row" style={{ minHeight: 70 }}><span className="grow label muted">{t("calib.battery.scaleI")}</span><span className="num" style={{ fontSize: 22 }}>{d && num(mah) > 0 ? `× ${(num(mah) / d.usedMah).toFixed(2)}` : d ? `× ${d.scaleI.toFixed(2)}` : "–"}</span></div>
+      <div className="row" style={{ minHeight: 70 }}><span className="grow label muted">{t("calib.battery.scaleI")}</span><span className="num" style={{ fontSize: 22 }}>{d && num(mah) > 0 ? `× ${((d.scaleI * num(mah)) / d.usedMah).toFixed(2)}` : d ? `× ${d.scaleI.toFixed(2)}` : "–"}</span></div>
     </div>
   ) : (
     <>

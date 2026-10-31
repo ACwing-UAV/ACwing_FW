@@ -169,9 +169,10 @@ now; STICKS and MOTORS are `SENSOR_MISSING`.
 
 ## Firmware extensions
 
-Additions that the handover does not list yet. The app tolerates them (it
-stores unknown parameters and shows the text of unknown events), but does not
-expose them in its screens.
+Additions that the handover does not list yet. The app knows the parameters
+and the events; the log download over USB and the rest of the app work are
+described in
+[`HANDOVER_APP.md`](https://github.com/andrea-cirillo/ACwing_FlightController_FW/blob/main/02%20-%20Tools/02%20-%20App/HANDOVER_APP.md).
 
 | Kind | Id | Meaning |
 |---|---|---|
