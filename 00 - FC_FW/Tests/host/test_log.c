@@ -81,7 +81,7 @@ static void chip_setup(void)
 }
 
 /* ================================================================== record parser (as the PC tools) */
-typedef struct { int n[256]; int bad; uint32_t last_t; int t_back; uint32_t att_seq_err; } parse_t;
+typedef struct { int n[256]; int bad; uint32_t last_t; int t_back; uint32_t att_seq_err; log_time_t tm; uint32_t info_t0; } parse_t;
 
 static void parse_log(const uint8_t *b, uint32_t n, parse_t *p)
 {
@@ -95,6 +95,8 @@ static void parse_log(const uint8_t *b, uint32_t n, parse_t *p)
             const uint8_t t = b[i], len = b[i + 1];
             if (i + 3u + len > s + LOG_SECTOR || log_crc8(b + i, 2u + len) != b[i + 2 + len]) { p->bad++; break; }
             p->n[t]++;
+            if (t == LR_TIME && len == sizeof(log_time_t)) memcpy(&p->tm, b + i + 2, sizeof p->tm);
+            if (t == LR_INFO && len == sizeof(log_info_t)) { log_info_t in; memcpy(&in, b + i + 2, sizeof in); p->info_t0 = in.t0_ms; }
             if (t == LR_ATT) {
                 log_att_t a; memcpy(&a, b + i + 2, sizeof a);
                 if (a.t_ms < last_att) p->t_back++;
@@ -364,8 +366,28 @@ static void test_task(void)
     now = 10000;
 
     /* logMode 1: nothing while disarmed */
-    run(2000, 0, 10);
+    run(1000, 0, 10);
+    /* wall clock from the app: refused before 2024, then set */
+    int f0 = s_nf;
+    {
+        uint8_t t[8]; uint32_t us = 1600000000u; uint16_t ms = 250; int16_t tz = 60;
+        memcpy(t, &us, 4); memcpy(t + 4, &ms, 2); memcpy(t + 6, &tz, 2);
+        usb_cmd(PV2_OP_SET_TIME, 20, t, 8);
+        us = 1793000000u; memcpy(t, &us, 4);
+        usb_cmd(PV2_OP_SET_TIME, 21, t, 7);
+        usb_cmd(PV2_OP_SET_TIME, 22, t, 8);
+    }
+    uint32_t t_set = 0;
+    for (int k = 0; k < 10 && !t_set; ++k) { run(1, 0, 1); uint32_t u; uint16_t m; if (log_task_wallclock(now, &u, &m) == 0) t_set = now; }
+    CHECK(ack_of(f0, PV2_OP_SET_TIME, 20, PV2_ACK_INVALID) && ack_of(f0, PV2_OP_SET_TIME, 21, PV2_ACK_INVALID) &&
+          ack_of(f0, PV2_OP_SET_TIME, 22, PV2_ACK_OK) && t_set, "SET_TIME: 2020 and short refused, then OK");
+    run(999, 0, 10);
     CHECK(log_count() == 0, "disarmed: no log");
+    {
+        uint32_t u; uint16_t m;
+        (void)log_task_wallclock(t_set + 1750u, &u, &m);
+        CHECK(u == 1793000002u && m == 0u, "wall clock runs with the uptime (%u.%03u)", (unsigned)u, m);
+    }
     /* a 6 s flight */
     run(6000, 1, 10);
     CHECK(log_count() == 1 && log_is_open(), "armed: log open");
@@ -373,7 +395,7 @@ static void test_task(void)
     CHECK(log_count() == 1 && !log_is_open(), "closed after the post-roll");
 
     /* USB: list */
-    int f0 = s_nf;
+    f0 = s_nf;
     usb_cmd(PV2_OP_LOG_LIST, 1, NULL, 0);
     run(20, 0, 10);
     CHECK(ack_of(f0, PV2_OP_LOG_LIST, 1, PV2_ACK_OK) != NULL, "LOG_LIST ack");
@@ -407,6 +429,13 @@ static void test_task(void)
     CHECK(p.n[LR_FLIGHT] >= 68 && p.n[LR_POWER] >= 68 && p.n[LR_DROP] == 0, "10 Hz FLIGHT/POWER, no drops (%d, %d)",
           p.n[LR_FLIGHT], p.n[LR_POWER]);
     CHECK(p.n[LR_EVENT] == 2 && p.t_back == 0, "ARMED and DISARMED events, time monotonic (ev %d)", p.n[LR_EVENT]);
+    {
+        /* LR_TIME right after LR_INFO, at the log start */
+        const uint32_t el = p.tm.t_ms - t_set + 250u;
+        CHECK(p.n[LR_TIME] == 1 && p.tm.t_ms == p.info_t0 && p.tm.unix_s == 1793000000u + el / 1000u &&
+              p.tm.ms == el % 1000u && p.tm.tz_min == 60, "LR_TIME at the start: %u.%03u tz %d",
+              (unsigned)p.tm.unix_s, p.tm.ms, p.tm.tz_min);
+    }
     {
         FILE *f = fopen("log_sample.bin", "wb");
         if (f) { fwrite(img, 1, got, f); fclose(f); }
@@ -445,6 +474,10 @@ static void test_task(void)
     CHECK(log_count() == 1, "always mode, USB active: paused");
     run(6000, 0, 10);
     CHECK(log_count() == 2 && log_is_open(), "5 s after the last command: recording again");
+    /* SET_TIME is not a log command: it does not pause the recording */
+    usb_cmd(PV2_OP_SET_TIME, 23, (const uint8_t[8]){ 0x40, 0x3B, 0xDF, 0x6A, 0, 0, 0, 0 }, 8);
+    run(1000, 0, 10);
+    CHECK(log_count() == 2 && log_is_open(), "SET_TIME while recording: still recording");
 
     /* armed: no download, no erase */
     { uint8_t why; params_set(70, 1.0f, &why); }
@@ -511,8 +544,23 @@ static void test_ble(void)
     run(5000, 1, 10); run(2000, 0, 10);
     CHECK(log_count() == 2, "two flights recorded (%u)", log_count());
 
-    /* LIST over BLE: the last flight only */
+    /* SET_TIME over BLE: forwarded by the AppTask to the LogTask */
     int f0 = s_nb;
+    {
+        uint8_t t[8]; const uint32_t us = 1793000000u; const uint16_t ms = 0; const int16_t tz = -300;
+        memcpy(t, &us, 4); memcpy(t + 4, &ms, 2); memcpy(t + 6, &tz, 2);
+        ble_cmd(PV2_OP_SET_TIME, 9, t, 8);
+    }
+    run(50, 0, 10);
+    {
+        const pv2_ack_t *k = ble_ack(f0, PV2_OP_SET_TIME, 9);
+        uint32_t u; uint16_t m;
+        CHECK(k && k->result == PV2_ACK_OK && log_task_wallclock(now, &u, &m) == 0 && u >= 1793000000u && u <= 1793000001u,
+              "SET_TIME over BLE: OK, clock set");
+    }
+
+    /* LIST over BLE: the last flight only */
+    f0 = s_nb;
     ble_cmd(PV2_OP_LOG_LIST, 1, NULL, 0);
     run(50, 0, 10);
     pv2_log_entry_t e; memset(&e, 0, sizeof e);

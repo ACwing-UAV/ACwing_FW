@@ -405,6 +405,6 @@ RAM log; ACwing FC: W25Q log):
 |---|---|---|
 | Older logs over BLE | lift the "last flight only" limit in `log_task.c` | decided against for now: a full flash over BLE takes about half an hour |
 | **USB as a flight link** (telemetry, RC, app link) | CMD frames from USB into `app_link`, frames to USB as well as BLE | needed on the ACwing FC for the PC tools anyway (no ST-LINK virtual COM port there) |
-| Wall-clock time in the log | an RTC set by the app at connection (a new command) | today times are relative to power-on |
-| `HANDOVER_FW.md` | add params 23, 24, 70, events 8 and 33, the log commands (BLE and USB) and the scaleI note to the contract | so the two documents agree |
+| ~~Wall-clock time in the log~~ | **done in firmware 0.6.0**: SET_TIME `0x43` (HANDOVER_FW §5), record `LR_TIME`; the app sends it at connection and the viewer shows the flight date | the clock is lost at power-off; logs recorded before the first connection have no date |
+| ~~`HANDOVER_FW.md`~~ | done: params 23, 24, 70, events 8 and 33, the log commands (BLE and USB), the scaleI note and SET_TIME are in the contract | |
 | Firmware update over USB (DFU) | the STM32 ROM bootloader already does DFU on this port (BOOT0) | the "Update firmware" button could use WebUSB DFU later |

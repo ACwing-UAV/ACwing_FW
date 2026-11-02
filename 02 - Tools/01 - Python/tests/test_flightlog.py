@@ -32,6 +32,10 @@ def test_decode_sample():
     assert L.flight.n >= 68 and L.power.n >= 68 and L.drop.n == 0
     assert np.allclose(L.power.vbat, 3.9) and np.all(L.power.present == 1) and np.all(L.power.cells == 1)
     assert L.event.name == ["ARMED", "DISARMED"]
+    # LR_TIME: the test sets 1793000000.250 UTC, tz +60 min, 1 s before arming
+    assert L.time.n == 1 and L.time.t[0] == L.info.t0_ms / 1000 and L.wallclock.tz_min == 60
+    assert abs(L.wallclock.offset_s - (1793000000.25 - 11.0)) < 0.01
+    assert any(x.startswith("started on 2026-10-26") for x in fl.summary(L))
     assert L.flight.armed.max() == 1 and L.flight.armed[-1] == 0
 
 
@@ -84,6 +88,9 @@ class FakeFC:
             for k in range(0, len(d), 240):
                 self.out += encode_frame(fl.FT_LOG_DATA, struct.pack("<HI", i, off + k) + d[k:k + 240])
             self.ack(op, seq, 0)
+        elif op == fl.OP_SET_TIME:
+            self.time = struct.unpack("<IHh", a)
+            self.ack(op, seq, 0)
         elif op == fl.OP_LOG_ERASE:
             self.ack(op, seq, 5)
             self.logs.clear()
@@ -104,6 +111,7 @@ def test_link_list_read_erase(tmp_path):
     sample = open(DATA, "rb").read()
     dev = FakeFC({3: sample, 7: bytes(range(256)) * 32})
     link = fl.FcLink(dev, timeout=0.5)
+    assert link.set_time(1793000000.5) and dev.time[0] == 1793000000 and dev.time[1] == 500
     logs = link.list_logs()
     assert [e.id for e in logs] == [3, 7] and logs[0].bytes == len(sample) and logs[1].t0_ms == 7000
     got = link.read_log(3, len(sample), chunk=10000)

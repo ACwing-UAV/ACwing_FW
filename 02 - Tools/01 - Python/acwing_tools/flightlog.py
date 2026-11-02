@@ -20,10 +20,16 @@ protocol are defined by the firmware:
   LOG_LIST     0x50  –                                   LOG_ENTRY × n, ACK
   LOG_READ     0x51  id u16, offset u32, len u32 (0=all) LOG_DATA …, then ACK
   LOG_ERASE    0x52  ``b"WIPE"``                         ACK IN_PROGRESS, ACK
+  SET_TIME     0x43  unix_s u32, ms u16, tz_min i16      ACK (firmware ≥ 0.6)
   ============ ===== =================================== ====================
+
+SET_TIME gives the drone the wall clock (the app sends it at every connection,
+the CLI before listing): every log opened afterwards, and the one being
+recorded, gets an LR_TIME record, so the decoder can show real dates.
 """
 from __future__ import annotations
 
+import datetime
 import os
 import struct
 import time
@@ -43,6 +49,7 @@ HDR = struct.Struct("<IIHHIBBH")          # magic serial log_id seq t0_ms format
 # record type -> (name, struct format, field names); scaled to SI below
 RECORDS = {
     0x01: ("info",   "<3BcBIH16s", ("fw0", "fw1", "fw2", "hw_rev", "format", "t0_ms", "sensors", "name")),
+    0x02: ("time",   "<IIHh",      ("t_ms", "unix_s", "ms", "tz_min")),
     0x10: ("att",    "<I4h3h3h",   ("t_ms", "qw", "qx", "qy", "qz", "gx", "gy", "gz", "ax", "ay", "az")),
     0x11: ("vert",   "<IihihBHBIB", ("t_ms", "h_mm", "vz_mms", "h_sp_mm", "vz_sp_mms", "thrust", "tof_mm",
                                      "flow_q", "baro_pa", "flags")),
@@ -56,7 +63,7 @@ RECORDS = {
     0x7F: ("drop",   "<IHB",       ("t_ms", "lost", "source")),
 }
 for _t, (_n, _f, _k) in RECORDS.items():
-    assert struct.calcsize(_f) == {0x01: 27, 0x10: 24, 0x11: 25, 0x12: 15, 0x13: 11,
+    assert struct.calcsize(_f) == {0x01: 27, 0x02: 12, 0x10: 24, 0x11: 25, 0x12: 15, 0x13: 11,
                                    0x14: 20, 0x20: 19, 0x7F: 7}[_t], _n
 
 EVENT_NAMES = {
@@ -83,10 +90,12 @@ def decode_log(data: bytes) -> Struct:
     """Decodes one downloaded log (sectors concatenated).
 
     Returns a struct with one field per record type (``att``, ``vert``,
-    ``flight``, ``event``, ``est``, ``power``, ``drop``), each a struct of
-    numpy arrays in SI units, plus ``info`` (first LR_INFO), ``sectors``,
-    ``bad`` (records or sectors rejected) and ``unknown`` (records of an
-    unknown type, skipped).
+    ``flight``, ``event``, ``est``, ``power``, ``drop``, ``time``), each a
+    struct of numpy arrays in SI units, plus ``info`` (first LR_INFO),
+    ``wallclock`` (None, or ``offset_s`` to add to a record time ``t`` to get
+    UTC seconds since 1970, and the phone's ``tz_min``, from the last LR_TIME),
+    ``sectors``, ``bad`` (records or sectors rejected) and ``unknown``
+    (records of an unknown type, skipped).
     """
     data = bytes(data)
     rows: Dict[int, list] = {t: [] for t in RECORDS}
@@ -109,7 +118,7 @@ def decode_log(data: bytes) -> Struct:
                 unknown += 1
             i += 3 + n
 
-    out = Struct(sectors=sectors, bad=bad, unknown=unknown, info=None)
+    out = Struct(sectors=sectors, bad=bad, unknown=unknown, info=None, wallclock=None)
     for t, (name, _fmt, keys) in RECORDS.items():
         r = rows[t]
         if name == "info":
@@ -121,6 +130,8 @@ def decode_log(data: bytes) -> Struct:
             continue
         cols = {k: np.array([x[j] for x in r], dtype=float) for j, k in enumerate(keys)}
         out[name] = _scale(name, cols, len(r))
+    if out.time.n:
+        out.wallclock = Struct(offset_s=float(out.time.unix[-1] - out.time.t[-1]), tz_min=int(out.time.tz_min[-1]))
     return out
 
 
@@ -158,6 +169,8 @@ def _scale(name: str, c: Dict[str, np.ndarray], n: int) -> Struct:
         S.cells = (cells & 0x7F).astype(float); S.present = ((cells & 0x80) != 0).astype(float)
     elif name == "drop":
         S.lost = c["lost"]; S.source = c["source"]
+    elif name == "time":
+        S.unix = c["unix_s"] + c["ms"] * 1e-3; S.tz_min = c["tz_min"]
     return S
 
 
@@ -165,7 +178,7 @@ def save_csv(L: Struct, out_dir: str, stem: str) -> List[str]:
     """One CSV per record type (time in s, SI units). Returns the files written."""
     os.makedirs(out_dir, exist_ok=True)
     files = []
-    for name in ("att", "vert", "flight", "event", "est", "power", "drop"):
+    for name in ("att", "vert", "flight", "event", "est", "power", "drop"):   # LR_TIME: in .mat and the summary
         S = L[name]
         if not S.n:
             continue
@@ -205,6 +218,7 @@ def save_mat(L: Struct, path: str) -> None:
 
 # ---------------------------------------------------------------- USB link
 OP_LOG_LIST, OP_LOG_READ, OP_LOG_ERASE = 0x50, 0x51, 0x52
+OP_SET_TIME = 0x43
 FT_ACK, FT_LOG_ENTRY, FT_LOG_DATA, FT_CMD = 0x0E, 0x10, 0x11, 0x20
 ACK_OK, ACK_IN_PROGRESS = 0, 5
 ACK_RESULTS = {0: "OK", 1: "REJECTED", 2: "BUSY", 3: "INVALID", 4: "UNSUPPORTED", 5: "IN_PROGRESS"}
@@ -330,6 +344,17 @@ class FcLink:
     def erase(self):
         self._run(OP_LOG_ERASE, b"WIPE", None, timeout=300.0)
 
+    def set_time(self, unix: Optional[float] = None) -> bool:
+        """Gives the drone the wall clock (now by default). False on a firmware
+        that does not know SET_TIME (older than 0.6)."""
+        t = time.time() if unix is None else unix
+        tz = -(time.altzone if time.localtime(t).tm_isdst > 0 else time.timezone) // 60
+        try:
+            self._run(OP_SET_TIME, struct.pack("<IHh", int(t), int((t % 1) * 1000), tz))
+            return True
+        except LinkError:
+            return False
+
 
 def download_all(link: FcLink, out_dir: str, ids=None, progress=None) -> List[str]:
     """Downloads the logs (all, or those in ``ids``) as ``acwing_flight_<id>.bin``."""
@@ -352,6 +377,11 @@ def summary(L: Struct) -> List[str]:
     if L.info:
         lines.append(f"firmware {L.info.fw}, board '{L.info.hw_rev}', format {L.info.format}, "
                      f"started at {L.info.t0_ms / 1000:.1f} s after power-on")
+        if L.wallclock:
+            w = L.wallclock
+            t0 = datetime.datetime.fromtimestamp(L.info.t0_ms / 1000 + w.offset_s, datetime.timezone.utc)
+            loc = t0.astimezone(datetime.timezone(datetime.timedelta(minutes=w.tz_min)))
+            lines.append(f"started on {loc:%Y-%m-%d %H:%M:%S} (UTC{w.tz_min / 60:+g})")
     t = L.att.t
     if L.att.n:
         lines.append(f"{L.att.n} attitude samples over {t[-1] - t[0]:.1f} s ({L.sectors} sectors, "

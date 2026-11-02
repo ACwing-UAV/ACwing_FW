@@ -17,7 +17,7 @@ export const LOG_FORMAT = 1;
 export const SECTOR = 4096;
 export const HDR_SIZE = 20;
 
-export const LR = { INFO: 0x01, ATT: 0x10, VERT: 0x11, FLIGHT: 0x12, EVENT: 0x13, EST: 0x14, POWER: 0x20, DROP: 0x7f } as const;
+export const LR = { INFO: 0x01, TIME: 0x02, ATT: 0x10, VERT: 0x11, FLIGHT: 0x12, EVENT: 0x13, EST: 0x14, POWER: 0x20, DROP: 0x7f } as const;
 
 /** CRC-8/SMBUS (poly 0x07, init 0), as `log_crc8()`. */
 export function crc8(d: Uint8Array, start = 0, end = d.length) {
@@ -39,6 +39,7 @@ const SIZE: Record<Kind, number> = { u8: 1, i8: 1, u16: 2, i16: 2, u32: 4, i32: 
 /** Raw record fields, in wire order (names as in log_format.h). */
 export const RECORDS: Record<number, { name: string; fields: [string, Kind][] }> = {
   [LR.INFO]: { name: "info", fields: [["fw0", "u8"], ["fw1", "u8"], ["fw2", "u8"], ["hw_rev", "u8"], ["format", "u8"], ["t0_ms", "u32"], ["sensors", "u16"], ["name", "c16"]] },
+  [LR.TIME]: { name: "time", fields: [["t_ms", "u32"], ["unix_s", "u32"], ["ms", "u16"], ["tz_min", "i16"]] },
   [LR.ATT]: { name: "att", fields: [["t_ms", "u32"], ["qw", "i16"], ["qx", "i16"], ["qy", "i16"], ["qz", "i16"], ["gx", "i16"], ["gy", "i16"], ["gz", "i16"], ["ax", "i16"], ["ay", "i16"], ["az", "i16"]] },
   [LR.VERT]: { name: "vert", fields: [["t_ms", "u32"], ["h_mm", "i32"], ["vz_mms", "i16"], ["h_sp_mm", "i32"], ["vz_sp_mms", "i16"], ["thrust", "u8"], ["tof_mm", "u16"], ["flow_q", "u8"], ["baro_pa", "u32"], ["flags", "u8"]] },
   [LR.FLIGHT]: { name: "flight", fields: [["t_ms", "u32"], ["armed", "u8"], ["mode", "u8"], ["autom", "u8"], ["failsafe", "u8"], ["flags", "u8"], ["thr", "i8"], ["yaw", "i8"], ["pitch", "i8"], ["roll", "i8"], ["silence_ms", "u16"]] },
@@ -128,6 +129,10 @@ export interface DecodedLog {
   est: { n: number; t: Col; gyroBias: [Col, Col, Col]; attUncDeg: Col; vibMg: Col; loopHz: Col; jitterUs: Col; cpuPct: Col; magInterfPct: Col };
   power: { n: number; t: Col; vbat: Col; current: Col; usedMah: Col; cell: Col; cellRest: Col; pct: Col; level: Col; rCell: Col; cells: Col; present: Col };
   drop: { n: number; t: Col; lost: Col; source: Col };
+  /** LR_TIME (firmware >= 0.6): wall clock sent by the app at connection */
+  time: { n: number; t: Col; unixMs: Col; tzMin: Col };
+  /** null, or: add `offsetMs` to a record time t (in ms) to get UTC ms since 1970; the phone's time zone then */
+  wallclock: { offsetMs: number; tzMin: number } | null;
 }
 
 export function decodeLog(data: Uint8Array): DecodedLog {
@@ -158,7 +163,7 @@ export function decodeLog(data: Uint8Array): DecodedLog {
   const col = (r: Raw[], k: string) => r.map((x) => x[k] as number);
   const tOf = (r: Raw[]) => r.map((x) => (x.t_ms as number) * 1e-3);
   const info0 = rows[LR.INFO][0];
-  const a = rows[LR.ATT], v = rows[LR.VERT], f = rows[LR.FLIGHT], e = rows[LR.EVENT], es = rows[LR.EST], p = rows[LR.POWER], d = rows[LR.DROP];
+  const tm = rows[LR.TIME], a = rows[LR.ATT], v = rows[LR.VERT], f = rows[LR.FLIGHT], e = rows[LR.EVENT], es = rows[LR.EST], p = rows[LR.POWER], d = rows[LR.DROP];
   const na = (r: Raw[], k: string, nil: number, scale = 1) => r.map((x) => ((x[k] as number) === nil ? NaN : (x[k] as number) * scale));
   return {
     sectors, bad, unknown,
@@ -194,6 +199,10 @@ export function decodeLog(data: Uint8Array): DecodedLog {
       rCell: p.map((x) => (x.r_cell_mohm as number) * 1e-3), cells: p.map((x) => (x.cells as number) & 0x7f), present: p.map((x) => ((x.cells as number) & 0x80 ? 1 : 0)),
     },
     drop: { n: d.length, t: tOf(d), lost: col(d, "lost"), source: col(d, "source") },
+    time: { n: tm.length, t: tOf(tm), unixMs: tm.map((x) => (x.unix_s as number) * 1000 + (x.ms as number)), tzMin: col(tm, "tz_min") },
+    wallclock: tm.length
+      ? { offsetMs: (tm[tm.length - 1].unix_s as number) * 1000 + (tm[tm.length - 1].ms as number) - (tm[tm.length - 1].t_ms as number), tzMin: tm[tm.length - 1].tz_min as number }
+      : null,
   };
 }
 

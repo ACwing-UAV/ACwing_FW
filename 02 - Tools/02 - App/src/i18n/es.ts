@@ -293,6 +293,7 @@ const es: Translation = {
     left: "faltan {t}",
     missing: "Este registro ya no está en este dispositivo.",
     downloadedOn: "Descargado el {d}",
+    flownOn: "Volado el {d}",
     droppedN: "Se perdieron {n} registros en el dron (cola llena): faltan algunas muestras.",
     truncatedHint: "El principio de este registro fue sobrescrito por vuelos más recientes.",
     badN: "Se omitieron {n} sectores o registros dañados.",

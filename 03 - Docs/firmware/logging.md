@@ -83,6 +83,7 @@ A record never crosses a sector. All values are little-endian.
 | Type | Record | Rate | Content |
 |---|---|---|---|
 | `0x01` | INFO | first record | firmware, board, format, start time, CAPS sensors |
+| `0x02` | TIME | after INFO, and when the app sets the clock | uptime, UTC seconds and ms, the phone's time-zone offset (firmware 0.6) |
 | `0x10` | ATT | 50 Hz | quaternion (×32767), gyro (mrad/s), acc (mg) |
 | `0x11` | VERT | 50 Hz | h, vz, height and climb set points, thrust, ToF, flow quality, pressure, flags |
 | `0x12` | FLIGHT | 10 Hz | armed, mode, automatic action, failsafe bits, flags, sticks, app-link silence |
@@ -93,6 +94,17 @@ A record never crosses a sector. All values are little-endian.
 
 The exact layouts are the packed structs of `log_format.h`, checked with
 `_Static_assert`; the Python and MATLAB decoders follow them.
+
+### Wall clock
+
+The FC has no battery-backed clock, so a record time is milliseconds after
+power-on. The app (and the PC tools before they list the logs) sends
+**SET_TIME** with the phone's UTC time and time-zone offset; the LogTask keeps
+it as an offset from the uptime until the next reset and writes an `LR_TIME`
+record right after `LR_INFO` of every new log, and into the open log when the
+command arrives. The decoders turn it into a date (`wallclock` in Python and
+MATLAB, `DecodedLog.wallclock` in the app). A new record type does not change
+the format number: older readers skip it as unknown.
 
 ## The store
 
@@ -129,6 +141,7 @@ by the PC is ignored. Both directions carry protocol v2 frames
 | LOG_LIST | `0x50` | – | one LOG_ENTRY per log, then ACK |
 | LOG_READ | `0x51` | id u16, offset u32, length u32 (0 = to the end) | LOG_DATA frames (id u16, offset u32, ≤ 240 bytes), then ACK |
 | LOG_ERASE | `0x52` | `"WIPE"` | ACK IN_PROGRESS, then ACK when done |
+| SET_TIME | `0x43` | unix_s u32, ms u16, tz_min i16 | ACK (BLE too; not a log command: it does not pause the recording) |
 
 LOG_ENTRY: id u16, index u8, count u8, flags u8 (bit 0 truncated, bit 1 being
 written), sectors u16, start time u32 (ms after power-on), bytes u32.
@@ -137,7 +150,7 @@ The ACK always comes **after** the data, so it means "complete". LOG_READ and
 LOG_ERASE are refused with `ARMED` while armed; an unknown id is
 `INVALID / OUT_OF_RANGE`; a board without log flash answers
 `REJECTED / SENSOR_MISSING`. Other opcodes are `UNSUPPORTED`: the USB link
-carries only the log commands for now. The parser resynchronises after a bad
+carries only the log commands and SET_TIME for now. The parser resynchronises after a bad
 CRC, so a corrupted frame does not swallow the next command.
 
 CAPS bit 11 FLASH_LOG is set when a log store is mounted, and SYSTEM.log is

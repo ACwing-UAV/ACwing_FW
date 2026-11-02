@@ -293,6 +293,7 @@ const fr: Translation = {
     left: "encore {t}",
     missing: "Ce journal n'est plus sur cet appareil.",
     downloadedOn: "Téléchargé le {d}",
+    flownOn: "Vol du {d}",
     droppedN: "{n} enregistrements ont été perdus sur le drone (file pleine) : des échantillons manquent.",
     truncatedHint: "Le début de ce journal a été écrasé par des vols plus récents.",
     badN: "{n} secteurs ou enregistrements endommagés ignorés.",

@@ -73,6 +73,7 @@
 #define PV2_OP_STREAM_RATES   0x40u
 #define PV2_OP_REQUEST        0x41u
 #define PV2_OP_SET_NAME       0x42u
+#define PV2_OP_SET_TIME       0x43u   /**< unix_s u32, ms u16, tz_min i16: wall clock for the log */
 #define PV2_OP_LOG_LIST       0x50u   /**< reserved in HANDOVER §16, USB link     */
 #define PV2_OP_LOG_READ       0x51u   /**< id u16, offset u32, len u32            */
 #define PV2_OP_LOG_ERASE      0x52u   /**< "WIPE" (firmware extension)            */

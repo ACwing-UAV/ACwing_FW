@@ -340,6 +340,7 @@ INIT) and `0x02 N` (STATE decimation) keep their phase-2 format without seq.
 | `0x40` | STREAM_RATES | `flight, power, nav, motors, system` u8 Hz | clamp to the ranges in §3; 0 = keep current. Reserved: the app uses the defaults today |
 | `0x41` | REQUEST | `frameType u8` | send that frame once now (CAPS, CHECKS, INIT, FLIGHT, POWER, NAV, MOTORS, SYSTEM); others `UNSUPPORTED` |
 | `0x42` | SET_NAME | `name char[16]` (zero padded UTF-8) | store in flash, re-send CAPS |
+| `0x43` | SET_TIME | `unix_s u32` (UTC), `ms u16` (0…999), `tzMin i16` (−840…840, minutes east of UTC) | the wall clock for the flight log (§5.1), any state. `INVALID/OUT_OF_RANGE` before 2024-01-01. The app sends it at every connection — firmware 0.6.0; older firmware answers `UNSUPPORTED` |
 | `0x50` | LOG_LIST | – | §5.1: LOG_ENTRY × n, **then** ACK |
 | `0x51` | LOG_READ | `id u16, offset u32, length u32` (0 = to the end) | §5.1: LOG_DATA …, **then** ACK |
 | `0x52` | LOG_ERASE | `57 49 50 45` ("WIPE") | §5.1: USB only; ACK `IN_PROGRESS`, then ACK `OK` |
@@ -360,6 +361,15 @@ used by the app's Flight logs screen. Reference client and decoder:
 `LOG_ENTRY` (15 B): `id u16, index u8, count u8, flags u8 (bit0 truncated,
 bit1 being written), sectors u16, t0 u32 (ms after power-on), bytes u32`.
 `LOG_DATA`: `id u16, offset u32, data[≤ 240]`.
+
+**Wall clock (firmware 0.6.0).** The drone has no battery-backed clock: the
+app sends `SET_TIME` (0x43) at every connection, over BLE or USB. The drone
+writes an `LR_TIME` record (type `0x02`: `t_ms u32` uptime, `unix_s u32`,
+`ms u16`, `tz_min i16`) right after `LR_INFO` of every log opened afterwards,
+and into the log being recorded when the command arrives. A decoder adds
+`unix − t_ms` to any record time to get UTC (`DecodedLog.wallclock` in
+`format.ts`). Logs written before the first `SET_TIME` since power-on have no
+`LR_TIME`. SET_TIME does not pause the recording (the log commands do, 5 s).
 
 Rules both sides rely on:
 

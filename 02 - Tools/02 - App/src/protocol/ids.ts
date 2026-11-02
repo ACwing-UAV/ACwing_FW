@@ -75,6 +75,8 @@ export const OP = {
   STREAM_RATES: 0x40,
   REQUEST: 0x41,
   SET_NAME: 0x42,
+  /** unix_s u32, ms u16, tz_min i16: wall clock for the flight log (firmware >= 0.6) */
+  SET_TIME: 0x43,
   // flight log (firmware 0.5.0). BLE: last flight only, no erase. USB: every log, erase.
   LOG_LIST: 0x50,
   LOG_READ: 0x51,

@@ -291,6 +291,7 @@ const en = {
     left: "{t} left",
     missing: "This log is no longer on this device.",
     downloadedOn: "Downloaded {d}",
+    flownOn: "Flown {d}",
     droppedN: "{n} records were lost on the drone (queue full): some samples are missing.",
     truncatedHint: "The beginning of this log was overwritten by newer flights.",
     badN: "{n} damaged sectors or records skipped.",

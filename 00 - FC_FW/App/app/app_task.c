@@ -607,8 +607,8 @@ static void commands(uint32_t now)
         if (st == ACKC_DONE) { tx(s_frame, pv2_ack(op, seq, res, why, s_frame, sizeof s_frame)); continue; }
         if (st == ACKC_PENDING) continue;                 /* its ACK is on the way */
 
-        if (op == PV2_OP_LOG_LIST || op == PV2_OP_LOG_READ || op == PV2_OP_LOG_ERASE) {
-            /* the LogTask owns the log: it answers (ACK after the data) through log_ble_out() */
+        if (op == PV2_OP_LOG_LIST || op == PV2_OP_LOG_READ || op == PV2_OP_LOG_ERASE || op == PV2_OP_SET_TIME) {
+            /* the LogTask owns the log and the wall clock: it answers (ACK after the data) through log_ble_out() */
             log_cmd_t lc;
             memset(&lc, 0, sizeof lc);
             lc.op = op; lc.seq = seq;

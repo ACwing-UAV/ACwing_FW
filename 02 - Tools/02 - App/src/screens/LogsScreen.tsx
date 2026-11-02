@@ -332,7 +332,12 @@ function LogViewer({ logKey }: { logKey: string }) {
         <a className={vp.wide ? "btn" : "btn icon"} href="#/logs" aria-label={t("common.back")}><Icon name="back" />{vp.wide && t("logs.title")}</a>
         <div style={{ display: "flex", flexDirection: "column", gap: 2, flex: 1, minWidth: 0 }}>
           <h1 style={{ fontSize: vp.wide ? 22 : 19 }}>{m.drone} · {t("logs.logN", { id: m.logId })}</h1>
-          <span className="small muted">{t("logs.downloadedOn", { d: new Date(m.downloadedAt).toLocaleString() })}{L.info ? ` · fw ${L.info.fw}` : ""}</span>
+          <span className="small muted">
+            {L.wallclock && L.info
+              ? `${t("logs.flownOn", { d: new Date(L.info.t0Ms + L.wallclock.offsetMs).toLocaleString() })} · `
+              : ""}
+            {t("logs.downloadedOn", { d: new Date(m.downloadedAt).toLocaleString() })}{L.info ? ` · fw ${L.info.fw}` : ""}
+          </span>
         </div>
         <button className="btn" onClick={() => void exportBin(m)}><Icon name="share" size={18} />{vp.phone ? ".bin" : t("logs.exportBin")}</button>
         <button className="btn" onClick={() => void exportCsv(m, L)}><Icon name="share" size={18} />{vp.phone ? "CSV" : t("logs.exportCsv")}</button>

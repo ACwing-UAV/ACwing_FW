@@ -28,6 +28,10 @@ describe("flight log format 1", () => {
     expect(L.event.name).toEqual(["ARMED", "DISARMED"]);
     expect(L.vert.tof.every((x) => Number.isNaN(x))).toBe(true);
     expect(L.drop.n).toBe(0);
+    // LR_TIME: the firmware test sets 1793000000.250 UTC, +60 min, at uptime 11.001 s
+    expect(L.time.n).toBe(1);
+    expect(L.time.t[0] * 1000).toBeCloseTo(L.info!.t0Ms, 6);
+    expect(L.wallclock).toEqual({ offsetMs: 1793000000250 - 11001, tzMin: 60 });
   });
 
   it("a damaged record skips only the rest of its sector, a damaged header only its sector", () => {

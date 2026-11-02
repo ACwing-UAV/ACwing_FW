@@ -73,6 +73,8 @@ export class SimDrone {
   private roll = 0;
   private pitch = 0; // FLU: + = nose down
   private homeSet = false;
+  /** wall clock from SET_TIME: UTC ms at uptime atMs */
+  private wallclock: { unixMs: number; atMs: number; tzMin: number } | null = null;
   private killedFall = false;
 
   // ---- power ----
@@ -378,6 +380,13 @@ export class SimDrone {
         this.name = r.str(16) || this.name;
         this.emitCaps();
         return ok;
+      case OP.SET_TIME: {
+        const unixS = r.u32(), ms = r.u16(), tz = r.i16();
+        if (unixS < 1704067200 || ms > 999 || tz < -840 || tz > 840) return [AckResult.INVALID, Reason.OUT_OF_RANGE];
+        this.wallclock = { unixMs: unixS * 1000 + ms, atMs: this.uptimeMs(), tzMin: tz };
+        if (this.logOpen) this.logTime(this.logOpen.w);
+        return ok;
+      }
       default:
         return [AckResult.UNSUPPORTED, Reason.NONE];
     }
@@ -960,11 +969,19 @@ export class SimDrone {
     this.stepLogRead();
   }
 
+  /** LR_TIME, as log_task.c: after LR_INFO and when SET_TIME arrives during a log */
+  private logTime(w: LogWriter) {
+    if (!this.wallclock) return;
+    const now = this.uptimeMs(), u = this.wallclock.unixMs + (now - this.wallclock.atMs);
+    w.record(LR.TIME, { t_ms: now, unix_s: Math.floor(u / 1000), ms: u % 1000, tz_min: this.wallclock.tzMin });
+  }
+
   private openLog() {
     const t0 = this.uptimeMs();
     const id = this.logNextId++;
     const L: SimLog = { id, t0Ms: t0, w: new LogWriter(id, t0, this.logSerial), active: true };
     L.w.record(LR.INFO, { fw0: 0, fw1: 5, fw2: 0, hw_rev: "S".charCodeAt(0), format: 1, t0_ms: t0, sensors: this.sensors, name: this.name });
+    this.logTime(L.w);
     this.preEvents.filter((e) => t0 - e.t < 2000).forEach((e) => L.w.record(LR.EVENT, { t_ms: e.t, level: e.level, code: e.code, arg: e.arg }));
     this.preEvents = [];
     this.logs.push(L);

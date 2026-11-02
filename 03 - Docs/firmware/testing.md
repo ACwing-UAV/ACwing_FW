@@ -9,7 +9,8 @@ the tests that run without a board, and what each one proves.
 | FC host tests | `make` in `00 - FC_FW/Tests/host` | 93 | flight core, failsafes, TAKEOFF/LAND, altitude filter, drivers, AppTask protocol, BLE rings |
 | ExtTask, end to end | same `make` (`ext_test`) | 12 | Qwiic probing and polling, with the real bridge logic of `01 - FLOW_FW` |
 | Battery | same `make` (`power_test`) | 95 | estimator, BattTask signals, battery failsafes, BATTERY calibration, CHECKS item 1, POWER, flash image v1 → v2 |
-| Flight log | same `make` (`log_test`) | 58 | W25Q driver on a simulated chip, sector ring (wrap, re-mount, power loss), queues, LogTask policy, USB download protocol, BLE last-flight download through the AppTask |
+| Flight log | same `make` (`log_test`) | 63 | W25Q driver on a simulated chip, sector ring (wrap, re-mount, power loss), queues, LogTask policy, USB download protocol, BLE last-flight download through the AppTask, SET_TIME and LR_TIME |
+| Attitude IEKF, cold start | same `make` (`iekf_test`) | 32 | the production estimator pipeline (`app_est_config()`) re-initialised 30°–179° off, static and moving, with and without the tangential innovation ([Cold start](../theory/iekf-embedded.md#cold-start-and-re-initialisation)) |
 | Flow bridge | `make test` in `01 - FLOW_FW` | 22 | register map against the FC driver, I²C target protocol, PMW3901 sequences |
 | Frames vs app decoders | `frames.bin` and `power_frames.bin` from the FC host tests, decoded by the app (`src/protocol`) | every v2 frame | byte-for-byte layout of CAPS, FLIGHT, POWER, NAV, MOTORS, SYSTEM, EVENT, PARAM, CALIB (battery too), ACK, CHECKS |
 | Python tools | `pytest` in `02 - Tools/01 - Python` | 33 | parity of the Python filters and parsers with MATLAB; flight-log decoder on a log written by the firmware code (`log_test` → `flightlog_sample.bin`), download client against an emulated drone |
@@ -95,6 +96,24 @@ check the layouts against the app:
 The bytes must be identical, and there must be no CRC error. Last result:
 143 frames from `frames.bin` and 507 from `power_frames.bin` (POWER, battery
 CALIB, CHECKS with the battery item), 0 CRC errors, 0 mismatches.
+
+## Attitude IEKF cold start
+
+`iekf_test` runs `est_pipeline.c` (calibration, multi-rate IEKF, stillness
+detector, mag latency) with the configuration the firmware uses,
+`app_est_config()`, on simulated sensors. After the static calibration it
+calls `iekf_reset_attitude()` with an error of 30°, 90°, 150° and 179° about 6
+axes, on a still and on a rotating drone, and prints a table: how many runs
+converge below 5° for good within 10 s, the worst time, the lockouts and the
+final error. It repeats the runs with the full innovation, with the production
+$P_0$ and without the grace period. The table is in
+[IEKF on the microcontroller](../theory/iekf-embedded.md#cold-start-and-re-initialisation).
+It takes about 20 s with the sanitizers. `Tests/host/stubs/arm_math.h`
+replaces CMSIS-DSP on the PC.
+
+The C filter, the Python port (`acwing_tools.filters.embedded`) and the MATLAB
+reference (`iekfCore*.m`) were checked to give the same state to 6 digits, with
+the tangential innovation on and off and the NIS inflation on.
 
 ## Flight log across languages
 

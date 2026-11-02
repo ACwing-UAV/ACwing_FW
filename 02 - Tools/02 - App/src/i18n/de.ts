@@ -293,6 +293,7 @@ const de: Translation = {
     left: "noch {t}",
     missing: "Dieses Log ist nicht mehr auf diesem Gerät.",
     downloadedOn: "Heruntergeladen am {d}",
+    flownOn: "Geflogen am {d}",
     droppedN: "{n} Datensätze gingen auf der Drohne verloren (Warteschlange voll): einige Messwerte fehlen.",
     truncatedHint: "Der Anfang dieses Logs wurde von neueren Flügen überschrieben.",
     badN: "{n} beschädigte Sektoren oder Datensätze übersprungen.",
