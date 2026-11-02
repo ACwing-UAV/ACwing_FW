@@ -178,7 +178,13 @@
 #endif
 #define APP_LOG_RAM_KB      48u        /**< RAM log on the bench: ~14 s at ~3.4 kB/s     */
 
-/* ---------------- USB device (CDC, log download) ---------------- */
+/* ---------------- USB device (CDC: ground link, ADR 0009) ---------------- */
 #define APP_USB_CDC         1          /**< NUCLEO-WB55: USB_USER connector (CN1)       */
+/* The USB link carries the flight log, parameters, calibrations and telemetry,
+ * never flight commands; ARM, TAKEOFF and MOTOR_TEST are refused while a USB
+ * host is connected. With a program on the port it also gets the PC telemetry
+ * (STATE, INIT, STATUS, and REPLAY when enabled) that the UART carries: on the
+ * ACwing FC there is no ST-LINK virtual COM port. */
+#define APP_USB_TLM         1
 
 #endif /* APP_CONFIG_H */

@@ -21,8 +21,8 @@ flowchart LR
   ([ACwing Flow bridge](../firmware/flow-bridge.md#on-the-first-board)).
 - Tune the altitude filter ($\sigma_a$, $\sigma_b$) and the height loop on the
   first flights ([Altitude Kalman filter](../theory/altitude-kf.md#limits-and-next-steps)).
-- USB CDC on the Nucleo USB_USER port: enumeration, `acwing-tools log list/get`
-  with the RAM log ([Flight log and USB](../firmware/logging.md#status-and-limits)).
+- USB CDC on the Nucleo USB_USER port: enumeration, DTR, `acwing-tools log list/get`
+  with the RAM log, the PC telemetry over USB, ARM refused with the cable in ([Flight log and USB](../firmware/logging.md#status-and-limits)).
 - Battery chain with a bench supply on A0 (`APP_BATT_ADC 1`): levels,
   events, LAND, calibration ([Battery](../firmware/battery.md#testing)).
 
@@ -35,10 +35,9 @@ flowchart LR
   [`HANDOVER_APP.md`](https://github.com/ACwing-UAV/ACwing_FW/blob/main/02%20-%20Tools/02%20-%20App/HANDOVER_APP.md)
   are written and tested on the simulator: run them against the board. Still
   open: USB in the native Android app.
-- Log commands over BLE (iOS cannot use USB CDC) and USB as a flight link,
-  if the app needs them (HANDOVER_APP §10).
-- The PC telemetry (STATE, INIT, STATUS) over the USB CDC link too: on the
-  ACwing FC there is no ST-LINK virtual COM port.
+- The app on the USB link (Web Serial): telemetry, Settings and Calibration
+  without the flight controls (the firmware side is done, ADR 0009 and
+  [ACwing Pilot protocol v2](../firmware/protocol-v2.md#usb-a-ground-link)).
 - GNSS (ACwing GPS board): NAV, home, RTH, distance geofence, GPS compass.
 - ELRS receiver: input arbitration, radio failsafe, STICKS calibration.
 

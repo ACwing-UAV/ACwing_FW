@@ -356,7 +356,7 @@ static void test_task(void)
     log_flash_ram_init(&s_rf, s_ram, sizeof s_ram);
     appl_reset();
     params_defaults();
-    const fc_config_t fcc = { PV2_S_IMU, 4, 0, NULL, NULL, logf_event, 0 };
+    const fc_config_t fcc = { PV2_S_IMU, 4, 0, NULL, NULL, logf_event, 0, NULL };
     fc_init(&fcc);
     fc_set_ground_info(1, 0, 0);
     logf_set_clock(clock_ms);
@@ -465,8 +465,12 @@ static void test_task(void)
     run(50, 0, 1);
     const pv2_ack_t *x = ack_of(f0, PV2_OP_LOG_READ, 4, 0xFF);
     CHECK(x && x->result == PV2_ACK_INVALID && x->reason == PV2_R_OUT_OF_RANGE, "unknown id -> INVALID/OUT_OF_RANGE");
-    x = ack_of(f0, PV2_OP_ARM, 5, 0xFF);
-    CHECK(x && x->result == PV2_ACK_UNSUPPORTED && usbl_rx_errors() == 1, "only log commands over USB; bad CRC dropped");
+    {
+        appl_cmd_t fw; memset(&fw, 0, sizeof fw);
+        const int got = log_task_usb_app_take(&fw);
+        CHECK(got && fw.b[0] == PV2_OP_ARM && fw.b[1] == 5 && !ack_of(f0, PV2_OP_ARM, 5, 0xFF) && usbl_rx_errors() == 1,
+              "other USB commands go to the AppTask (which refuses ARM); bad CRC dropped");
+    }
 
     /* recording pauses while the PC talks: logMode always + USB traffic */
     { uint8_t why; params_set(70, 2.0f, &why); }
@@ -520,7 +524,7 @@ static void test_ble(void)
     tlm_ble_reset();
     params_defaults();
     { uint8_t why; params_set(50, 0.0f, &why); }
-    const fc_config_t fcc = { PV2_S_IMU, 4, 0, NULL, NULL, logf_event, 0 };
+    const fc_config_t fcc = { PV2_S_IMU, 4, 0, NULL, NULL, logf_event, 0, NULL };
     fc_init(&fcc);
     fc_set_ground_info(1, 0, 0);
     {

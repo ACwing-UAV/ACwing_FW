@@ -54,6 +54,7 @@
 #include "log_queue.h"
 #include "log_flash_ram.h"
 #include "usb_cdc.h"
+#include "usb_link.h"
 #include <string.h>
 #include <math.h>
 
@@ -594,10 +595,14 @@ static void ImuTask(void *arg)
 }
 
 /* ================================================================== */
-/* One frame to every link: UART always, BLE with its own selection */
+/* One frame to every link: UART always, USB when a program has the port open,
+ * BLE with its own selection */
 static void tx_frame(const uint8_t *f, uint16_t len)
 {
     (void)tlm_uart_send(f, len, APP_TLM_TX_TIMEOUT_MS);
+#if APP_USB_CDC && APP_USB_TLM
+    if (usbl_open(osKernelGetTickCount())) (void)usbl_put_frame(USBL_SRC_TLM, f, len);
+#endif
 #if APP_TLM_BLE
     if (len < TLM_OVERHEAD) return;
     switch (f[2]) {
@@ -725,7 +730,11 @@ void app_start(void)
     {
         const fc_config_t fc = { .sensors = 0u, .n_motors = 4u, .motors_built = MOTORS_ENABLE,
                                  .motors_arm = motors_arm, .motor_test = motor_test_hook,
-                                 .on_event = logf_event, .batt_monitor = batt };
+                                 .on_event = logf_event, .batt_monitor = batt,
+#if APP_USB_CDC
+                                 .usb_host = usbl_host,
+#endif
+                               };
         fc_init(&fc);
     }
     logf_set_clock(osKernelGetTickCount);

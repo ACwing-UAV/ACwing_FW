@@ -29,7 +29,7 @@ const de: Translation = {
   checks: {
     noBattery: "Kein Akku (USB‑Versorgung)", battMonitor: "Akkuüberwachung gestoppt",
     1: "Akku", 2: "IMU und Horizont", 3: "Kompass", 4: "GNSS", 5: "Home gesetzt", 6: "ELRS‑Funk", 7: "EKF‑Status",
-    8: "Geofence · Failsafe", 9: "Optischer Fluss", 10: "Gas auf Minimum", 11: "Kalibrierung",
+    8: "Geofence · Failsafe", 9: "Optischer Fluss", 10: "Gas auf Minimum", 11: "Kalibrierung", 12: "USB getrennt",
     state: { 0: "OK", 1: "Prüfen", 2: "Nicht bereit", 3: "k. A." },
   },
   cockpit: {
@@ -89,6 +89,7 @@ const de: Translation = {
     5: "Akku zu schwach", 6: "Home ist nicht gesetzt", 7: "der ELRS‑Funk hat die Kontrolle", 8: "die Drohne ist scharf", 9: "Propellerabbau nicht bestätigt",
     10: "die Drohne ist nicht scharf", 11: "eine Kalibrierung läuft", 12: "keine Kalibrierung aktiv", 13: "die Drohne bewegt sich",
     14: "Wert außerhalb des Bereichs", 15: "unbekannte Einstellung", 16: "Sensor nicht verbaut",
+    17: "ein USB-Kabel zu einem Computer ist angeschlossen: abziehen", 18: "über USB nicht erlaubt (Bodenverbindung)", 19: "ein anderes Gerät steuert die Einstellungen",
   },
   cmdError: { rejected: "Nicht ausgeführt: {why}", timeout: "Keine Antwort von der Drohne", offline: "Nicht verbunden", other: "Die Drohne hat den Befehl abgelehnt" },
   settings: {

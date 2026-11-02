@@ -29,7 +29,7 @@ const es: Translation = {
   checks: {
     noBattery: "Sin batería (alimentación USB)", battMonitor: "Monitor de batería detenido",
     1: "Batería", 2: "IMU y nivel", 3: "Brújula", 4: "GNSS", 5: "Home fijado", 6: "Radio ELRS", 7: "Estado EKF",
-    8: "Geovalla · failsafe", 9: "Flujo óptico", 10: "Acelerador al mínimo", 11: "Calibración",
+    8: "Geovalla · failsafe", 9: "Flujo óptico", 10: "Acelerador al mínimo", 11: "Calibración", 12: "USB desconectado",
     state: { 0: "OK", 1: "Revisar", 2: "No listo", 3: "n/d" },
   },
   cockpit: {
@@ -89,6 +89,7 @@ const es: Translation = {
     5: "batería demasiado baja", 6: "Home no fijado", 7: "la radio ELRS tiene el control", 8: "el dron está armado", 9: "no se ha confirmado la retirada de hélices",
     10: "el dron no está armado", 11: "hay una calibración en curso", 12: "no hay calibración en curso", 13: "el dron se está moviendo",
     14: "valor fuera de rango", 15: "ajuste desconocido", 16: "sensor no instalado",
+    17: "hay un cable USB conectado a un ordenador: desconéctalo", 18: "no permitido por USB (enlace de tierra)", 19: "otro dispositivo controla los ajustes",
   },
   cmdError: { rejected: "No realizado: {why}", timeout: "Sin respuesta del dron", offline: "No conectado", other: "El dron rechazó el comando" },
   settings: {

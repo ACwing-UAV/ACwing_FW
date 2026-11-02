@@ -134,7 +134,8 @@ by the PC is ignored. Both directions carry protocol v2 frames
 
 - PC → drone: type `0x20` **CMD**, payload `op, seq, args` (the same bytes as
   a BLE command write);
-- drone → PC: `0x10` LOG_ENTRY, `0x11` LOG_DATA, `0x0E` ACK.
+- drone → PC: `0x10` LOG_ENTRY, `0x11` LOG_DATA, `0x0E` ACK, and the
+  telemetry of the ground link.
 
 | Command | Op | Arguments | Answer |
 |---|---|---|---|
@@ -149,9 +150,12 @@ written), sectors u16, start time u32 (ms after power-on), bytes u32.
 The ACK always comes **after** the data, so it means "complete". LOG_READ and
 LOG_ERASE are refused with `ARMED` while armed; an unknown id is
 `INVALID / OUT_OF_RANGE`; a board without log flash answers
-`REJECTED / SENSOR_MISSING`. Other opcodes are `UNSUPPORTED`: the USB link
-carries only the log commands and SET_TIME for now. The parser resynchronises after a bad
-CRC, so a corrupted frame does not swallow the next command.
+`REJECTED / SENSOR_MISSING`. The LogTask executes the log commands and
+SET_TIME; it passes every other command to the AppTask, which carries
+parameters, calibrations and telemetry over USB and refuses the flight
+commands ([USB: a ground link](protocol-v2.md#usb-a-ground-link)). The parser
+resynchronises after a bad CRC, so a corrupted frame does not swallow the
+next command.
 
 CAPS bit 11 FLASH_LOG is set when a log store is mounted, and SYSTEM.log is
 the percentage of sectors in use.

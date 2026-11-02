@@ -133,7 +133,7 @@ static void test_ack_cache(void)
 static void fc_setup(uint16_t sensors)
 {
     appl_reset();
-    const fc_config_t c = { sensors, 4, 0, NULL, NULL, NULL, 0 };
+    const fc_config_t c = { sensors, 4, 0, NULL, NULL, NULL, 0, NULL };
     fc_init(&c);
     params_defaults();
     fc_set_ground_info(1, 0, 0);
@@ -555,7 +555,7 @@ static void test_app(void)
         fsh_est_write(&e);
         fsh_apply_t a; while (fsh_apply_take(&a)) {}
     }
-    { const fc_config_t c = { 0, 4, 0, NULL, NULL, NULL, 0 }; fc_init(&c); }
+    { const fc_config_t c = { 0, 4, 0, NULL, NULL, NULL, 0, NULL }; fc_init(&c); }
     app_task_cfg_t ac; memset(&ac, 0, sizeof ac);
     ac.hw_rev = 'N'; ac.n_motors = 4; ac.uid[0] = 0x12345678; ac.get_init = fake_init;
     app_init(&ac);

@@ -83,6 +83,7 @@ nav:
       - decisions/0006-flow-bridge-mcu.md
       - decisions/0007-battery-task.md
       - decisions/0008-flash-log-and-usb-cdc.md
+      - decisions/0009-usb-ground-link.md
   - Project:
       - Lessons learned: project/lessons-learned.md
       - Roadmap: project/roadmap.md

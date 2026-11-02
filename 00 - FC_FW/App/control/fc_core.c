@@ -242,6 +242,13 @@ static void exec(const fc_cmd_t *c, uint32_t now, uint8_t est_running)
     if (s_batt_lock && (c->op == PV2_OP_SET_MODE || c->op == PV2_OP_HOLD || c->op == PV2_OP_RTH ||
                         c->op == PV2_OP_TAKEOFF)) { REJ(PV2_R_BATTERY_LOW); return; }
 
+    /* a cable to a PC: no arming, no take-off, no spinning motors (ADR 0009) */
+    if ((c->op == PV2_OP_ARM || c->op == PV2_OP_TAKEOFF || c->op == PV2_OP_MOTOR_TEST) &&
+        s_cfg.usb_host && s_cfg.usb_host()) {
+        if (c->op == PV2_OP_ARM && s_armed) { REJ(PV2_R_ARMED); return; }
+        REJ(PV2_R_USB_CONNECTED); return;
+    }
+
     switch (c->op) {
     case PV2_OP_ARM: {
         if (c->len < 2u || p[0] != PV2_ARM_MAGIC0 || p[1] != PV2_ARM_MAGIC1) { INVALID(PV2_R_NONE); return; }

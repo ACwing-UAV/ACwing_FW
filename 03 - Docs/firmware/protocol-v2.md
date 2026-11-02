@@ -167,6 +167,44 @@ field references change; GYRO moves the IEKF bias by the same amount. BATTERY
 [Battery](battery.md#battery-calibration-106). FLOW_TOF is `UNSUPPORTED` for
 now; STICKS and MOTORS are `SENSOR_MISSING`.
 
+## USB: a ground link
+
+The USB CDC port carries the protocol too, but never flies the drone
+([ADR 0009](../decisions/0009-usb-ground-link.md), contract in
+`HANDOVER_FW.md` §5.2):
+
+```mermaid
+flowchart LR
+  PC["PC program<br/>(Web Serial, Python, MATLAB)"] -- "CMD frames" --> LT["LogTask<br/>USB RX"]
+  LT -- "LOG_*, SET_TIME" --> LT
+  LT -- "other commands<br/>(SPSC queue)" --> AT["AppTask"]
+  AT -- "PARAM_*, CAL_*, REQUEST,<br/>STREAM_RATES, SET_NAME" --> OK["executed"]
+  AT -- "ARM, KILL, RC, TAKEOFF, ..." --> NO["REJECTED / NOT_OVER_USB"]
+  AT -- "telemetry, events, ACKs" --> R1["APP ring"]
+  LT -- "log answers" --> R0["LOG ring"]
+  TT["TelemetryTask"] -- "STATE, INIT, STATUS" --> R2["TLM ring"]
+  R0 & R1 & R2 --> EP["USB IN endpoint<br/>(whole frames)"]
+```
+
+- **Allowed:** parameters, calibrations, REQUEST, STREAM_RATES, SET_NAME, the
+  log commands and SET_TIME. Every flight command is answered
+  `REJECTED / NOT_OVER_USB` (18) and USB never feeds the app-link failsafe.
+- **No arming with a computer attached:** while a USB host has the device
+  configured, the flight core refuses ARM, TAKEOFF and MOTOR_TEST from any
+  link with `REJECTED / USB_CONNECTED` (17), and CHECKS item 12 "USB" is in
+  FAIL. A charger does not enumerate and does not block. DISARM, LAND and KILL
+  always work.
+- **The first link opened has control** of the configuration. BLE is open
+  while subscribed; USB while a program holds the port (DTR) or sent a
+  command in the last 3 s. Configuration changes from the other link are
+  refused with `REJECTED / OTHER_LINK` (19); reads, requests and CAL_ABORT
+  are allowed from both, telemetry and events go to both, ACKs only to the
+  link of the command (separate ACK-cache entries). Control passes when the
+  owner closes; a calibration started over USB is aborted when USB closes.
+- **PC telemetry:** with a program on the port the TelemetryTask also sends
+  STATE, INIT and STATUS (`APP_USB_TLM`), as on the UART: on the ACwing FC
+  there is no ST-LINK virtual COM port.
+
 ## Firmware extensions
 
 Additions that the handover does not list yet. The app knows the parameters
@@ -181,5 +219,7 @@ described in
 | PARAM | 23 battCapacity (mAh, 0 = unknown) | coulomb counting and POWER.remain |
 | PARAM | 24 battCells (0 = detect) | forces the cell count |
 | PARAM | 70 logMode (0 off, 1 armed, 2 always) | flight log, listed with CAPS FLASH_LOG |
+| ACK reason | 17 USB_CONNECTED, 18 NOT_OVER_USB, 19 OTHER_LINK | see [USB: a ground link](#usb-a-ground-link) |
+| CHECKS | 12 USB | FAIL while a USB host is connected: no ARM |
 | Command | 0x43 SET_TIME | wall clock for the flight log, any state, BLE and USB (firmware 0.6). See [Flight log and USB](logging.md#wall-clock) |
 | Command | 0x50 LOG_LIST, 0x51 LOG_READ, 0x52 LOG_ERASE | USB: every log; BLE: LIST and READ of the last flight only, ERASE unsupported. See [Flight log and USB](logging.md#over-bluetooth-the-last-flight) |

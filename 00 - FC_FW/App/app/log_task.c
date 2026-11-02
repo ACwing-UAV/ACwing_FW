@@ -9,6 +9,7 @@
 #include "fc_core.h"
 #include "params.h"
 #include "spsc.h"
+#include "app_link.h"
 #include <string.h>
 
 /* where a command came from, and where its answer goes */
@@ -17,6 +18,8 @@ enum { PORT_USB = 0, PORT_BLE = 1 };
 /* BLE: commands from the AppTask, answer frames back to it (it owns the BLE HI ring) */
 SPSC_DEFINE(s_blein,  log_cmd_t, 4u);
 SPSC_DEFINE(s_bleout, log_msg_t, 8u);
+/* USB: the commands that are not the LogTask's, to the AppTask (ADR 0009) */
+SPSC_DEFINE(s_usbapp, appl_cmd_t, 8u);
 
 static log_task_cfg_t   s_cfg;
 static uint8_t          s_mounted;
@@ -57,11 +60,12 @@ void log_task_init(const log_task_cfg_t *cfg)
     s_was_armed = 0u; s_disarm_ms = 0u; s_have_cmd = 0u; s_npre = 0u;
     memset(&s_rd, 0, sizeof s_rd);
     memset(&s_clk, 0, sizeof s_clk);
-    spsc_reset(&s_blein); spsc_reset(&s_bleout);
+    spsc_reset(&s_blein); spsc_reset(&s_bleout); spsc_reset(&s_usbapp);
 }
 
 int log_task_ble_cmd(const log_cmd_t *c) { return spsc_push(&s_blein, c); }
 int log_task_ble_take(log_msg_t *m)      { return spsc_pop(&s_bleout, m); }
+int log_task_usb_app_take(appl_cmd_t *c) { return spsc_pop(&s_usbapp, c); }
 
 uint8_t log_task_pct(void)  { return s_pct; }
 uint8_t log_task_busy(void) { return s_rd.on; }
@@ -313,9 +317,19 @@ static void read_stream(uint8_t armed)
 }
 
 /* ------------------------------------------------------------------ step */
-/* a log command pauses the recording (LOG_USB_PAUSE_MS); SET_TIME and the
- * heartbeat do not, the app sends them at every connection */
-static int pauses(uint8_t op) { return op != PV2_OP_SET_TIME && op != PV2_OP_HEARTBEAT; }
+/* a log command pauses the recording (LOG_USB_PAUSE_MS); SET_TIME, the
+ * heartbeat and the AppTask's commands do not */
+static int is_log_op(uint8_t op) { return op == PV2_OP_LOG_LIST || op == PV2_OP_LOG_READ || op == PV2_OP_LOG_ERASE; }
+static int pauses(uint8_t op)    { return is_log_op(op); }
+
+/* a USB command for the AppTask (parameters, calibrations, requests ...) */
+static void to_app(const uint8_t *c, uint32_t n)
+{
+    appl_cmd_t a;
+    a.len = (uint8_t)(n > APPL_CMD_MAX ? APPL_CMD_MAX : n);
+    memcpy(a.b, c, a.len);
+    if (spsc_push(&s_usbapp, &a) != 0) ack(PORT_USB, c[0], c[1], PV2_ACK_BUSY, PV2_R_NONE);
+}
 
 void log_task_step(uint32_t now)
 {
@@ -325,7 +339,9 @@ void log_task_step(uint32_t now)
 
     uint8_t c[USBL_CMD_MAX];
     uint32_t n;
-    while ((n = usbl_poll(c, sizeof c)) != 0u) {
+    while ((n = usbl_poll(c, sizeof c, now)) != 0u) {
+        if (c[0] == PV2_OP_HEARTBEAT) continue;          /* keeps the USB link open only */
+        if (!is_log_op(c[0]) && c[0] != PV2_OP_SET_TIME) { to_app(c, n); continue; }
         if (pauses(c[0])) { s_cmd_ms = now; s_have_cmd = 1u; }
         cmd(PORT_USB, c, n, f.armed, now);
     }
@@ -362,7 +378,7 @@ static void LogTask(void *arg)
     (void)arg;
     for (;;) {
         log_task_step(osKernelGetTickCount());
-        osDelay(log_task_busy() ? 1u : 10u);
+        osDelay(log_task_busy() ? 1u : (usbl_open(osKernelGetTickCount()) ? 2u : 10u));   /* USB open: drains the TX rings faster */
     }
 }
 

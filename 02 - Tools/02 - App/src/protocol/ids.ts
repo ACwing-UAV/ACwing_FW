@@ -120,6 +120,12 @@ export enum Reason {
   OUT_OF_RANGE = 14,
   UNKNOWN_PARAM = 15,
   SENSOR_MISSING = 16,
+  /** ARM / TAKEOFF / MOTOR_TEST while a USB host is connected (firmware >= 0.6) */
+  USB_CONNECTED = 17,
+  /** flight command over the USB link: ground link only */
+  NOT_OVER_USB = 18,
+  /** configuration change from the link that does not have control (the first link opened has it) */
+  OTHER_LINK = 19,
 }
 
 export enum FlightMode {
@@ -275,6 +281,8 @@ export enum CheckId {
   FLOW = 9,
   THROTTLE = 10,
   CALIBRATION = 11,
+  /** FAIL while a USB host is connected: no ARM (firmware >= 0.6) */
+  USB = 12,
 }
 
 export enum CheckState {

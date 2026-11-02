@@ -77,6 +77,9 @@ typedef struct {
     /** every event also goes here (flight-control context), e.g. to the log; may be NULL */
     void   (*on_event)(const fc_event_t *e);
     uint8_t  batt_monitor;           /**< a BattTask measures the battery          */
+    /** 1 while a USB host is connected: ARM, TAKEOFF and MOTOR_TEST are refused
+     *  (USB_CONNECTED, ADR 0009); may be NULL (no USB) */
+    uint8_t (*usb_host)(void);
 } fc_config_t;
 
 /** published state (AppTask builds FLIGHT / MOTORS from it) */

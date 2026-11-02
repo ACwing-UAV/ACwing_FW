@@ -1193,6 +1193,8 @@ export class SimDrone {
       { id: CheckId.FAILSAFE, state: CheckState.OK, value: Math.round(this.p("gfMaxDist")) },
       // value: low byte = calibrations required (bit = CalType - 1), high byte = recommended
       { id: CheckId.CALIBRATION, state: this.compassCalibrated ? CheckState.OK : CheckState.WARN, value: this.compassCalibrated ? 0 : (1 << (CalType.COMPASS - 1)) << 8 },
+      // 12 USB: the simulator is never plugged into a computer
+      { id: CheckId.USB, state: CheckState.OK, value: 0 },
     ];
     const ready = items.every((i) => i.state !== CheckState.FAIL);
     return { ready, items };
