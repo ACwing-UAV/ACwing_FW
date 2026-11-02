@@ -61,6 +61,7 @@ void iekf_default_config(iekf_config_t *c)
     c->decouple      = 0;
     c->dip_tol       = 0.0f;
     c->reset_jacobian = 1;
+    c->tangent_innov  = 1;
     c->infl_max        = 1e4f;
     c->lockout_updates = 0;
     c->lockout_p_bump  = 0.0f;
@@ -107,7 +108,8 @@ void iekf_propagate_dtheta(iekf_t *f, const float dtheta[3], float h)
     so3_orthonormalize(f->R);
     memcpy(f->E_last, E, sizeof E);
 
-    /* F depends ONLY on the measured rate (group-affine property) */
+    /* F does not depend on R_hat (group-affine propagation): it depends on the
+     * measured rate and on the bias estimate, through phi = dtheta - b*h */
     memset(f->wF, 0, sizeof f->wF);
     for (int i = 0; i < NX; ++i) f->wF[i*NX + i] = 1.0f;
     for (int r = 0; r < 3; ++r) {
@@ -175,6 +177,16 @@ static void condition_covariance(iekf_t *f)
 
 typedef enum { PROJ_NONE = 0, PROJ_TILT_ONLY = 1, PROJ_YAW_ONLY = 2 } proj_t;
 
+/* Keeps only the part of e orthogonal to the unit vector u: the radial part of a
+ * normalised-vector innovation, (1 - cos eps) along yhat, is not in the range of
+ * H = [[yhat]x 0], so it carries no correction and would be weighted by R alone
+ * in the NIS (spurious inflation for large errors). */
+static void tangent_part(float e[3], const float u[3])
+{
+    const float d = vec3_dot(e, u);
+    for (int i = 0; i < 3; ++i) e[i] -= d * u[i];
+}
+
 /* Projects the columns of K (attitude and bias rows) w.r.t. the vertical axis
  * expressed in the body frame, a = R' * g_ref:
  *   TILT_ONLY: removes the component along a -> the measurement cannot touch yaw
@@ -225,6 +237,7 @@ static float vector_update(iekf_t *f, const float y[3], const float yhat[3], flo
     mmul(f->wPHt, f->P, NX, NX, f->wHt, 3);       /* P H'         6x3 */
     mmul(S0, f->wH, 3, NX, f->wPHt, 3);           /* H P H'       3x3 */
     for (int i = 0; i < 3; ++i) innov[i] = y[i] - yhat[i];
+    if (f->cfg.tangent_innov) tangent_part(innov, yhat);
 
     /* NIS with the nominal R */
     float nis = 0.0f;
@@ -310,6 +323,7 @@ int iekf_update_acc(iekf_t *f, const float acc[3])
     const float r = adaptive_var(f->cfg.sigma_acc * f->cfg.sigma_acc, na, f->nom_acc,
                                  f->cfg.acc_tol, f->cfg.adaptive, &f->last_acc_dev);
     for (int i = 0; i < 3; ++i) f->last_acc_innov_b[i] = y[i] - yhat[i];
+    if (f->cfg.tangent_innov) tangent_part(f->last_acc_innov_b, yhat);   /* as in vector_update */
     const int trusted = f->acc_trusted || f->acc_grace > 0;
     if (f->acc_grace > 0) f->acc_grace--;
     if (trusted) f->acc_infl = 1.0f;
@@ -394,4 +408,21 @@ int iekf_update_mag_ex(iekf_t *f, const float mag[3], float extra_var)
 void iekf_get_quat(const iekf_t *f, float q[4])
 {
     so3_to_quat(f->R, q);
+}
+
+void iekf_reset_attitude(iekf_t *f, const float R0[9], float p0_att)
+{
+    memcpy(f->R, R0, sizeof f->R);
+    so3_orthonormalize(f->R);
+    for (int r = 0; r < 3; ++r)
+        for (int c = 0; c < NX; ++c) {
+            f->P[r*NX + c] = (r == c) ? p0_att : 0.0f;     /* attitude rows */
+            f->P[c*NX + r] = (r == c) ? p0_att : 0.0f;     /* attitude columns */
+        }
+    f->acc_infl = f->mag_infl = 1.0f;
+    f->acc_gated_run = 0;
+    f->acc_grace = f->cfg.grace_updates;
+    memset(f->innov_w_mean, 0, sizeof f->innov_w_mean);
+    f->innov_w_pow = 0.0f;
+    condition_covariance(f);
 }

@@ -1,7 +1,7 @@
 # 0001. Attitude: invariant EKF on SO(3)
 
 - **Status:** Accepted
-- **Date:** phase 1 (recorded on 2026-10-27)
+- **Date:** phase 1 (recorded on 2026-10-27; revised on 2026-11-02 after the c4dynamics review)
 
 ## Context
 
@@ -23,9 +23,14 @@ extensions: [IEKF on the microcontroller](../theory/iekf-embedded.md).
 
 ## Consequences
 
-- The error dynamics do not depend on the estimate (invariance). The Jacobians
-  are the same along any trajectory, and convergence from large errors is
-  good, which a quaternion EKF cannot promise.
+- The propagation of the error does not depend on the attitude estimate
+  (group-affine kinematics). The measurement Jacobian does, through the
+  predicted direction $\hat R^\top v$. Convergence from large errors is much
+  better than with an Euler-angle EKF up to about 90°, slower beyond, and not
+  guaranteed near 180° (measured by the cold-start test, see
+  [IEKF on the microcontroller](../theory/iekf-embedded.md#cold-start-and-re-initialisation)).
+  What matters is the group representation (a rotation matrix or a
+  quaternion) instead of Euler angles, not the storage.
 - A 6-state filter with 3-component vector updates fits easily in float32 at
   960 Hz.
 - The reference is a MATLAB filter kept unchanged. The firmware streams the
@@ -37,7 +42,13 @@ extensions: [IEKF on the microcontroller](../theory/iekf-embedded.md).
 - **Complementary / Mahony / Madgwick filters.** Lighter, but they have no
   covariance and give no consistent uncertainty for gating, and their gains
   are tuned by hand.
-- **Multiplicative EKF on quaternions.** It works, but its linearisation
-  depends on the estimate, and it is less robust to large initial errors.
+- **Multiplicative EKF on quaternions.** Equivalent in structure for an
+  attitude-only filter with a body-frame error. Rejected for simplicity: no
+  unit-norm constraint, no double cover, and the measurement model
+  $y = R^\top v$ is direct.
+- **Right-invariant error** $\eta = \hat R R^\top$. The Jacobian of a world
+  direction seen in the body frame becomes $[v]_\times$, independent of
+  $\hat R$. Kept as an option to test in MATLAB if large-error convergence
+  becomes a requirement (hand launch).
 - **Full navigation filter (attitude + velocity + position).** Out of scope
   for phase 1, and the expansion sensors did not exist yet.

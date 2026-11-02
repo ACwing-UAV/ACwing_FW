@@ -12,6 +12,8 @@ flowchart LR
 
 - Run the acceptance tests of `HANDOVER_FW.md` §16 with the ACwing Pilot app
   (see [ACwing Pilot protocol v2](../firmware/protocol-v2.md)).
+- A mode-0 capture with firmware 0.6 to re-baseline the IEKF comparison with
+  the tangential innovation ([Validation](../tools/validation.md#results)).
 - Hand test of TAKEOFF / LAND on the bench
   ([Flight core](../firmware/flight-core.md#testing-on-the-bench)).
 - ACwing Flow: program the bridge, then check the LED, CAPS and the flow axis
@@ -76,3 +78,12 @@ When the first boards are built:
 - Motor power stage and mixer; DShot on the ACwing FC.
 - A **thrust model** in the estimators: rejecting sustained accelerations in
   the IEKF acc update, and as an input of the altitude filter.
+- On the first flight logs (c4dynamics review, 2026-11), compare for the IEKF
+  accelerometer noise: the current $\sigma_{acc}$ (sensor scatter only), a
+  model-error term $\sigma_{acc}^2 = \text{scatter}^2 + \sigma_{sf}^2$ with
+  $\sigma_{sf}$ ≈ 0.05–0.1, and the thrust model. In the notebook the extra
+  error of unmodelled acceleration was mostly heading.
+- Check the gyro bias estimate in the flight logs (`LR_EST`, 0.1 mrad/s): it
+  must stay within its calibration value during manoeuvres (bias leakage).
+- Option: a right-invariant error, if hand launch makes large-error
+  convergence a requirement (MATLAB first, against the cold-start test).

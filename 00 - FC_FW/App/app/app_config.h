@@ -64,6 +64,10 @@
  * is persistent in the world frame (a true error, not shaking), after
  * IEKF_LOCKOUT_S the covariance is reopened and the accelerometer trusted again. */
 #define IEKF_RESET_JACOBIAN    1
+/* Tangential vector innovation: the radial part of y - yhat (along yhat) is
+ * dropped, it is outside the range of H and only inflated the NIS of large
+ * errors (see 03 - Docs/theory/iekf-embedded.md, "Tangential innovation"). */
+#define IEKF_TANGENT_INNOV     1
 #define IEKF_INFL_MAX          100.0f
 #define IEKF_LOCKOUT_S         0.5f
 #define IEKF_LOCKOUT_BUMP      ((10.0f * DEG2RAD_F) * (10.0f * DEG2RAD_F))

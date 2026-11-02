@@ -185,7 +185,8 @@ opts = struct('R0', R0, 'b0', I.b0(:), 'estimateBias', I.estimateBias, 'P0', P0,
               'tiltCompensatedMag', I.tiltComp);
 
 extActive = I.accNisGate > 0 || I.magNisGate > 0 || I.dipTol > 0 || ...
-            I.resetJacobian || I.decouple || nExtra > 0 || I.lockoutUpdates > 0;
+            I.resetJacobian || I.decouple || nExtra > 0 || I.lockoutUpdates > 0 || ...
+            I.tangentInnov;
 
 % ---------------- ORIGINAL MATLAB filter ----------------
 [Ro, bo, Po] = iekfAttitude(gyro, acc, mag, dt, I.gRef(:), I.mRef(:), opts);
@@ -261,7 +262,7 @@ else
     optsE = opts;
     optsE.accNisGate = I.accNisGate;  optsE.magNisGate = I.magNisGate;
     optsE.dipTol = I.dipTol;          optsE.decouple = I.decouple;
-    optsE.resetJacobian = I.resetJacobian;
+    optsE.resetJacobian = I.resetJacobian;  optsE.tangentInnov = I.tangentInnov;
     optsE.nomAcc = I.nomAcc;          optsE.nomMag = I.nomMag;
     optsE.inflMax = I.inflMax;        optsE.inflDecay = I.inflDecay;
     optsE.lockoutUpdates = I.lockoutUpdates;  optsE.graceUpdates = I.graceUpdates;
@@ -409,6 +410,7 @@ cfg.estimateBias = I.estimateBias; cfg.adaptive = I.adaptive; cfg.tiltCompMag = 
 cfg.accNisGate = I.accNisGate; cfg.magNisGate = I.magNisGate;
 cfg.inflDecay  = I.inflDecay;  cfg.dipTol = I.dipTol;
 cfg.decouple   = I.decouple;   cfg.resetJacobian = I.resetJacobian;
+cfg.tangentInnov = I.tangentInnov;
 cfg.inflMax = I.inflMax; cfg.lockoutUpdates = I.lockoutUpdates; cfg.lockoutPBump = I.lockoutPBump;
 cfg.graceUpdates = I.graceUpdates; cfg.persistDecay = I.persistDecay;
 cfg.persistRatio = I.persistRatio; cfg.persistMin = I.persistMin;

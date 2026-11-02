@@ -50,10 +50,10 @@ $$
 $$
 
 Because the kinematics are *group-affine*, these dynamics are **autonomous**: the
-Jacobian depends only on the measured rate, never on the estimate $\hat R$.
-This is what distinguishes the IEKF from a classical multiplicative EKF and
-gives it consistent covariance even when the estimate is far off (fast
-convergence from a bad initialisation).
+Jacobian does not depend on the estimate $\hat R$. It depends on the measured
+rate and on the bias estimate, through $\hat\omega = \omega_m - \hat b$. This
+is what distinguishes the IEKF from an Euler-angle EKF: the propagated
+covariance stays consistent even when the attitude estimate is far off.
 
 ## Propagation (discrete, step $h$)
 
@@ -108,7 +108,21 @@ $$
 ## Update and retraction
 
 $$
-S = H P H^\top + R_m, \qquad K = P H^\top S^{-1}, \qquad \delta x = K\,(y - \hat y)
+S = H P H^\top + R_m, \qquad K = P H^\top S^{-1}, \qquad \delta x = K\,e
+$$
+
+**Tangential innovation.** With unit vectors, $y - \hat y$ has a component
+along $\hat y$ of size $1-\cos\varepsilon$ ($\varepsilon$ = angle between $y$ and
+$\hat y$). It is outside the range of $H$: no attitude error of the linear model
+explains it. For an isotropic $R_m$, $\hat y$ is an eigenvector of $S$
+(eigenvalue $\sigma^2$, because $H^\top \hat y = 0$), so $K\hat y = 0$: the
+radial part never changes the state. It does enter the NIS,
+$\approx (1-\cos\varepsilon)^2/\sigma^2$ whatever $P$ is, and the NIS drives the
+inflation of [Robustness to external accelerations](iekf-embedded.md#robustness-to-external-accelerations).
+The filter therefore uses only the tangential part:
+
+$$
+e = (y - \hat y) - \big((y - \hat y)\cdot\hat y\big)\,\hat y .
 $$
 
 $$
@@ -127,12 +141,22 @@ magnetometer update.
 
 **Error dynamics as a linear system.** Between updates the error evolves as
 $x_{k+1} = F_k x_k + w_k$, with $F_k$ from [Propagation (discrete, step $h$)](#propagation-discrete-step-h). At an update,
-$x^+ = (I - K_k H_k)\,x^-$. Both $F_k$ and $H_k$ depend only on the measured
-rate and on the *predicted* measurement direction $\hat y = \hat R^\top v$,
-never on how wrong $\hat R$ is. The closed-loop error dynamics are therefore
-the same for small and large errors. This is the practical benefit of the
-invariant formulation: the covariance stays consistent and the filter
-converges from any initial attitude without tuning for it.
+$x^+ = (I - K_k H_k)\,x^-$. $F_k$ depends only on the bias-corrected
+measured rate, never on $\hat R$ (group-affine propagation). $H_k$ depends on
+$\hat R$ through $\hat y = \hat R^\top v$: with this error definition the
+invariance property applies to the propagation, not to the update. In the
+c4dynamics simulation (2026-11 review) the filter converges an order of magnitude faster than an
+Euler-angle EKF from errors up to about 90°; beyond that convergence slows
+down, and near 180° the correction direction is ill-defined for any local
+linearisation, so it is not guaranteed. The firmware cold-start test
+([Cold start and re-initialisation](iekf-embedded.md#cold-start-and-re-initialisation))
+measures it on the production configuration.
+
+A **right-invariant** error $\eta = \hat R R^\top$ would make the Jacobian of a
+world-direction measurement $[v]_\times$, independent of $\hat R$, so the whole
+filter would be invariant (only "imperfectly" with the bias). It is not used:
+it is an option to test in MATLAB against the cold-start test if large-error
+convergence becomes a requirement (hand launch).
 
 **Observability.** $[\hat y]_\times$ has rank 2, and its null space is
 $\hat y$ itself: a vector measurement corrects the two error components

@@ -119,6 +119,14 @@ The output struct contains `t`, `eulEmb`, `eulMatlab` (original), `eulRef`
 | **Board capture, mode 0 vs extended** (21.7 s, 5137 windows, no gaps) | 5.6·10⁻⁴ ° (RMS 1.5·10⁻⁴ °) | 1.2·10⁻⁴ °/s | 1.5·10⁻⁴ | **MATCH** (attitude 0.002 σ, bias 0.001 σ) |
 | Board capture, mode 0 vs **original** | max 91.0° (RMS 23.2°); during acc inflation max 78.2°, elsewhere max 91.0° (RMS 13.9°) | | | expected, see below |
 
+The board rows were captured with firmware 0.5, before the tangential
+innovation (`IEKF_TANGENT_INNOV`, firmware 0.6). The INIT frame carries it as
+flag `0x20`, and the MATLAB and Python comparisons apply it only when the flag
+is set, so the old captures still compare exactly. **To do on the board:** a new
+mode-0 capture with firmware 0.6, to re-baseline the extended comparison with
+the projection on (expected: the same MATCH, the radial part is second order
+for small errors).
+
 Largest angle differences in the board mode-0 capture, embedded vs extended:
 roll 7.8·10⁻⁴ °, pitch 1.7·10⁻⁴ °, yaw 8.5·10⁻⁴ °.
 

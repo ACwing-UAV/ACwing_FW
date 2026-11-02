@@ -171,7 +171,7 @@ def compare_embedded(capture_file, do_plot: bool = True, show: bool = True) -> S
                 sigmaMag=I.sigmaMag, adaptive=I.adaptive, accTol=I.accTol, magTol=I.magTol,
                 tiltCompensatedMag=I.tiltComp)
     ext_active = (I.accNisGate > 0 or I.magNisGate > 0 or I.dipTol > 0 or I.resetJacobian
-                  or I.decouple or n_extra > 0 or I.lockoutUpdates > 0)
+                  or I.decouple or n_extra > 0 or I.lockoutUpdates > 0 or I.tangentInnov)
 
     # ---------------- ORIGINAL filter ----------------
     Ro, bo, Po = iekf_attitude(gyro, acc, mag, dt, I.gRef, I.mRef, opts)
@@ -218,7 +218,8 @@ def compare_embedded(capture_file, do_plot: bool = True, show: bool = True) -> S
         print(f"    rest of the time                  : max {(rest.max() if rest.size else 0.0):.3f} deg, "
               f"RMS {(np.sqrt(np.mean(rest ** 2)) if rest.size else 0.0):.3f} deg")
         optsE = dict(opts, accNisGate=I.accNisGate, magNisGate=I.magNisGate, dipTol=I.dipTol,
-                     decouple=I.decouple, resetJacobian=I.resetJacobian, nomAcc=I.nomAcc,
+                     decouple=I.decouple, resetJacobian=I.resetJacobian,
+                     tangentInnov=I.tangentInnov, nomAcc=I.nomAcc,
                      nomMag=I.nomMag, inflMax=I.inflMax, inflDecay=I.inflDecay,
                      lockoutUpdates=I.lockoutUpdates, graceUpdates=I.graceUpdates,
                      lockoutPBump=I.lockoutPBump, persistDecay=I.persistDecay,
@@ -295,6 +296,7 @@ def _replay_adapted(I, W) -> Struct:
                           ("accNisGate", "accNisGate"), ("magNisGate", "magNisGate"),
                           ("inflDecay", "inflDecay"), ("dipTol", "dipTol"),
                           ("decouple", "decouple"), ("resetJacobian", "resetJacobian"),
+                          ("tangentInnov", "tangentInnov"),
                           ("inflMax", "inflMax"), ("lockoutUpdates", "lockoutUpdates"),
                           ("lockoutPBump", "lockoutPBump"), ("graceUpdates", "graceUpdates"),
                           ("persistDecay", "persistDecay"), ("persistRatio", "persistRatio"),

@@ -33,4 +33,5 @@ I.adaptive      = bitand(fl, 2)  > 0;
 I.tiltComp      = bitand(fl, 4)  > 0;
 I.decouple      = bitand(fl, 8)  > 0;
 I.resetJacobian = bitand(fl, 16) > 0;
+I.tangentInnov  = bitand(fl, 32) > 0;   % firmware 0.6.0+
 end
