@@ -4,8 +4,10 @@
  *        (telemetry/usb_link.h).
  *
  * usb_cdc_init() starts the USB device. Received bytes go to usbl_rx_isr()
- * from the USB interrupt. usb_cdc_pump(), called by the LogTask, moves queued
- * TX bytes to the IN endpoint whenever the previous transfer has finished.
+ * from the USB interrupt, DTR (SET_CONTROL_LINE_STATE) to usbl_set_dtr().
+ * usb_cdc_pump(), called by the LogTask, reports the configured state
+ * (usbl_set_configured()) and moves queued TX bytes to the IN endpoint
+ * whenever the previous transfer has finished.
  * The line coding set by the PC (baud rate, ...) is ignored: CDC runs at the
  * USB rate.
  */

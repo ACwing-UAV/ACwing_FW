@@ -9,6 +9,9 @@ yhat = f.R.' * f.gRef;
 
 [r, f.lastAccDev] = adaptiveVar(f.cfg.sigmaAcc^2, na, f.nomAcc, f.cfg.accTol, f.cfg.adaptive);
 f.lastAccInnovB = y - yhat;
+if f.cfg.tangentInnov                                  % as in iekfVectorUpdate
+    f.lastAccInnovB = f.lastAccInnovB - (f.lastAccInnovB.' * yhat) * yhat;
+end
 trusted = f.accTrusted || f.accGrace > 0;
 if f.accGrace > 0, f.accGrace = f.accGrace - 1; end
 if trusted, f.accInfl = 1; end

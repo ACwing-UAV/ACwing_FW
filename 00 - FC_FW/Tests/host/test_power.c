@@ -208,7 +208,7 @@ static void bt_setup(uint16_t sensors)
 {
     appl_reset();
     params_defaults();
-    const fc_config_t c = { sensors, 4, 0, NULL, NULL, on_event, 1 };
+    const fc_config_t c = { sensors, 4, 0, NULL, NULL, on_event, 1, NULL };
     fc_init(&c);
     fc_set_ground_info(1, 0, 0);
     s_nev = 0;

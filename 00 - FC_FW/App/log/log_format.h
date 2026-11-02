@@ -17,7 +17,8 @@
  * skips to the next sector. All values little-endian, packed.
  *
  * The PC decoders (02 - Tools) follow this file: change both together and
- * bump LOG_FORMAT.
+ * bump LOG_FORMAT. A NEW record type does not need a new format: readers
+ * skip the types they do not know (LR_TIME was added that way, firmware 0.6).
  */
 #ifndef LOG_FORMAT_H
 #define LOG_FORMAT_H
@@ -48,6 +49,7 @@ typedef struct {
 /* ---- record types ---- */
 enum {
     LR_INFO   = 0x01,     /**< first record of a log                           */
+    LR_TIME   = 0x02,     /**< wall clock: after LR_INFO, and when it is set    */
     LR_ATT    = 0x10,     /**< attitude and IMU, 50 Hz                          */
     LR_VERT   = 0x11,     /**< vertical estimate and loop, 50 Hz                */
     LR_FLIGHT = 0x12,     /**< flight core state, 10 Hz                         */
@@ -65,6 +67,13 @@ typedef struct {          /**< LR_INFO */
     uint16_t sensors;     /**< CAPS bits                                       */
     char     name[16];
 } log_info_t;             /**< 27 */
+
+typedef struct {          /**< LR_TIME: wall clock at uptime t_ms (set by the app) */
+    uint32_t t_ms;
+    uint32_t unix_s;      /**< UTC, seconds since 1970                          */
+    uint16_t ms;
+    int16_t  tz_min;      /**< local time offset of the phone, minutes          */
+} log_time_t;             /**< 12 */
 
 typedef struct {          /**< LR_ATT */
     uint32_t t_ms;
@@ -134,6 +143,7 @@ typedef struct {          /**< LR_DROP */
 
 _Static_assert(sizeof(log_sector_hdr_t) == LOG_HDR_SIZE, "sector header");
 _Static_assert(sizeof(log_info_t)   == 27, "LR_INFO");
+_Static_assert(sizeof(log_time_t)   == 12, "LR_TIME");
 _Static_assert(sizeof(log_att_t)    == 24, "LR_ATT");
 _Static_assert(sizeof(log_vert_t)   == 25, "LR_VERT");
 _Static_assert(sizeof(log_flight_t) == 15, "LR_FLIGHT");

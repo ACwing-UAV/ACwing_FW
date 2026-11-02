@@ -284,7 +284,10 @@ running; optional).
 `4` NO_GPS, `5` BATTERY_LOW, `6` NO_HOME, `7` RADIO_OVERRIDE, `8` ARMED,
 `9` PROPS_CONFIRM_MISSING, `10` NOT_ARMED, `11` CALIBRATING, `12`
 NOT_CALIBRATING, `13` NOT_STILL, `14` OUT_OF_RANGE, `15` UNKNOWN_PARAM,
-`16` SENSOR_MISSING. The app translates each reason into the user's language
+`16` SENSOR_MISSING, `17` USB_CONNECTED (ARM, TAKEOFF, MOTOR_TEST while a
+USB host is connected), `18` NOT_OVER_USB (a flight command received over
+USB), `19` OTHER_LINK (a configuration change from the link that does not
+have control) — 17…19 from firmware 0.6.0, §5.2. The app translates each reason into the user's language
 ("Not done: throttle is not at minimum").
 
 ### 0x0F CHECKS (2 + 4·n B)
@@ -340,6 +343,7 @@ INIT) and `0x02 N` (STATE decimation) keep their phase-2 format without seq.
 | `0x40` | STREAM_RATES | `flight, power, nav, motors, system` u8 Hz | clamp to the ranges in §3; 0 = keep current. Reserved: the app uses the defaults today |
 | `0x41` | REQUEST | `frameType u8` | send that frame once now (CAPS, CHECKS, INIT, FLIGHT, POWER, NAV, MOTORS, SYSTEM); others `UNSUPPORTED` |
 | `0x42` | SET_NAME | `name char[16]` (zero padded UTF-8) | store in flash, re-send CAPS |
+| `0x43` | SET_TIME | `unix_s u32` (UTC), `ms u16` (0…999), `tzMin i16` (−840…840, minutes east of UTC) | the wall clock for the flight log (§5.1), any state. `INVALID/OUT_OF_RANGE` before 2024-01-01. The app sends it at every connection — firmware 0.6.0; older firmware answers `UNSUPPORTED` |
 | `0x50` | LOG_LIST | – | §5.1: LOG_ENTRY × n, **then** ACK |
 | `0x51` | LOG_READ | `id u16, offset u32, length u32` (0 = to the end) | §5.1: LOG_DATA …, **then** ACK |
 | `0x52` | LOG_ERASE | `57 49 50 45` ("WIPE") | §5.1: USB only; ACK `IN_PROGRESS`, then ACK `OK` |
@@ -355,11 +359,20 @@ used by the app's Flight logs screen. Reference client and decoder:
 | Path | Who | What |
 |---|---|---|
 | BLE (CMD characteristic, raw `op, seq, args`) | every platform | **last flight only**: LOG_LIST lists the newest log, LOG_READ of another id → `REJECTED/OUT_OF_RANGE`, LOG_ERASE → `UNSUPPORTED`, LOG_LIST refused while armed |
-| USB CDC (VID/PID `0483:5740`, any baud rate), commands in **CMD frames `0x20`** | web app on PC/Mac (Web Serial), Android Chrome | every log, erase. Every other opcode → `UNSUPPORTED` (USB is not a flight link yet) |
+| USB CDC (VID/PID `0483:5740`, any baud rate), commands in **CMD frames `0x20`** | web app on PC/Mac (Web Serial), Android Chrome | every log, erase. The other commands: §5.2 (USB is a ground link) |
 
 `LOG_ENTRY` (15 B): `id u16, index u8, count u8, flags u8 (bit0 truncated,
 bit1 being written), sectors u16, t0 u32 (ms after power-on), bytes u32`.
 `LOG_DATA`: `id u16, offset u32, data[≤ 240]`.
+
+**Wall clock (firmware 0.6.0).** The drone has no battery-backed clock: the
+app sends `SET_TIME` (0x43) at every connection, over BLE or USB. The drone
+writes an `LR_TIME` record (type `0x02`: `t_ms u32` uptime, `unix_s u32`,
+`ms u16`, `tz_min i16`) right after `LR_INFO` of every log opened afterwards,
+and into the log being recorded when the command arrives. A decoder adds
+`unix − t_ms` to any record time to get UTC (`DecodedLog.wallclock` in
+`format.ts`). Logs written before the first `SET_TIME` since power-on have no
+`LR_TIME`. SET_TIME does not pause the recording (the log commands do, 5 s).
 
 Rules both sides rely on:
 
@@ -381,6 +394,37 @@ Rules both sides rely on:
 What the app sends right after connecting: `REQUEST CAPS`, `REQUEST CHECKS`,
 `PARAM_LIST`, `[0x02 N]` (STATE decimation from the user's telemetry rate:
 N = 240 / {5, 10, 20, 50} Hz), then HEARTBEAT at 5 Hz (or RC at 25 Hz).
+
+### 5.2 USB link: a ground link (firmware 0.6.0)
+
+The USB CDC port carries the same frames as BLE, in both directions (commands
+in CMD frames `0x20`), but it **never flies the drone** (ADR 0009):
+
+| Over USB | Commands | Answer |
+|---|---|---|
+| allowed | PARAM_GET/SET/SAVE/DEFAULTS/LIST, CAL_START/CAPTURE/ABORT/SAVE/RESTORE/SET_REF, STREAM_RATES, REQUEST, SET_NAME, LOG_*, SET_TIME, HEARTBEAT | as over BLE |
+| refused | ARM, DISARM, KILL, RC, TAKEOFF, LAND, RTH, HOLD, SET_MODE, MOTOR_TEST, MOTOR_REVERSE/REMAP | `REJECTED / NOT_OVER_USB` (18) |
+| refused | legacy `0x01`, `0x02` | `UNSUPPORTED` |
+
+- **Link open.** The USB link is open while a program holds the port (DTR set)
+  or sent a command in the last 3 s (send HEARTBEAT at 1 Hz if your serial
+  API does not set DTR). When it opens the drone sends CAPS, INIT and CHECKS,
+  then the same periodic frames as over BLE (FLIGHT, POWER, NAV, MOTORS,
+  SYSTEM, CHECKS, CAPS) and every EVENT. ACKs go only to the link of the
+  command. A program on the port also gets the PC telemetry (STATE, INIT,
+  STATUS): skip frame types you do not know.
+- **No arming with a computer attached.** While a USB host has the device
+  configured, ARM, TAKEOFF and MOTOR_TEST are refused with
+  `REJECTED / USB_CONNECTED` (17) from any link, and CHECKS item 12 is FAIL.
+  The app shows "unplug the USB cable" as a pre-flight blocker. Plugged in
+  while armed: nothing is cut, DISARM, LAND and KILL still work.
+- **First link, control.** With the app on BLE and a program on USB, the link
+  opened **first** has control of the configuration. From the other link
+  PARAM_SET/SAVE/DEFAULTS, CAL_START/CAPTURE/SAVE/RESTORE/SET_REF,
+  STREAM_RATES and SET_NAME are refused with `REJECTED / OTHER_LINK` (19);
+  reads, REQUEST and CAL_ABORT are allowed. Control passes when the owner
+  closes (BLE unsubscribed or disconnected, USB closed). A calibration
+  started over USB is aborted when the USB link closes.
 
 ## 6. Link supervision, input arbitration, failsafes
 
@@ -569,6 +613,7 @@ no item in FAIL.
 | 9 | Optical flow | quality % | N/A without FLOW; WARN < 50 |
 | 10 | Throttle low | 0 | FAIL if the active input throttle is not low (§7.1) |
 | 11 | Calibration | **low byte = required** calibrations, **high byte = recommended** (bit = CalType − 1) | FAIL if any required, WARN if any recommended |
+| 12 | USB | 0 | FAIL while a USB host (a computer) is connected: ARM refused with `USB_CONNECTED` (§5.2) — firmware 0.6.0 |
 
 Item 11 drives the badges in Settings › Calibration and the "Calibrate"
 shortcut on the pre-flight screen. Suggested logic: ACCEL required if never
@@ -763,7 +808,7 @@ With 6 bytes of framing per frame, at the default rates:
 | FLIGHT | 31 × 10 | 310 |
 | NAV | 37 × 5 | 185 |
 | MOTORS (quad) | 23 × 5 | 115 |
-| CHECKS (11 items, disarmed) | 52 × 2 | 104 |
+| CHECKS (12 items, disarmed) | 56 × 2 | 112 |
 | POWER | 19 × 5 | 95 |
 | SYSTEM | 29 × 2 | 58 |
 | CAPS | 45 × 0.2 | 9 |

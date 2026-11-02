@@ -44,6 +44,7 @@
 #define TLM_I_TILT_COMP  0x04u
 #define TLM_I_DECOUPLE   0x08u
 #define TLM_I_RESET_JAC  0x10u
+#define TLM_I_TANGENT    0x20u   /**< tangential vector innovation (firmware 0.6.0) */
 
 /* WARNING: "packed" structs = float fields NOT 4-byte aligned
  * (e.g. tlm_state_t.q is at offset 6). Never pass the address of a field to a

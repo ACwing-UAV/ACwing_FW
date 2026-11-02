@@ -72,7 +72,7 @@ def core_default_config() -> Struct:
         accTol=0.08, magTol=0.08, p0Att=1e-2, p0Bias=1e-4,
         estimateBias=True, adaptive=True, tiltCompMag=False,
         accNisGate=0.0, magNisGate=0.0, inflDecay=0.0, dipTol=0.0,
-        decouple=False, resetJacobian=True,
+        decouple=False, resetJacobian=True, tangentInnov=True,
         inflMax=1e4, lockoutUpdates=0, lockoutPBump=0.0, graceUpdates=0,
         persistDecay=0.0, persistRatio=0.6, persistMin=0.02,
     )
@@ -169,6 +169,8 @@ def core_update_acc(f, acc):
 
     r, f.lastAccDev = _adaptive_var(cfg.sigmaAcc ** 2, na, f.nomAcc, cfg.accTol, cfg.adaptive)
     f.lastAccInnovB = y - yhat
+    if cfg.tangentInnov:                               # as in vector_update
+        f.lastAccInnovB = f.lastAccInnovB - (f.lastAccInnovB @ yhat) * yhat
     trusted = bool(f.accTrusted) or f.accGrace > 0
     if f.accGrace > 0:
         f.accGrace -= 1
@@ -250,6 +252,10 @@ def vector_update(f, y, yhat, r, gate, infl, proj):
     PHt = f.P @ H.T
     S0 = H @ PHt
     innov = y - yhat
+    if cfg.tangentInnov:
+        # keep only the tangential part: the radial part (along yhat) is not in the
+        # range of H and would be weighted by R alone (spurious NIS for large errors)
+        innov = innov - (innov @ yhat) * yhat
 
     Si = np.linalg.inv(S0 + r * np.eye(3))
     nis = float(innov @ Si @ innov)
@@ -310,7 +316,7 @@ _DEFAULTS = dict(
     sigmaGyro=np.deg2rad(0.5), sigmaBias=1e-3, sigmaAcc=0.05, sigmaMag=0.05,
     adaptive=True, accTol=0.05, magTol=0.05, tiltCompensatedMag=False,
     accNisGate=0.0, magNisGate=0.0, inflTau=0.0, dipTol=0.0,
-    decouple=False, resetJacobian=True, nomAcc=None, nomMag=None,
+    decouple=False, resetJacobian=True, tangentInnov=False, nomAcc=None, nomMag=None,
     inflMax=1e4, lockoutTime=0.0, lockoutPBump=np.deg2rad(10) ** 2, graceTime=0.25,
     persistTau=1.0, persistRatio=0.6, persistMin=0.02,
     inflDecay=None, lockoutUpdates=None, graceUpdates=None, persistDecay=None,
@@ -325,7 +331,7 @@ def iekf_attitude_emb(gyro, acc, mag, dt, gRef, mRef, opts: Optional[dict] = Non
 
     ``accNisGate``, ``magNisGate`` (NIS gates, 0 = off), ``inflTau`` [s]
     (inflation memory), ``dipTol`` [rad], ``decouple``, ``resetJacobian``
-    (default True), ``nomAcc``/``nomMag`` (default: first sample), ``inflMax``,
+    (default True), ``tangentInnov`` (default False: captures before firmware 0.6.0), ``nomAcc``/``nomMag`` (default: first sample), ``inflMax``,
     ``lockoutTime`` [s] (0 = off), ``lockoutPBump``, ``graceTime``,
     ``persistTau``, ``persistRatio``, ``persistMin``.
     Time constants are converted per ACC UPDATE, as in the firmware; the exact
@@ -380,6 +386,7 @@ def iekf_attitude_emb(gyro, acc, mag, dt, gRef, mRef, opts: Optional[dict] = Non
     if cfg.lockoutUpdates > 0 and cfg.lockoutPBump == 0:
         cfg.lockoutPBump = o["lockoutPBump"]
     cfg.resetJacobian = bool(o["resetJacobian"])
+    cfg.tangentInnov = bool(o["tangentInnov"])
     P0 = o["P0"]
     scalar_p0 = np.isscalar(P0) or np.size(P0) == 1
     cfg.p0Att = cfg.p0Bias = float(P0) if scalar_p0 else 1.0

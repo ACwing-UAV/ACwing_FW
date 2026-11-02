@@ -55,7 +55,8 @@ size_t tlm_build_init(const est_t *e, float fs_state_hz, uint8_t *frame, size_t 
                         (c->adaptive       ? TLM_I_ADAPTIVE  : 0u) |
                         (c->tilt_comp_mag  ? TLM_I_TILT_COMP : 0u) |
                         (c->decouple       ? TLM_I_DECOUPLE  : 0u) |
-                        (c->reset_jacobian ? TLM_I_RESET_JAC : 0u));
+                        (c->reset_jacobian ? TLM_I_RESET_JAC : 0u) |
+                        (c->tangent_innov  ? TLM_I_TANGENT   : 0u));
     return tlm_encode(TLM_TYPE_INIT, &p, sizeof p, frame, cap);
 }
 

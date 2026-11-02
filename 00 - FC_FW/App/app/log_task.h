@@ -30,8 +30,10 @@
 #include <stdint.h>
 #include "log_store.h"
 #include "proto_v2.h"
+#include "app_link.h"
 
 #define LOG_POSTROLL_MS   1000u    /**< keep logging after DISARM            */
+#define LOG_TIME_MIN_UNIX 1704067200u   /**< 2024-01-01: SET_TIME before this is refused */
 #define LOG_USB_PAUSE_MS  5000u    /**< no recording after a log command (USB or BLE) */
 
 typedef struct {
@@ -56,10 +58,16 @@ void    log_task_step(uint32_t now_ms);
 uint8_t log_task_pct(void);
 /** 1 while a transfer is in progress (the task runs faster) */
 uint8_t log_task_busy(void);
+/** wall clock set by the app (PV2_OP_SET_TIME): 0 and UTC time at uptime
+ *  'now', -1 if not set since reset. LogTask only. */
+int     log_task_wallclock(uint32_t now_ms, uint32_t *unix_s, uint16_t *ms);
 
 /* ---- BLE, AppTask side ---- */
 int     log_task_ble_cmd(const log_cmd_t *c);    /**< 0 = queued, -1 = full (answer BUSY) */
 int     log_task_ble_take(log_msg_t *m);         /**< 1 if a frame was taken */
+
+/* ---- USB, AppTask side: the commands that are not log commands ---- */
+int     log_task_usb_app_take(appl_cmd_t *c);    /**< 1 if a command was taken */
 
 #ifndef HOST_TEST
 void log_task_start(const log_task_cfg_t *cfg);

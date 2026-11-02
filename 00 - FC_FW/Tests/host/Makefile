@@ -22,21 +22,34 @@ EXT_SRC = $(APP)/app/ext_sens.c $(APP)/drivers/vl53l1x/vl53l1x.c $(APP)/drivers/
 PWR_SRC = $(filter-out test_main.c,$(SRC)) test_power.c
 LOG_SRC = $(filter-out test_main.c,$(SRC)) \
           $(APP)/log/log_flash_ram.c $(APP)/drivers/w25q/w25q.c test_log.c
+LINK_SRC = $(filter-out test_main.c,$(SRC)) $(APP)/log/log_flash_ram.c test_link.c
+
+IEKF_SRC = $(APP)/filters/iekf/iekf.c $(APP)/filters/iekf/so3.c $(APP)/filters/iekf/calib.c $(APP)/filters/iekf/accwin.c \
+           $(APP)/app/est_pipeline.c $(APP)/app/est_config.c $(APP)/control/control_hooks.c test_iekf.c
+IEKF_INC = -Istubs -I$(APP)/app -I$(APP)/filters/iekf -I$(APP)/control -I$(APP)/drivers/imu_lsm6dsv16x \
+           -I$(APP)/drivers/common -I$(APP)/third_party/st_lsm6dsv16x
+IEKF_CFLAGS = -std=c11 -O2 -g -Wall -Wextra -Wno-unused-parameter -DHOST_TEST -fsanitize=address,undefined
 
 all: run
 host_test: $(SRC) $(wildcard $(APP)/*/*.h)
 	$(CC) $(CFLAGS) $(INC) $(SRC) -lm -o $@
-run: host_test ext_test power_test log_test
+run: host_test ext_test power_test log_test link_test iekf_test
 	./host_test
 	./ext_test
 	./power_test
 	./log_test
+	./link_test
+	./iekf_test
 log_test: $(LOG_SRC) $(wildcard $(APP)/*/*.h)
 	$(CC) $(CFLAGS) $(INC) $(LOG_SRC) -lm -o $@
+link_test: $(LINK_SRC) $(wildcard $(APP)/*/*.h)
+	$(CC) $(CFLAGS) $(INC) $(LINK_SRC) -lm -o $@
 power_test: $(PWR_SRC) $(wildcard $(APP)/*/*.h)
 	$(CC) $(CFLAGS) $(INC) $(PWR_SRC) -lm -o $@
+iekf_test: $(sort $(IEKF_SRC)) $(wildcard $(APP)/*/*.h $(APP)/filters/iekf/*.h)
+	$(CC) $(IEKF_CFLAGS) $(IEKF_INC) $(sort $(IEKF_SRC)) -lm -o $@
 ext_test:
 	$(CC) $(CFLAGS) $(INC) -I"$(FLOW)/Core/Inc" $(EXT_SRC) -lm -o $@
 clean:
-	rm -f host_test ext_test power_test log_test frames.bin power_frames.bin log_sample.bin
+	rm -f host_test ext_test power_test log_test link_test iekf_test frames.bin power_frames.bin log_sample.bin
 .PHONY: all run clean ext_test

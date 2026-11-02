@@ -17,6 +17,7 @@ cfg.inflDecay     = 0;
 cfg.dipTol        = 0;      % rad, 0 = off
 cfg.decouple      = false;
 cfg.resetJacobian = true;
+cfg.tangentInnov  = true;   % tangential vector innovation (firmware 0.6.0)
 cfg.inflMax        = 1e4;   % inflation cap
 cfg.lockoutUpdates = 0;     % lockout protection (0 = off)
 cfg.lockoutPBump   = 0;

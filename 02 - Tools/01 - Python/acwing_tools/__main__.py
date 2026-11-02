@@ -168,6 +168,7 @@ def _cmd_log(a):
         print(f"ERROR: {exc}", file=sys.stderr)
         return 2
     try:
+        link.set_time()                                         # LR_TIME in the next logs (firmware >= 0.6)
         if a.action == "list":
             logs = link.list_logs()
             if not logs:

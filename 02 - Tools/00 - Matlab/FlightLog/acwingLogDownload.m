@@ -19,6 +19,14 @@ cleanup = onCleanup(@() delete(sp));
 flush(sp);
 st.seq = 0; st.rest = uint8([]);
 
+% SET_TIME (0x43): the wall clock for the next logs (LR_TIME); older firmware refuses it
+t = posixtime(datetime('now', 'TimeZone', 'UTC'));
+tz = round(minutes(tzoffset(datetime('now', 'TimeZone', 'local'))));
+try
+    st = command(sp, st, 67, [typecast(uint32(floor(t)), 'uint8'), typecast(uint16(floor(mod(t, 1) * 1000)), 'uint8'), ...
+                              typecast(int16(tz), 'uint8')]);
+catch
+end
 [st, frames] = command(sp, st, 80, uint8([]));          % LOG_LIST (0x50)
 L = [];
 for f = frames

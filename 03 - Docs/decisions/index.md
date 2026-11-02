@@ -15,6 +15,7 @@ record replaces the old one, and the old one is marked *Superseded*.
 | [0006](0006-flow-bridge-mcu.md) | A bridge MCU for the PMW3901, firmware on registers | Accepted |
 | [0007](0007-battery-task.md) | Battery monitor in its own task, decisions in the flight core | Accepted |
 | [0008](0008-flash-log-and-usb-cdc.md) | Flight log as a sector ring, downloaded over USB CDC | Accepted |
+| [0009](0009-usb-ground-link.md) | USB is a ground link: no flight commands, no arming while connected | Accepted |
 
 **New record.** Copy the template below to `NNNN-short-title.md`, add it to
 this table and to `nav` in `mkdocs.yml`.

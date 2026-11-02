@@ -2,11 +2,18 @@ function [f, nis, infl] = iekfVectorUpdate(f, y, yhat, r, gate, infl, proj)
 %IEKFVECTORUPDATE  Common vector correction. Mirror of vector_update() in iekf.c:
 %   NIS with nominal R -> inflation with memory -> gain -> projection ->
 %   retraction onto SO(3) -> Joseph form -> error reset -> conditioning.
+%   With cfg.tangentInnov the innovation keeps only its part tangent to yhat.
 %   proj: 0 none, 1 tilt only (acc), 2 yaw only (mag).
 H = [skewLocal(yhat), zeros(3)];
 PHt = f.P * H.';
 S0 = H * PHt;
 innov = y(:) - yhat(:);
+if f.cfg.tangentInnov
+    % keep only the tangential part: the radial part (along yhat) is not in the
+    % range of H and would be weighted by R alone (spurious NIS for large errors)
+    u = yhat(:);
+    innov = innov - (innov.' * u) * u;
+end
 
 Si = inv(S0 + r*eye(3));
 nis = innov.' * Si * innov;

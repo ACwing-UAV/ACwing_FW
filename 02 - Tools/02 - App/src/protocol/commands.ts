@@ -56,6 +56,9 @@ export const Cmd = {
     cmd(OP.STREAM_RATES, seq, (w) => w.u8(r.flight).u8(r.power).u8(r.nav).u8(r.motors).u8(r.system)),
   request: (seq: number, frameType: number) => cmd(OP.REQUEST, seq, (w) => w.u8(frameType)),
   setName: (seq: number, name: string) => cmd(OP.SET_NAME, seq, (w) => w.str(name, 16)),
+  /** the phone's clock: UTC ms since 1970 and the local offset (minutes east of UTC) */
+  setTime: (seq: number, unixMs: number, tzMin: number) =>
+    cmd(OP.SET_TIME, seq, (w) => w.u32(Math.floor(unixMs / 1000)).u16(Math.floor(unixMs % 1000)).i16(tzMin)),
   logList: (seq: number) => cmd(OP.LOG_LIST, seq),
   /** length 0 = to the end of the log */
   logRead: (seq: number, id: number, offset: number, length: number) => cmd(OP.LOG_READ, seq, (w) => w.u16(id).u32(offset).u32(length)),

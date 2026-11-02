@@ -94,6 +94,9 @@ uint8_t checks_build(const checks_in_t *in, pv2_check_t *it, uint8_t *ready, uin
             (int32_t)((uint16_t)req | ((uint16_t)rec << 8)));
     }
 
+    /* 12 USB: a cable to a PC must not be in the drone when it arms (ADR 0009) */
+    put(&it[n++], PV2_CHK_USB, in->usb_host ? PV2_CK_FAIL : PV2_CK_OK, 0);
+
     uint8_t rdy = 1, bf = 0;
     for (uint8_t k = 0; k < n; ++k) {
         if (it[k].state == PV2_CK_FAIL) rdy = 0;

@@ -9,6 +9,7 @@
 #include "fc_core.h"
 #include "params.h"
 #include "spsc.h"
+#include "app_link.h"
 #include <string.h>
 
 /* where a command came from, and where its answer goes */
@@ -17,6 +18,8 @@ enum { PORT_USB = 0, PORT_BLE = 1 };
 /* BLE: commands from the AppTask, answer frames back to it (it owns the BLE HI ring) */
 SPSC_DEFINE(s_blein,  log_cmd_t, 4u);
 SPSC_DEFINE(s_bleout, log_msg_t, 8u);
+/* USB: the commands that are not the LogTask's, to the AppTask (ADR 0009) */
+SPSC_DEFINE(s_usbapp, appl_cmd_t, 8u);
 
 static log_task_cfg_t   s_cfg;
 static uint8_t          s_mounted;
@@ -30,6 +33,15 @@ static uint8_t          s_have_cmd;
 #define PRE_EVENT_MS 2000u
 static log_event_t s_pre[PRE_EVENTS];
 static uint8_t     s_npre;
+
+/* wall clock, set by the app (SET_TIME); lost at reset */
+static struct {
+    uint8_t  set;
+    uint32_t up_ms;       /* uptime when it was set */
+    uint32_t unix_s;
+    uint16_t ms;
+    int16_t  tz_min;
+} s_clk;
 
 /* LOG_READ in progress */
 static struct {
@@ -47,11 +59,13 @@ void log_task_init(const log_task_cfg_t *cfg)
     s_pct = s_mounted ? log_used_pct() : 0xFFu;
     s_was_armed = 0u; s_disarm_ms = 0u; s_have_cmd = 0u; s_npre = 0u;
     memset(&s_rd, 0, sizeof s_rd);
-    spsc_reset(&s_blein); spsc_reset(&s_bleout);
+    memset(&s_clk, 0, sizeof s_clk);
+    spsc_reset(&s_blein); spsc_reset(&s_bleout); spsc_reset(&s_usbapp);
 }
 
 int log_task_ble_cmd(const log_cmd_t *c) { return spsc_push(&s_blein, c); }
 int log_task_ble_take(log_msg_t *m)      { return spsc_pop(&s_bleout, m); }
+int log_task_usb_app_take(appl_cmd_t *c) { return spsc_pop(&s_usbapp, c); }
 
 uint8_t log_task_pct(void)  { return s_pct; }
 uint8_t log_task_busy(void) { return s_rd.on; }
@@ -87,6 +101,24 @@ static void ack(uint8_t port, uint8_t op, uint8_t seq, uint8_t res, uint8_t why)
     if (port == PORT_USB) pump();
 }
 
+/* ------------------------------------------------------------------ wall clock */
+int log_task_wallclock(uint32_t now, uint32_t *unix_s, uint16_t *ms)
+{
+    if (!s_clk.set) return -1;
+    const uint32_t el = now - s_clk.up_ms + s_clk.ms;
+    *unix_s = s_clk.unix_s + el / 1000u;
+    *ms     = (uint16_t)(el % 1000u);
+    return 0;
+}
+
+static void append_time(uint32_t now)
+{
+    log_time_t t;
+    if (!log_is_open() || log_task_wallclock(now, &t.unix_s, &t.ms) != 0) return;
+    t.t_ms = now; t.tz_min = s_clk.tz_min;
+    (void)log_append(LR_TIME, &t, sizeof t);
+}
+
 /* ------------------------------------------------------------------ recording */
 static void close_log(void)
 {
@@ -105,6 +137,7 @@ static void open_log(uint32_t now)
     in.t0_ms = now;
     in.sensors = s_cfg.sensors ? s_cfg.sensors() : 0u;
     (void)log_append(LR_INFO, &in, sizeof in);
+    append_time(now);
     for (uint8_t i = 0; i < s_npre; ++i)
         if ((now - s_pre[i].t_ms) < PRE_EVENT_MS) (void)log_append(LR_EVENT, &s_pre[i], sizeof s_pre[i]);
     s_npre = 0;
@@ -186,7 +219,7 @@ static void cmd_list(uint8_t port, uint8_t seq)
     ack(port, PV2_OP_LOG_LIST, seq, PV2_ACK_OK, PV2_R_NONE);  /* after the entries: the list is complete */
 }
 
-static void cmd(uint8_t port, const uint8_t *c, uint32_t n, uint8_t armed)
+static void cmd(uint8_t port, const uint8_t *c, uint32_t n, uint8_t armed, uint32_t now)
 {
     const uint8_t op = c[0], seq = c[1];
     const uint8_t *p = &c[2];
@@ -215,6 +248,19 @@ static void cmd(uint8_t port, const uint8_t *c, uint32_t n, uint8_t armed)
         if (!size || off > size) { ack(port, op, seq, PV2_ACK_INVALID, PV2_R_OUT_OF_RANGE); return; }
         if (len == 0u || len > size - off) len = size - off;
         s_rd.on = 1u; s_rd.port = port; s_rd.seq = seq; s_rd.id = id; s_rd.off = off; s_rd.end = off + len;
+        return;
+    }
+    case PV2_OP_SET_TIME: {
+        /* any time, armed too: it only adds an LR_TIME record */
+        if (pl < 8u) { ack(port, op, seq, PV2_ACK_INVALID, PV2_R_NONE); return; }
+        uint32_t us; uint16_t ms; int16_t tz;
+        memcpy(&us, p, 4); memcpy(&ms, p + 4, 2); memcpy(&tz, p + 6, 2);
+        if (us < LOG_TIME_MIN_UNIX || ms > 999u || tz < -840 || tz > 840) {
+            ack(port, op, seq, PV2_ACK_INVALID, PV2_R_OUT_OF_RANGE); return;
+        }
+        s_clk.up_ms = now; s_clk.unix_s = us; s_clk.ms = ms; s_clk.tz_min = tz; s_clk.set = 1u;
+        append_time(now);
+        ack(port, op, seq, PV2_ACK_OK, PV2_R_NONE);
         return;
     }
     case PV2_OP_LOG_ERASE:
@@ -271,6 +317,20 @@ static void read_stream(uint8_t armed)
 }
 
 /* ------------------------------------------------------------------ step */
+/* a log command pauses the recording (LOG_USB_PAUSE_MS); SET_TIME, the
+ * heartbeat and the AppTask's commands do not */
+static int is_log_op(uint8_t op) { return op == PV2_OP_LOG_LIST || op == PV2_OP_LOG_READ || op == PV2_OP_LOG_ERASE; }
+static int pauses(uint8_t op)    { return is_log_op(op); }
+
+/* a USB command for the AppTask (parameters, calibrations, requests ...) */
+static void to_app(const uint8_t *c, uint32_t n)
+{
+    appl_cmd_t a;
+    a.len = (uint8_t)(n > APPL_CMD_MAX ? APPL_CMD_MAX : n);
+    memcpy(a.b, c, a.len);
+    if (spsc_push(&s_usbapp, &a) != 0) ack(PORT_USB, c[0], c[1], PV2_ACK_BUSY, PV2_R_NONE);
+}
+
 void log_task_step(uint32_t now)
 {
     fc_state_t f;
@@ -279,17 +339,19 @@ void log_task_step(uint32_t now)
 
     uint8_t c[USBL_CMD_MAX];
     uint32_t n;
-    while ((n = usbl_poll(c, sizeof c)) != 0u) {
-        s_cmd_ms = now; s_have_cmd = 1u;
-        cmd(PORT_USB, c, n, f.armed);
+    while ((n = usbl_poll(c, sizeof c, now)) != 0u) {
+        if (c[0] == PV2_OP_HEARTBEAT) continue;          /* keeps the USB link open only */
+        if (!is_log_op(c[0]) && c[0] != PV2_OP_SET_TIME) { to_app(c, n); continue; }
+        if (pauses(c[0])) { s_cmd_ms = now; s_have_cmd = 1u; }
+        cmd(PORT_USB, c, n, f.armed, now);
     }
     log_cmd_t bc;
     while (spsc_pop(&s_blein, &bc)) {
         uint8_t b[2u + sizeof bc.p];
         b[0] = bc.op; b[1] = bc.seq;
         memcpy(&b[2], bc.p, sizeof bc.p);
-        s_cmd_ms = now; s_have_cmd = 1u;
-        cmd(PORT_BLE, b, 2u + (bc.len > sizeof bc.p ? sizeof bc.p : bc.len), f.armed);
+        if (pauses(bc.op)) { s_cmd_ms = now; s_have_cmd = 1u; }
+        cmd(PORT_BLE, b, 2u + (bc.len > sizeof bc.p ? sizeof bc.p : bc.len), f.armed, now);
     }
     read_stream(f.armed);
 
@@ -316,7 +378,7 @@ static void LogTask(void *arg)
     (void)arg;
     for (;;) {
         log_task_step(osKernelGetTickCount());
-        osDelay(log_task_busy() ? 1u : 10u);
+        osDelay(log_task_busy() ? 1u : (usbl_open(osKernelGetTickCount()) ? 2u : 10u));   /* USB open: drains the TX rings faster */
     }
 }
 

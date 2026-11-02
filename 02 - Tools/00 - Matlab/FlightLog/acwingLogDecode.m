@@ -15,6 +15,9 @@ function F = acwingLogDecode(src)
 %   F.power   .t, .vbat, .current [A], .used_mah, .cell, .cell_rest [V], .pct,
 %             .level, .r_cell [ohm], .cells, .present                        (10 Hz)
 %   F.drop    .t, .lost, .source
+%   F.time    .t, .unix [s UTC since 1970], .tz_min (LR_TIME, firmware >= 0.6)
+%   F.wallclock  [] or .offset_s (add to any .t for UTC seconds since 1970),
+%             .tz_min, .t0 (datenum of the log start, phone time zone)
 %   F.sectors, F.bad (rejected sectors/records), F.unknown
 %
 %   Format: App/log/log_format.h. Python equivalent: acwing_tools/flightlog.py
@@ -34,6 +37,7 @@ SECTOR = 4096; MAGIC = uint32(hex2dec('474C4341'));         % "ACLG"
 % record type -> name, field list {name, type, count}
 R = containers.Map('KeyType', 'double', 'ValueType', 'any');
 R(1)   = {'info',   {'fw','uint8',3; 'hw','uint8',1; 'format','uint8',1; 't0_ms','uint32',1; 'sensors','uint16',1; 'name','uint8',16}};
+R(2)   = {'time',   {'t_ms','uint32',1; 'unix_s','uint32',1; 'ms','uint16',1; 'tz','int16',1}};
 R(16)  = {'att',    {'t_ms','uint32',1; 'q','int16',4; 'g','int16',3; 'a','int16',3}};
 R(17)  = {'vert',   {'t_ms','uint32',1; 'h','int32',1; 'vz','int16',1; 'hsp','int32',1; 'vzsp','int16',1; 'thr','uint8',1; ...
                      'tof','uint16',1; 'fq','uint8',1; 'baro','uint32',1; 'flags','uint8',1}};
@@ -79,11 +83,18 @@ for s = 0:SECTOR:numel(d) - SECTOR
     end
 end
 
-F = struct('sectors', sectors, 'bad', bad, 'unknown', unknown, 'info', []);
+F = struct('sectors', sectors, 'bad', bad, 'unknown', unknown, 'info', [], 'wallclock', []);
 for t = types
     v = R(t);
     C = unpack(raw.(v{1}), v{2});
     F = scaleRecord(F, v{1}, C);
+end
+if F.time.n
+    W = struct('offset_s', F.time.unix(end) - F.time.t(end), 'tz_min', F.time.tz_min(end));
+    if ~isempty(F.info)
+        W.t0 = (F.info.t0_ms * 1e-3 + W.offset_s + 60 * W.tz_min) / 86400 + 719529;   % datenum, phone time
+    end
+    F.wallclock = W;
 end
 end
 
@@ -159,6 +170,8 @@ switch name
         S.r_cell = C.r * 1e-3; S.cells = mod(C.cells, 128); S.present = double(C.cells >= 128);
     case 'drop'
         S.lost = C.lost; S.source = C.source;
+    case 'time'
+        S.unix = C.unix_s + C.ms * 1e-3; S.tz_min = C.tz;
 end
 F.(name) = S;
 end

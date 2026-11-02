@@ -55,6 +55,12 @@ typedef struct {
                                 exp(-dt_update/tau), e.g. tau = 0.25 s           */
     uint8_t decouple;        /**< 1: acc corrects only roll/pitch, mag only yaw    */
     uint8_t reset_jacobian;  /**< 1: transport P after the retraction (default)    */
+    uint8_t tangent_innov;   /* 1: keep only the part of the vector innovation
+                                tangent to the predicted direction (default). The
+                                radial part (1 - cos e along yhat) is outside the
+                                range of H: no attitude error explains it, so in S
+                                it is weighted by R alone and inflates the NIS of
+                                large errors for nothing (c4dynamics review, 2026-11) */
     /** --- protection against "lockout" of the NIS inflation ---
      * If the estimate is truly wrong, the innovation is large because of the
      * estimate, not the measurement: NIS would inflate R forever and the filter
@@ -128,6 +134,15 @@ int  iekf_update_mag(iekf_t *f, const float mag[3]);
  * the age of the sample during a fast rotation). */
 int  iekf_update_mag_ex(iekf_t *f, const float mag[3], float extra_var);
 void iekf_get_quat(const iekf_t *f, float q[4]);
+
+/** Re-initialisation of the attitude away from rest (estimator reset after a
+ * failsafe, re-init in the air, hand launch): R <- R0, the attitude block of P
+ * set to p0_att*I with no attitude-bias correlation (an HONEST p0_att: as large
+ * as the possible error, otherwise the filter is confidently wrong), the NIS
+ * inflation and the persistence memory cleared, and the accelerometer trusted
+ * for cfg.grace_updates updates so the measurements the filter needs are not
+ * rejected while P_aa shrinks. The bias estimate and its covariance are kept. */
+void iekf_reset_attitude(iekf_t *f, const float R0[9], float p0_att);
 
 #ifdef __cplusplus
 }

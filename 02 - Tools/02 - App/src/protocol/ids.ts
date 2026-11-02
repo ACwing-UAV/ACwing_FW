@@ -75,6 +75,8 @@ export const OP = {
   STREAM_RATES: 0x40,
   REQUEST: 0x41,
   SET_NAME: 0x42,
+  /** unix_s u32, ms u16, tz_min i16: wall clock for the flight log (firmware >= 0.6) */
+  SET_TIME: 0x43,
   // flight log (firmware 0.5.0). BLE: last flight only, no erase. USB: every log, erase.
   LOG_LIST: 0x50,
   LOG_READ: 0x51,
@@ -118,6 +120,12 @@ export enum Reason {
   OUT_OF_RANGE = 14,
   UNKNOWN_PARAM = 15,
   SENSOR_MISSING = 16,
+  /** ARM / TAKEOFF / MOTOR_TEST while a USB host is connected (firmware >= 0.6) */
+  USB_CONNECTED = 17,
+  /** flight command over the USB link: ground link only */
+  NOT_OVER_USB = 18,
+  /** configuration change from the link that does not have control (the first link opened has it) */
+  OTHER_LINK = 19,
 }
 
 export enum FlightMode {
@@ -273,6 +281,8 @@ export enum CheckId {
   FLOW = 9,
   THROTTLE = 10,
   CALIBRATION = 11,
+  /** FAIL while a USB host is connected: no ARM (firmware >= 0.6) */
+  USB = 12,
 }
 
 export enum CheckState {

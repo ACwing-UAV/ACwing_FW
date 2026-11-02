@@ -151,6 +151,7 @@ def decode_init(p: bytes) -> Struct:
     I.tiltComp = bool(fl & 4)
     I.decouple = bool(fl & 8)
     I.resetJacobian = bool(fl & 16)
+    I.tangentInnov = bool(fl & 32)                     # firmware 0.6.0+
     for k, v in list(I.items()):
         if isinstance(v, np.floating):
             I[k] = float(v)

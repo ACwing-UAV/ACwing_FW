@@ -133,6 +133,8 @@ export class Drone {
     this.fire(Cmd.request(this.nextSeq(), FT.CAPS));
     this.fire(Cmd.request(this.nextSeq(), FT.CHECKS));
     this.fire(Cmd.paramList(this.nextSeq()));
+    // wall clock for the flight log (LR_TIME); an older firmware answers UNSUPPORTED
+    this.fire(Cmd.setTime(this.nextSeq(), Date.now(), -new Date().getTimezoneOffset()));
     this.setStateRate(appSettings.get().telemetryRate);
     this.timers.push(setInterval(() => this.keepAlive(), 40));
     this.timers.push(setInterval(() => this.housekeeping(), 500));

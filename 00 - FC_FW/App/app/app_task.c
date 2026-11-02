@@ -20,6 +20,7 @@
 #include "ext_sens.h"
 #include "batt_task.h"
 #include "log_task.h"
+#include "usb_link.h"
 #include <string.h>
 #include <math.h>
 
@@ -63,24 +64,50 @@ static uint8_t  s_have_ev_mag, s_have_ev_vib;
 /* checks */
 static uint8_t  s_ready, s_batt_fail;
 
+/* links: BLE (the app, can fly) and USB (ground link: telemetry, parameters,
+ * calibrations; never flight commands, ADR 0009). The first link opened has
+ * control of the configuration; the other one reads only. */
+enum { LINK_BLE = 0, LINK_USB = 1, LINK_NONE = 0xFF, DEST_ALL = 0xFE };
+static uint8_t  s_owner = LINK_NONE;
+static uint8_t  s_dest  = DEST_ALL;       /* where tx() goes: DEST_ALL or one link */
+static uint8_t  s_usb_was;                /* USB link open at the previous step */
+static uint8_t  s_usb_now;                /* USB link open at this step         */
+static uint8_t  s_cal_link = LINK_BLE;    /* link that started the calibration  */
+
 /* BLE log download: one answer frame of the LogTask waiting for room in the HI ring */
 static log_msg_t s_logmsg;
 static uint8_t   s_have_logmsg;
 
 /* ------------------------------------------------------------------ helpers */
 static uint8_t armed_now(void);
-static void tx(const uint8_t *f, size_t len) { if (len) (void)tlm_ble_push_hi(f, (uint16_t)len); }
+static void tx(const uint8_t *f, size_t len)
+{
+    if (!len) return;
+    if (s_dest == DEST_ALL || s_dest == LINK_BLE) (void)tlm_ble_push_hi(f, (uint16_t)len);
+    if ((s_dest == DEST_ALL || s_dest == LINK_USB) && s_usb_now) (void)usbl_put_frame(USBL_SRC_APP, f, (uint32_t)len);
+}
 
 /* frame buffer for frames longer than FRAME_CAP (log data over BLE) */
 static uint8_t s_big[4u + 255u + 2u];
 
 static uint32_t bit(uint8_t type) { return 1u << (type - 1u); }
 
-static void ack(uint8_t op, uint8_t seq, uint8_t res, uint8_t why)
+/* the ACK cache keeps the two links apart: USB entries have bit 7 of op set
+ * (every opcode is < 0x80) */
+static uint8_t ack_key(uint8_t link, uint8_t op) { return (uint8_t)(link == LINK_USB ? (op | 0x80u) : op); }
+
+static void ack_link(uint8_t link, uint8_t op, uint8_t seq, uint8_t res, uint8_t why)
 {
-    ackc_finish(op, seq, res, why);
+    ackc_finish(ack_key(link, op), seq, res, why);
+    const uint8_t d = s_dest;
+    s_dest = link;                                       /* an ACK goes back where the command came from */
     tx(s_frame, pv2_ack(op, seq, res, why, s_frame, sizeof s_frame));
+    s_dest = d;
 }
+
+/* the link of the command being executed (local_cmd) */
+static uint8_t s_link = LINK_BLE;
+static void ack(uint8_t op, uint8_t seq, uint8_t res, uint8_t why) { ack_link(s_link, op, seq, res, why); }
 
 static const char *ev_text(uint16_t code)
 {
@@ -349,6 +376,7 @@ static void build_checks(pv2_check_t *it, uint8_t *n)
         in.batt_warn = PARAM(P_BATT_WARN);
         in.batt_crit = PARAM(P_BATT_CRIT);
     }
+    in.usb_host = usbl_host();
     *n = checks_build(&in, it, &s_ready, &s_batt_fail);
 }
 
@@ -365,7 +393,7 @@ static void send_init(void)
     if (!s_cfg.get_init) return;
     static uint8_t f[160];
     const size_t n = s_cfg.get_init(f, sizeof f);
-    if (n) (void)tlm_ble_push_hi(f, (uint16_t)n);
+    tx(f, n);
 }
 
 static void send_param(int idx)
@@ -381,7 +409,8 @@ static void list_start(void) { s_list_next = 0; }
 
 static void list_pace(void)
 {
-    while (s_list_next >= 0 && s_list_next < PARAM_COUNT && tlm_ble_hi_free() > LIST_HEADROOM) {
+    while (s_list_next >= 0 && s_list_next < PARAM_COUNT && tlm_ble_hi_free() > LIST_HEADROOM &&
+           (!s_usb_now || usbl_tx_free_src(USBL_SRC_APP) > LIST_HEADROOM)) {
         if (params_visible(s_list_next, s_sensors)) send_param(s_list_next);
         s_list_next++;
     }
@@ -490,7 +519,7 @@ static void local_cmd(uint8_t op, uint8_t seq, const uint8_t *p, uint8_t plen, u
         if (plen < 1u) { ack(op, seq, PV2_ACK_INVALID, PV2_R_NONE); return; }
         res = cal_start(p[0], plen >= 2u ? p[1] : 0u, armed_now(), now, &why);
         ack(op, seq, res, why);
-        if (res == PV2_ACK_OK) send_calib();
+        if (res == PV2_ACK_OK) { s_cal_link = s_link; send_calib(); }
         return;
     case PV2_OP_CAL_CAPTURE:
         ack(op, seq, cal_capture(now, &why), why);
@@ -587,6 +616,61 @@ static void local_cmd(uint8_t op, uint8_t seq, const uint8_t *p, uint8_t plen, u
     }
 }
 
+/* commands the USB link may carry (ground link, ADR 0009) */
+static int usb_allowed(uint8_t op)
+{
+    switch (op) {
+    case PV2_OP_PARAM_GET: case PV2_OP_PARAM_SET: case PV2_OP_PARAM_SAVE: case PV2_OP_PARAM_DEFAULTS:
+    case PV2_OP_PARAM_LIST:
+    case PV2_OP_CAL_START: case PV2_OP_CAL_CAPTURE: case PV2_OP_CAL_ABORT: case PV2_OP_CAL_SAVE:
+    case PV2_OP_CAL_RESTORE: case PV2_OP_CAL_SET_REF:
+    case PV2_OP_STREAM_RATES: case PV2_OP_REQUEST: case PV2_OP_SET_NAME:
+        return 1;
+    default:
+        return 0;
+    }
+}
+
+/* commands that change the configuration: only from the link in control */
+static int config_op(uint8_t op)
+{
+    switch (op) {
+    case PV2_OP_PARAM_SET: case PV2_OP_PARAM_SAVE: case PV2_OP_PARAM_DEFAULTS:
+    case PV2_OP_CAL_START: case PV2_OP_CAL_CAPTURE: case PV2_OP_CAL_SAVE:
+    case PV2_OP_CAL_RESTORE: case PV2_OP_CAL_SET_REF:
+    case PV2_OP_STREAM_RATES: case PV2_OP_SET_NAME:
+    case PV2_OP_MOTOR_REVERSE: case PV2_OP_MOTOR_REMAP:
+        return 1;
+    default:                     /* CAL_ABORT from any link: stopping is always allowed */
+        return 0;
+    }
+}
+
+static uint8_t other_link(uint8_t link) { return s_owner != LINK_NONE && s_owner != link; }
+
+static void usb_commands(uint32_t now)
+{
+    appl_cmd_t c;
+    while (log_task_usb_app_take(&c)) {
+        if (c.len < 2u) continue;
+        const uint8_t op = c.b[0], seq = c.b[1];
+        const uint8_t plen = (uint8_t)(c.len - 2u);
+        uint8_t res, why;
+        const uint8_t st = ackc_begin(ack_key(LINK_USB, op), seq, &res, &why);
+        if (st == ACKC_DONE) { ack_link(LINK_USB, op, seq, res, why); continue; }
+        if (st == ACKC_PENDING) continue;
+        if (!usb_allowed(op)) {
+            ack_link(LINK_USB, op, seq, op < 0x10u ? PV2_ACK_UNSUPPORTED : PV2_ACK_REJECTED,
+                     op < 0x10u ? PV2_R_NONE : PV2_R_NOT_OVER_USB);
+            continue;
+        }
+        if (config_op(op) && other_link(LINK_USB)) { ack_link(LINK_USB, op, seq, PV2_ACK_REJECTED, PV2_R_OTHER_LINK); continue; }
+        s_link = LINK_USB;
+        local_cmd(op, seq, &c.b[2], plen, now);
+        s_link = LINK_BLE;
+    }
+}
+
 static void commands(uint32_t now)
 {
     /* results of the flight core first: they free the pipeline */
@@ -604,11 +688,11 @@ static void commands(uint32_t now)
         const uint8_t plen = (uint8_t)(c.len - 2u);
         uint8_t res, why;
         const uint8_t st = ackc_begin(op, seq, &res, &why);
-        if (st == ACKC_DONE) { tx(s_frame, pv2_ack(op, seq, res, why, s_frame, sizeof s_frame)); continue; }
+        if (st == ACKC_DONE) { ack_link(LINK_BLE, op, seq, res, why); continue; }
         if (st == ACKC_PENDING) continue;                 /* its ACK is on the way */
 
-        if (op == PV2_OP_LOG_LIST || op == PV2_OP_LOG_READ || op == PV2_OP_LOG_ERASE) {
-            /* the LogTask owns the log: it answers (ACK after the data) through log_ble_out() */
+        if (op == PV2_OP_LOG_LIST || op == PV2_OP_LOG_READ || op == PV2_OP_LOG_ERASE || op == PV2_OP_SET_TIME) {
+            /* the LogTask owns the log and the wall clock: it answers (ACK after the data) through log_ble_out() */
             log_cmd_t lc;
             memset(&lc, 0, sizeof lc);
             lc.op = op; lc.seq = seq;
@@ -617,6 +701,7 @@ static void commands(uint32_t now)
             if (log_task_ble_cmd(&lc) != 0) ack(op, seq, PV2_ACK_BUSY, PV2_R_NONE);
             continue;
         }
+        if (config_op(op) && other_link(LINK_BLE)) { ack(op, seq, PV2_ACK_REJECTED, PV2_R_OTHER_LINK); continue; }
         if (fc_is_core_op(op)) {
             fc_cmd_t fc;
             memset(&fc, 0, sizeof fc);
@@ -695,7 +780,8 @@ static void calibration(uint32_t now)
     while (fsh_cal_pop(&smp)) cal_feed(&smp, now);
     cal_tick(now);
     /* lost app link: abort, the previous values are kept (§10) */
-    if (cal_active() && appl_silence_ms(now, FC_FS_SHORT_MS + 1u) > CAL_LINK_ABORT_MS) {
+    if (cal_active() && (s_cal_link == LINK_USB ? !s_usb_now
+                                                : appl_silence_ms(now, FC_FS_SHORT_MS + 1u) > CAL_LINK_ABORT_MS)) {
         uint8_t why;
         (void)cal_abort(&why);
     }
@@ -706,7 +792,7 @@ static void calibration(uint32_t now)
 
 static void streams(uint32_t now, uint8_t armed)
 {
-    if (tlm_ble_state() != TLM_BLE_STREAMING) return;
+    if (tlm_ble_state() != TLM_BLE_STREAMING && !s_usb_now) return;
     if (due(now, &s_t_flight, 1000u / s_hz_flight)) send_flight();
     if (due(now, &s_t_nav,    1000u / s_hz_nav))    send_nav();
     if (due(now, &s_t_motors, 1000u / s_hz_motors)) send_motors();
@@ -758,6 +844,8 @@ void app_init(const app_task_cfg_t *cfg)
     memset(s_rep, 0, sizeof s_rep);
     s_fl_count = 0u;
     s_have_logmsg = 0u;
+    s_owner = LINK_NONE; s_dest = DEST_ALL; s_link = LINK_BLE;
+    s_usb_was = s_usb_now = 0u; s_cal_link = LINK_BLE;
 }
 
 void app_step(uint32_t now)
@@ -771,19 +859,42 @@ void app_step(uint32_t now)
         if (tlm_ble_state() == TLM_BLE_STREAMING) send_caps();
     }
 
+    /* links: who is open, who has control of the configuration */
+    s_usb_now = usbl_open(now);
+    {
+        const uint8_t ble = (uint8_t)(tlm_ble_state() == TLM_BLE_STREAMING);
+        if (s_owner == LINK_BLE && !ble) s_owner = LINK_NONE;
+        if (s_owner == LINK_USB && !s_usb_now) s_owner = LINK_NONE;
+        if (s_owner == LINK_NONE) s_owner = ble ? LINK_BLE : (s_usb_now ? LINK_USB : LINK_NONE);
+    }
+    /* a program opened the USB port: CAPS, INIT, CHECKS to it, as to a BLE subscriber */
+    if (s_usb_now && !s_usb_was) {
+        s_dest = LINK_USB;
+        send_caps(); send_init(); send_checks();
+        s_dest = DEST_ALL;
+        if (tlm_ble_state() != TLM_BLE_STREAMING) {
+            s_t_flight = s_t_nav = s_t_motors = s_t_system = s_t_power = now;
+            s_t_checks = now + 500u; s_t_caps = now + 5000u;
+        }
+    }
+    s_usb_was = s_usb_now;
+
     /* new subscriber: CAPS, INIT, CHECKS first, then the periodic streams (§2) */
     if (tlm_ble_take_subscribe()) {
         ackc_reset();
         s_list_next = -1;
+        s_dest = LINK_BLE;
         send_caps();
         send_init();
         send_checks();
+        s_dest = DEST_ALL;
         tlm_ble_open_streams();
         s_t_flight = s_t_nav = s_t_motors = s_t_system = s_t_power = now;
         s_t_checks = now + 500u; s_t_caps = now + 5000u;
     }
 
     commands(now);
+    usb_commands(now);
     events(now);
     repeats(now);
     calibration(now);

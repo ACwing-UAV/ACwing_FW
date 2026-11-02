@@ -73,6 +73,7 @@
 #define PV2_OP_STREAM_RATES   0x40u
 #define PV2_OP_REQUEST        0x41u
 #define PV2_OP_SET_NAME       0x42u
+#define PV2_OP_SET_TIME       0x43u   /**< unix_s u32, ms u16, tz_min i16: wall clock for the log */
 #define PV2_OP_LOG_LIST       0x50u   /**< reserved in HANDOVER §16, USB link     */
 #define PV2_OP_LOG_READ       0x51u   /**< id u16, offset u32, len u32            */
 #define PV2_OP_LOG_ERASE      0x52u   /**< "WIPE" (firmware extension)            */
@@ -91,7 +92,10 @@ enum {
     PV2_R_NO_GPS = 4, PV2_R_BATTERY_LOW = 5, PV2_R_NO_HOME = 6, PV2_R_RADIO_OVERRIDE = 7,
     PV2_R_ARMED = 8, PV2_R_PROPS_CONFIRM_MISSING = 9, PV2_R_NOT_ARMED = 10, PV2_R_CALIBRATING = 11,
     PV2_R_NOT_CALIBRATING = 12, PV2_R_NOT_STILL = 13, PV2_R_OUT_OF_RANGE = 14,
-    PV2_R_UNKNOWN_PARAM = 15, PV2_R_SENSOR_MISSING = 16
+    PV2_R_UNKNOWN_PARAM = 15, PV2_R_SENSOR_MISSING = 16,
+    PV2_R_USB_CONNECTED = 17,   /**< ARM / TAKEOFF / MOTOR_TEST while a USB host is connected (ADR 0009) */
+    PV2_R_NOT_OVER_USB = 18,    /**< flight command received over the USB link: ground link only        */
+    PV2_R_OTHER_LINK = 19       /**< configuration change from the link that does not have control       */
 };
 
 /* ---------------- enums and bit masks ---------------- */
@@ -152,7 +156,8 @@ enum { PV2_CS_IDLE = 0, PV2_CS_RUNNING = 1, PV2_CS_WAITING_USER = 2, PV2_CS_DONE
 
 enum { PV2_CHK_BATTERY = 1, PV2_CHK_IMU = 2, PV2_CHK_COMPASS = 3, PV2_CHK_GNSS = 4,
        PV2_CHK_HOME = 5, PV2_CHK_RADIO = 6, PV2_CHK_EKF = 7, PV2_CHK_FAILSAFE = 8,
-       PV2_CHK_FLOW = 9, PV2_CHK_THROTTLE = 10, PV2_CHK_CALIBRATION = 11 };
+       PV2_CHK_FLOW = 9, PV2_CHK_THROTTLE = 10, PV2_CHK_CALIBRATION = 11,
+       PV2_CHK_USB = 12 /**< FAIL while a USB host is connected: no ARM */ };
 enum { PV2_CK_OK = 0, PV2_CK_WARN = 1, PV2_CK_FAIL = 2, PV2_CK_NA = 3 };
 
 /* ---------------- payload layouts (little-endian, packed) ----------------
@@ -307,9 +312,9 @@ _Static_assert(sizeof(pv2_log_data_hdr_t) == 6, "LOG_DATA layout");
 #endif
 
 #define PV2_EVENT_TEXT_MAX   40u
-#define PV2_CHECKS_MAX       11u
+#define PV2_CHECKS_MAX       12u
 #define PV2_MOTORS_MAX       8u
-#define PV2_PAYLOAD_MAX      (2u + 4u * PV2_CHECKS_MAX)   /**< largest v2 payload: 46 */
+#define PV2_PAYLOAD_MAX      (2u + 4u * PV2_CHECKS_MAX)   /**< largest v2 payload: 50 */
 /* ---------------- encoders: payload -> complete frame (A5 5A ... CRC) ----------------
  * Each returns the frame length, 0 if cap is too small. */
 size_t pv2_frame(uint8_t type, const void *payload, uint8_t len, uint8_t *out, size_t cap);

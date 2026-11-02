@@ -179,6 +179,61 @@ Tried and left disabled: gain projection so that acc corrects only tilt and mag
 only yaw (`IEKF_DECOUPLE`: tilt max 3.3° vs 2.3°); NIS inflation on the
 magnetometer (`IEKF_MAG_NIS_GATE`: a high mag NIS is often a true yaw error).
 
+## Tangential innovation
+
+`IEKF_TANGENT_INNOV` (on by default) keeps only the part of $y - \hat y$
+orthogonal to $\hat y$, in the update and in the persistence test of the
+lockout protection ([Update and retraction](iekf.md#update-and-retraction)
+explains why). It has no effect on the state for an isotropic $R_m$ ($K\hat y = 0$;
+checked: C, Python and MATLAB give the same estimate with it on or off when the
+NIS inflation is off). It only removes the radial term
+$(1-\cos\varepsilon)^2/\sigma^2$ from the NIS: about 2 at 10°, 36 at 20°,
+10 000 at 90° with $\sigma_{acc}$ = 0.01, so above ~15° every accelerometer update
+was inflated by the error alone.
+
+In the firmware the measured gain is **small**, because the inflation is
+softer than a $\chi^2$ rejection (the c4dynamics notebook, which rejects, never
+converged from 90° without the projection) and because two other mechanisms
+already cover large errors: the stillness detector (no inflation at rest) and
+the grace period of a re-initialisation (below). It shortens the 179° cases a
+little and is never worse; it is kept because it is the correct innovation.
+
+## Cold start and re-initialisation
+
+`calib_finish()` seeds $\hat R_0$ from gravity and the field measured at rest,
+with `IEKF_P0_ATT` = (2°)²: the initial error is small and so is $P_0$. Any other
+initialisation (estimator reset after a failsafe, re-init in the air, hand
+launch) must use `iekf_reset_attitude(f, R0, p0_att)`:
+
+- $P_{aa} = p_0 I$ with no attitude-bias correlation: $p_0$ must be as large as
+  the possible error, otherwise the filter is confidently wrong;
+- the NIS inflation and the persistence memory are cleared and the
+  accelerometer is trusted for `IEKF_GRACE_S` (`acc_grace`), so the
+  measurements the filter needs are not de-weighted while $P_{aa}$ shrinks;
+- the bias estimate and its covariance are kept.
+
+**Cold-start test** (`Tests/host/test_iekf.c`, `make iekf_test`): the production
+pipeline (`est_pipeline.c` with `app_est_config()`, every `app_config.h` value)
+on simulated sensors (gyro 960 Hz with bias and noise, mag 100 Hz with its
+latency, dip 58°). After the static calibration the attitude is re-initialised
+with an error of 30°, 90°, 150° or 179° about 6 axes, on a static and on a moving
+recording (rates up to 1 rad/s); converged = below 5° for good within 10 s.
+
+| re-initialisation | motion | 30° | 90° | 150° | 179° |
+|---|---|---|---|---|---|
+| `iekf_reset_attitude`, honest $P_0$ | static | 6/6, 0.01 s | 6/6, 0.15 s | 6/6, 0.57 s | 6/6, 1.23 s |
+| | moving | 6/6, 0.01 s | 6/6, 0.16 s | 6/6, 1.34 s | 6/6, 1.61 s (5 lockouts) |
+| same, full innovation | moving | 6/6, 0.01 s | 6/6, 0.16 s | 6/6, 1.52 s | 6/6, 1.92 s (4 lockouts) |
+| honest $P_0$, no grace period | moving | 6/6, 0.01 s | 6/6, 1.54 s (3 lockouts) | 6/6, 2.08 s (6) | 6/6, 3.66 s (8) |
+| production $P_0$ (2°), with grace | moving | 6/6, 0.03 s | 6/6, 0.21 s | 6/6, 1.34 s (1) | 6/6, 2.96 s (6) |
+
+Times are the worst of the 6 axes; final errors are 2° at most. The grace period
+is what matters most in motion: without it the inflation acts from the first
+update and only the lockout protection gets the filter out. The test checks
+that 30° and 90° converge within 1 s and 2 s with no lockout, that at least 5
+of 6 converge from 150°, and that the tangential innovation is never worse than
+the full one. 179° is reported, not required.
+
 ## Tuning notes
 
 - **6 states, not 3.** With a realistic bias: RMSE 0.095° (6 states) vs 0.184°

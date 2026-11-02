@@ -27,7 +27,7 @@ const en = {
   checks: {
     noBattery: "No battery (USB power)", battMonitor: "Battery monitor stopped",
     1: "Battery", 2: "IMU & level", 3: "Compass", 4: "GNSS", 5: "Home set", 6: "ELRS radio", 7: "EKF status",
-    8: "Geofence · failsafe", 9: "Optical flow", 10: "Throttle low", 11: "Calibration",
+    8: "Geofence · failsafe", 9: "Optical flow", 10: "Throttle low", 11: "Calibration", 12: "USB unplugged",
     state: { 0: "OK", 1: "Check", 2: "Not ready", 3: "n/a" },
   },
   cockpit: {
@@ -87,6 +87,7 @@ const en = {
     5: "battery too low", 6: "home is not set", 7: "the ELRS radio has control", 8: "the drone is armed", 9: "propellers not confirmed removed",
     10: "the drone is not armed", 11: "a calibration is running", 12: "no calibration running", 13: "the drone is moving",
     14: "value out of range", 15: "unknown setting", 16: "sensor not fitted",
+    17: "a USB cable to a computer is connected: unplug it", 18: "not allowed over USB (ground link)", 19: "another device has control of the settings",
   },
   cmdError: { rejected: "Not done: {why}", timeout: "No answer from the drone", offline: "Not connected", other: "The drone refused the command" },
   settings: {
@@ -291,6 +292,7 @@ const en = {
     left: "{t} left",
     missing: "This log is no longer on this device.",
     downloadedOn: "Downloaded {d}",
+    flownOn: "Flown {d}",
     droppedN: "{n} records were lost on the drone (queue full): some samples are missing.",
     truncatedHint: "The beginning of this log was overwritten by newer flights.",
     badN: "{n} damaged sectors or records skipped.",
