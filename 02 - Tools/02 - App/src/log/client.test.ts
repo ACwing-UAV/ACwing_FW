@@ -97,7 +97,7 @@ describe("flight log over BLE through the flight session (last flight only)", ()
     // the app sent SET_TIME at connection: the log carries the wall clock
     expect(L.time.n).toBe(1);
     expect(Math.abs(L.time.unixMs[0] - Date.now())).toBeLessThan(60000);
-    expect(L.wallclock?.tzMin).toBe(-new Date().getTimezoneOffset());
+    expect(L.wallclock?.tzMin).toBe(-new Date().getTimezoneOffset() || 0); // || 0: -0 in UTC, Object.is(-0, 0) is false
 
     expect(await client.read(1, 4096).catch((e) => logErrorKey(e))).toBe("logs.err.notLast");
     expect(await client.erase().catch((e) => logErrorKey(e))).toBe("logs.err.unsupported");

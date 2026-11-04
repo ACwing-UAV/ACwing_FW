@@ -59,13 +59,17 @@ export function CockpitScreen() {
     wasArmed.current = armed;
   }, [armed, caps]);
 
-  // throttle stick: springs to centre in the hold modes, stays put (and starts at the bottom) otherwise
+  // throttle stick: springs to centre in the hold modes, stays put (and starts at the bottom) otherwise.
+  // Entering ACRO / ANGLE in the air the stick goes to the centre, not to the bottom: in these modes
+  // it is the collective (firmware: thrust = (stick + 1) / 2), and the bottom would cut the motors.
   const throttleIsLeft = st.stickMode === 2;
   const prevHold = useRef(holdMode);
+  const inAirRef = useRef(inAir);
+  inAirRef.current = inAir;
   useEffect(() => {
     if (prevHold.current !== holdMode) {
       prevHold.current = holdMode;
-      const y = holdMode ? 0 : -1;
+      const y = holdMode || inAirRef.current ? 0 : -1;
       if (throttleIsLeft) setLeft((v) => ({ ...v, y }));
       else setRight((v) => ({ ...v, y }));
     }

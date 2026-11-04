@@ -29,6 +29,8 @@ interface SimLog {
 }
 
 const D2R = Math.PI / 180;
+/** ACRO / ANGLE: collective that holds the drone in a hover (stick centre, as the app's throttle stick) */
+const HOVER_THR = 0.5;
 const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
 const wrap360 = (a: number) => ((a % 360) + 360) % 360;
 const approach = (v: number, target: number, rate: number, dt: number) => v + (target - v) * Math.min(1, rate * dt);
@@ -91,6 +93,7 @@ export class SimDrone {
   // ---- inputs ----
   private rc = { throttle: -1000, yaw: 0, pitch: 0, roll: 0 };
   private lastAppMsg = 0; // s, last RC or heartbeat
+  private rcT = -1e9;      // s, last RC frame (RC older than 0.25 s is stale, HANDOVER §6)
   private appInput = false;
   private elrsLinked: boolean;
   private elrsActive = false; // radio sticks moved → radio overrides the app
@@ -203,6 +206,7 @@ export class SimDrone {
     if (op === OP.RC) {
       this.rc = { throttle: r.i16(), yaw: r.i16(), pitch: r.i16(), roll: r.i16() };
       this.lastAppMsg = this.t;
+      this.rcT = this.t;
       this.appInput = true;
       return;
     }
@@ -235,7 +239,7 @@ export class SimDrone {
         if (this.inAir) return rej(Reason.NOT_LANDED);
         // throttle "low": bottom of the stick in ACRO/ANGLE, not above centre in the hold modes (centre = hold altitude)
         const holdMode = this.mode === FlightMode.ALT_HOLD || this.mode === FlightMode.POS_HOLD;
-        if (this.appInput && this.t - this.lastAppMsg < 0.5 && this.rc.throttle > (holdMode ? 100 : -900)) return rej(Reason.THROTTLE_NOT_LOW);
+        if (this.appInput && this.t - this.rcT < 0.5 && this.rc.throttle > (holdMode ? 100 : -900)) return rej(Reason.THROTTLE_NOT_LOW);
         if (this.battLevel >= BattWarn.CRITICAL || this.battMonitorLost) return rej(Reason.BATTERY_LOW);
         if (this.p("armRequireChecks") && !this.checks().ready) return rej(Reason.CHECKS_FAILING);
         this.armed = true;
@@ -394,6 +398,64 @@ export class SimDrone {
 
   private takeoffTarget = 1;
   private fsLong = false;
+  private collectiveThr = 0; // ACRO / ANGLE: collective 0..1 from the throttle stick
+  private gfCeilEv = false;  // EVENT 23 sent for the current ceiling breach
+
+  /**
+   * ACRO / ANGLE, no automatic action: thrust from the throttle stick (as the firmware,
+   * thrust = (stick + 1) / 2, centre = hover), attitude from the sticks (ANGLE: angle up to maxTilt;
+   * ACRO: rate, 4 × maxYawRate as fc_core.c), yaw rate; the motion follows thrust, gravity and drag.
+   */
+  private stepCollective(dt: number, thr: number, yawIn: number, pIn: number, rIn: number, beginner: number) {
+    const g = 9.81;
+    this.collectiveThr = clamp((thr + 1) / 2, 0, 1);
+    if (this.inAir) {
+      if (this.mode === FlightMode.ANGLE) {
+        const tilt = this.p("maxTilt") * beginner;
+        this.pitch = approach(this.pitch, pIn * tilt, 8, dt);
+        this.roll = approach(this.roll, rIn * tilt, 8, dt);
+      } else {
+        const rate = 4 * this.p("maxYawRate") * beginner;
+        const wrap180 = (a: number) => ((((a + 180) % 360) + 360) % 360) - 180;
+        this.pitch = wrap180(this.pitch + pIn * rate * dt);
+        this.roll = wrap180(this.roll + rIn * rate * dt);
+      }
+      this.heading = wrap360(this.heading + yawIn * this.p("maxYawRate") * beginner * dt);
+    } else {
+      this.pitch = approach(this.pitch, 0, 10, dt);
+      this.roll = approach(this.roll, 0, 10, dt);
+    }
+    // thrust along the body z axis (FLU, pitch + = nose down, roll + = right wing down)
+    const a = g * this.collectiveThr / HOVER_THR;
+    const th = this.pitch * D2R, ph = this.roll * D2R, h = this.heading * D2R;
+    const aF = a * Math.sin(th) * Math.cos(ph), aR = a * Math.sin(ph), aU = a * Math.cos(th) * Math.cos(ph);
+    const windN = 0.4, kH = 0.5, kV = 0.8;   // light wind from the south, linear drag
+    const aN = aF * Math.cos(h) - aR * Math.sin(h) - kH * (this.vN - windN);
+    const aE = aF * Math.sin(h) + aR * Math.cos(h) - kH * this.vE;
+    const aZ = aU - g - kV * this.vz;
+    if (!this.inAir) {
+      // on the ground: lift-off once the thrust beats gravity (as fc_core.c detects it from the height)
+      this.vN = this.vE = this.vz = 0;
+      if (aZ > 0.2) this.inAir = true;
+      else return;
+    }
+    this.vN += aN * dt;
+    this.vE += aE * dt;
+    this.vz += aZ * dt;
+    const ceiling = this.outdoor ? this.p("gfMaxAlt") : Math.min(this.p("gfMaxAlt"), this.p("gfCeiling"));
+    if (this.alt >= ceiling && this.vz > 0) {
+      this.vz = 0;                         // no climb above the ceiling (gfMaxAlt / gfCeiling)
+      if (!this.gfCeilEv) this.event(EventLevel.WARN, EventCode.GEOFENCE_BREACH, "Geofence reached", this.outdoor ? 0 : 1);
+      this.gfCeilEv = true;
+    } else if (this.alt < ceiling - 0.2) this.gfCeilEv = false;
+    this.posN += this.vN * dt;
+    this.posE += this.vE * dt;
+    this.alt = Math.max(0, this.alt + this.vz * dt);
+    if (this.alt <= 0) {
+      this.vN *= 0.5; this.vE *= 0.5;      // ground friction on a touchdown
+      if (this.vz < 0) this.vz = 0;
+    }
+  }
 
   private disarm() {
     this.armed = false;
@@ -708,9 +770,16 @@ export class SimDrone {
       }
     }
 
-    const sticks = this.rc;
+    // stale RC (> 0.25 s, HANDOVER §6): neutral attitude; the collective keeps its last value in
+    // the air and drops to idle on the ground (a stale stick must never lift the drone off)
+    const rcStale = this.t - this.rcT > 0.25;
+    const sticks = rcStale ? { throttle: this.inAir ? this.rc.throttle : -1000, yaw: 0, pitch: 0, roll: 0 } : this.rc;
     const thr = sticks.throttle / 1000, yawIn = sticks.yaw / 1000, pIn = sticks.pitch / 1000, rIn = sticks.roll / 1000;
     const manual = this.auto === AutoAction.NONE && this.armed && this.inAir && silent < 1;
+    // ACRO / ANGLE: the throttle stick is the collective (it does not spring back, centre = hover) and
+    // there is no altitude or velocity loop: the pilot flies thrust and attitude directly
+    const collective = (this.mode === FlightMode.ANGLE || this.mode === FlightMode.ACRO) &&
+      this.armed && !this.killedFall && this.auto === AutoAction.NONE;
     const maxH = this.outdoor ? this.p("maxHSpeed") : Math.min(2, this.p("maxHSpeed"));
     const beginner = this.p("beginner") ? 0.5 : 1;
     let tgtVN = 0, tgtVE = 0, tgtVz = 0;
@@ -740,6 +809,8 @@ export class SimDrone {
           this.heading = approach(this.heading, wrap360(Math.atan2(-this.posE, -this.posN) / D2R), 1, dt);
         } else tgtVz = -(this.alt < 1 ? 0.3 : this.p("landSpeed"));
         if (manual && this.p("rthStickCancel") && (Math.abs(pIn) > 0.3 || Math.abs(rIn) > 0.3)) this.auto = AutoAction.NONE;
+      } else if (collective) {
+        this.stepCollective(dt, thr, yawIn, pIn, rIn, beginner);
       } else if (manual) {
         const fwd = pIn * maxH * beginner, right = rIn * maxH * beginner;
         tgtVN = fwd * Math.cos(h) - right * Math.sin(h);
@@ -763,7 +834,7 @@ export class SimDrone {
       if (this.alt >= ceiling && tgtVz > 0) tgtVz = 0;
     }
 
-    if (!this.killedFall) {
+    if (!this.killedFall && !collective) {
       this.vN = approach(this.vN, tgtVN, 2, dt);
       this.vE = approach(this.vE, tgtVE, 2, dt);
       this.vz = approach(this.vz, this.inAir ? tgtVz : 0, 3, dt);
@@ -773,7 +844,8 @@ export class SimDrone {
     }
 
     // touchdown
-    if (this.inAir && this.alt <= 0.02 && this.vz <= 0 && this.auto !== AutoAction.TAKEOFF) {
+    if (this.inAir && this.alt <= 0.02 && this.vz <= 0 && this.auto !== AutoAction.TAKEOFF &&
+        !(collective && this.collectiveThr >= 0.05)) {   // ACRO / ANGLE: touchdown with the stick at the bottom, as fc_core.c
       this.inAir = false;
       this.alt = 0;
       this.vz = 0;
@@ -790,15 +862,21 @@ export class SimDrone {
     }
     if (this.armed && this.inAir) this.flightTime += dt;
 
-    // attitude follows the horizontal acceleration
-    const aN = (tgtVN - this.vN) * 2, aE = (tgtVE - this.vE) * 2;
-    const aF = aN * Math.cos(h) + aE * Math.sin(h), aR = -aN * Math.sin(h) + aE * Math.cos(h);
-    this.pitch = approach(this.pitch, this.inAir ? clamp(Math.atan2(aF, 9.81) / D2R, -this.p("maxTilt"), this.p("maxTilt")) : 0, 6, dt);
-    this.roll = approach(this.roll, this.inAir ? clamp(Math.atan2(aR, 9.81) / D2R, -this.p("maxTilt"), this.p("maxTilt")) : 0, 6, dt);
+    // attitude follows the horizontal acceleration (the hold modes and the automatic actions;
+    // in ACRO / ANGLE the attitude is the pilot's, set in stepCollective)
+    if (!collective) {
+      const aN = (tgtVN - this.vN) * 2, aE = (tgtVE - this.vE) * 2;
+      const aF = aN * Math.cos(h) + aE * Math.sin(h), aR = -aN * Math.sin(h) + aE * Math.cos(h);
+      this.pitch = approach(this.pitch, this.inAir ? clamp(Math.atan2(aF, 9.81) / D2R, -this.p("maxTilt"), this.p("maxTilt")) : 0, 6, dt);
+      this.roll = approach(this.roll, this.inAir ? clamp(Math.atan2(aR, 9.81) / D2R, -this.p("maxTilt"), this.p("maxTilt")) : 0, 6, dt);
+      this.collectiveThr = this.inAir ? HOVER_THR : 0;
+    }
 
     // power
     const hover = this.outdoor ? 10 : 3.2;
-    const spin = this.armed ? (this.inAir ? hover * (1 + 0.6 * Math.max(0, this.vz) + 0.05 * Math.hypot(this.vN, this.vE)) : 0.6) : 0.12;
+    const spin = !this.armed ? 0.12
+      : collective ? (this.inAir || this.collectiveThr > 0.05 ? hover * Math.max(0.2, (this.collectiveThr / HOVER_THR) ** 1.5) : 0.6)
+      : this.inAir ? hover * (1 + 0.6 * Math.max(0, this.vz) + 0.05 * Math.hypot(this.vN, this.vE)) : 0.6;
     this.current = approach(this.current, spin + (this.motorTest ? 0.8 : 0), 4, dt);
     this.usedMah += (this.current * this.scaleI * 1000 * dt) / 3600;
   }
@@ -1191,6 +1269,8 @@ export class SimDrone {
       { id: CheckId.RADIO, state: this.elrsLinked ? CheckState.OK : CheckState.NA, value: this.elrsLinked ? 100 : 0 },
       { id: CheckId.EKF, state: CheckState.OK, value: 0 },
       { id: CheckId.FAILSAFE, state: CheckState.OK, value: Math.round(this.p("gfMaxDist")) },
+      // 10 throttle low on the active input (§7.1), as checks.c: only RC younger than 0.5 s counts
+      { id: CheckId.THROTTLE, state: this.appInput && this.t - this.rcT < 0.5 && this.rc.throttle > (this.mode === FlightMode.ALT_HOLD || this.mode === FlightMode.POS_HOLD ? 100 : -900) ? CheckState.FAIL : CheckState.OK, value: 0 },
       // value: low byte = calibrations required (bit = CalType - 1), high byte = recommended
       { id: CheckId.CALIBRATION, state: this.compassCalibrated ? CheckState.OK : CheckState.WARN, value: this.compassCalibrated ? 0 : (1 << (CalType.COMPASS - 1)) << 8 },
       // 12 USB: the simulator is never plugged into a computer
