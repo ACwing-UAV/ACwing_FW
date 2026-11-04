@@ -1,8 +1,16 @@
-# ACwing Pilot: app handover for firmware 0.5.0
+# ACwing Pilot: app handover for firmware 0.5.0 – 0.6.1
 
 **For:** the agent/developer who owns the ACwing Pilot app (`02 - Tools/02 - App/`).
 **From:** the flight-controller firmware (`00 - FC_FW/`), version **0.5.0**.
 **Protocol version:** still 2. Nothing in the BLE protocol changed incompatibly.
+
+> **Firmware 0.6.1** (flight behaviour, HANDOVER_FW §6, §7.3, §7.5): manual
+> collective with centre = learned hover, idle after a touchdown, HOLD cancel
+> relative to the throttle at its start, geofence in ACRO / ANGLE, in-air
+> detection and open-loop LAND without an altitude estimate, STREAM_RATES per
+> session, per-link ACK cache. App side done: the cockpit puts the throttle
+> stick at the centre when the mode changes to ACRO / ANGLE in the air, and
+> the simulator flies the same rules (`src/sim/simDrone.test.ts`).
 
 [`HANDOVER_FW.md`](HANDOVER_FW.md) is the contract the app gave the firmware.
 This document goes the other way. It lists what the firmware now does beyond

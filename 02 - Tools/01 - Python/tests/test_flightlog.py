@@ -123,6 +123,27 @@ def test_link_list_read_erase(tmp_path):
     assert link.list_logs() == []
 
 
+class ChattyFC(FakeFC):
+    """Firmware >= 0.6.0: the USB port also streams telemetry; this one loses the ACK of LOG_LIST."""
+
+    def cmd(self, op, seq, a):
+        if op != fl.OP_LOG_LIST:
+            return super().cmd(op, seq, a)
+
+    def read(self, n):
+        self.out += encode_frame(0x06, bytes(25))     # FLIGHT, as the ground link sends it
+        return super().read(n)
+
+
+def test_link_timeout_with_telemetry():
+    import time as _t
+    link = fl.FcLink(ChattyFC({}), timeout=0.3)
+    t0 = _t.monotonic()
+    with pytest.raises(fl.LinkError, match="no answer"):
+        link.list_logs()                              # telemetry keeps coming, the ACK never does
+    assert _t.monotonic() - t0 < 2.0
+
+
 class FakeBle(FakeFC):
     """The drone seen over BLE: raw commands, the last flight only, no erase."""
 

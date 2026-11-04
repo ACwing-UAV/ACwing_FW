@@ -20,6 +20,7 @@ binFile = fullfile(outDir, sprintf('acwing_cap_%s.bin', datestr(now, 'yyyymmdd_H
 fid = fopen(binFile, 'w');
 if fid < 0, error('Cannot create %s', binFile); end
 dev = serialport(port, baud, "Timeout", 1);
+try, setDTR(dev, true); catch, end  % FC USB port (fw >= 0.6.0): the drone streams while DTR is set
 flush(dev);
 fprintf('Recording to %s for %d s: reset the board NOW.\n', binFile, duration);
 

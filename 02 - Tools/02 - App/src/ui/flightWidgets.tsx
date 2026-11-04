@@ -46,28 +46,39 @@ export function Stick({ value, onChange, springX = true, springY = true, size, l
   );
 }
 
-/** Attitude indicator: horizon and pitch ladder rotate with the roll; the aircraft symbol is fixed. */
+/**
+ * Attitude indicator: horizon and pitch ladder rotate with the roll; the aircraft symbol is fixed.
+ * Everything is symmetric about one centre (CX, CY): the aircraft symbol, the ladder bands, the
+ * horizon gap, the roll pivot and the roll scale.
+ */
+const HUD_CX = 260, HUD_CY = 170, HUD_ROLL_R = 150, HUD_ROLL_MAX = 60;
 export function Hud({ rollRight, pitchUp, width = 520 }: { rollRight: number; pitchUp: number; width?: number }) {
   const ppd = 6; // pixels per degree of pitch
   const off = Math.max(-60, Math.min(60, pitchUp)) * ppd;
+  const cx = HUD_CX, cy = HUD_CY, r = HUD_ROLL_R;
+  // roll scale: arc of radius r about the roll pivot, ±HUD_ROLL_MAX (the pointer's travel)
+  const sx = r * Math.sin(HUD_ROLL_MAX * Math.PI / 180), sy = cy - r * Math.cos(HUD_ROLL_MAX * Math.PI / 180);
   return (
     <svg viewBox="0 0 520 340" width={width} role="img" aria-label={`Roll ${rollRight.toFixed(0)}°, pitch ${pitchUp.toFixed(0)}°`} style={{ overflow: "visible" }}>
-      <g transform={`rotate(${-rollRight} 260 170) translate(0 ${off})`} stroke="var(--hud-line)">
-        <line x1="20" y1="170" x2="205" y2="170" strokeWidth="2" />
-        <line x1="315" y1="170" x2="500" y2="170" strokeWidth="2" />
+      <g transform={`rotate(${-rollRight} ${cx} ${cy}) translate(0 ${off})`} stroke="var(--hud-line)">
+        <line x1={cx - 240} y1={cy} x2={cx - 55} y2={cy} strokeWidth="2" />
+        <line x1={cx + 55} y1={cy} x2={cx + 240} y2={cy} strokeWidth="2" />
         {[-20, -10, 10, 20].map((p) => (
           <g key={p} strokeWidth="1.5" fill="none" opacity="0.85" strokeDasharray={p < 0 ? "6 5" : undefined}>
-            <path d={`M195 ${170 - p * ppd} h-50 v${p > 0 ? 8 : -8}`} />
-            <path d={`M325 ${170 - p * ppd} h50 v${p > 0 ? 8 : -8}`} />
-            <text x="118" y={174 - p * ppd} fontSize="12" fill="var(--hud-line)" stroke="none" fontFamily="Chakra Petch, sans-serif">{p}</text>
-            <text x="385" y={174 - p * ppd} fontSize="12" fill="var(--hud-line)" stroke="none" fontFamily="Chakra Petch, sans-serif">{p}</text>
+            <path d={`M${cx - 65} ${cy - p * ppd} h-50 v${p > 0 ? 8 : -8}`} />
+            <path d={`M${cx + 65} ${cy - p * ppd} h50 v${p > 0 ? 8 : -8}`} />
+            <text x={cx - 121} y={cy + 4 - p * ppd} textAnchor="end" fontSize="12" fill="var(--hud-line)" stroke="none" fontFamily="Chakra Petch, sans-serif">{p}</text>
+            <text x={cx + 121} y={cy + 4 - p * ppd} textAnchor="start" fontSize="12" fill="var(--hud-line)" stroke="none" fontFamily="Chakra Petch, sans-serif">{p}</text>
           </g>
         ))}
       </g>
-      <path d="M200 170 h36 l12 12 l12 -12 h36" fill="none" stroke="var(--accent)" strokeWidth="3" strokeLinecap="round" />
-      <circle cx="260" cy="170" r="3" fill="var(--accent)" />
-      <path d="M150 52 A 150 150 0 0 1 370 52" fill="none" stroke="var(--line-3)" strokeWidth="1.5" />
-      <g transform={`rotate(${-Math.max(-60, Math.min(60, rollRight))} 260 176)`}><path d="M260 26 l-7 -12 h14 z" fill="var(--accent)" /></g>
+      {/* aircraft symbol: wings 36 px each side of a 24 px chevron whose apex is at the centre */}
+      <path d={`M${cx - 48} ${cy} h36 l12 12 l12 -12 h36`} fill="none" stroke="var(--accent)" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
+      <circle cx={cx} cy={cy} r="3" fill="var(--accent)" />
+      <path d={`M${cx - sx} ${sy} A ${r} ${r} 0 0 1 ${cx + sx} ${sy}`} fill="none" stroke="var(--line-3)" strokeWidth="1.5" />
+      <g transform={`rotate(${-Math.max(-HUD_ROLL_MAX, Math.min(HUD_ROLL_MAX, rollRight))} ${cx} ${cy})`}>
+        <path d={`M${cx} ${cy - r} l-7 -12 h14 z`} fill="var(--accent)" />
+      </g>
     </svg>
   );
 }

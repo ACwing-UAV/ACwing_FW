@@ -16,10 +16,21 @@
 #define MOTORS_ENABLE    0        /**< 1 only with the power stage connected */
 #define MOTORS_PWM_TOP   1999u
 
+/** Motors of this board: one PWM output each (TIM1 CH1..CH4 here). The single
+ * source for the flight core, CAPS.nMotors and the MOTORS frame (app_main.c).
+ * A board with more outputs raises it and adds its channels in motors.c. */
+#ifndef MOTORS_N
+#define MOTORS_N         4u
+#endif
+#define MOTORS_MAX       8u       /**< protocol limit (CAPS.nMotors 4, 6 or 8) */
+#if MOTORS_N != 4u && MOTORS_N != 6u && MOTORS_N != 8u
+#error "MOTORS_N must be 4, 6 or 8 (CAPS frame QUAD_X, HEXA_X, OCTO_X)"
+#endif
+
 void motors_init(void);
 void motors_arm(uint8_t armed);              /**< disarmed: duty forced to 0   */
-void motors_set(const float duty[4]);        /**< 0..1, saturated              */
-/** MOTOR_TEST (props off, disarmed): motor 1..4 at duty, the others off;
+void motors_set(const float duty[MOTORS_N]); /**< 0..1, saturated              */
+/** MOTOR_TEST (props off, disarmed): motor 1..MOTORS_N at duty, the others off;
  * motor 0 = all off. Does nothing with MOTORS_ENABLE = 0. */
 void motors_test(uint8_t motor, float duty);
 

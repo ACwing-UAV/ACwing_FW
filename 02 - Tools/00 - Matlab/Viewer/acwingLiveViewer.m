@@ -64,6 +64,7 @@ try
     switch lower(string(transport))
         case "serial"
             dev = serialport(target, baud, "Timeout", 1);
+            try, setDTR(dev, true); catch, end  % FC USB port (fw >= 0.6.0): the drone streams while DTR is set
             flush(dev);
             while ishghandle(fig)
                 nb = dev.NumBytesAvailable;

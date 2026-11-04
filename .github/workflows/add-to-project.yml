@@ -21,8 +21,30 @@ jobs:
     # Dependabot runs do not get Actions secrets: skip its pull requests
     if: github.actor != 'dependabot[bot]'
     runs-on: ubuntu-latest
+    # Several issues opened together start several runs at once; the Projects
+    # GraphQL API then fails some of them with transient errors ("Something went
+    # wrong while executing your query", "Unknown error: {}"). Adding an item is
+    # idempotent, so a failed attempt is retried after a pause (up to 3 attempts).
     steps:
-      - uses: actions/add-to-project@v2.0.0
+      - id: try1
+        continue-on-error: true
+        uses: actions/add-to-project@v2.0.0
+        with:
+          project-url: https://github.com/orgs/ACwing-UAV/projects/1
+          github-token: ${{ secrets.ADD_TO_PROJECT_TOKEN }}
+      - if: steps.try1.outcome == 'failure'
+        run: sleep $((20 + RANDOM % 20))
+      - id: try2
+        if: steps.try1.outcome == 'failure'
+        continue-on-error: true
+        uses: actions/add-to-project@v2.0.0
+        with:
+          project-url: https://github.com/orgs/ACwing-UAV/projects/1
+          github-token: ${{ secrets.ADD_TO_PROJECT_TOKEN }}
+      - if: steps.try2.outcome == 'failure'
+        run: sleep $((60 + RANDOM % 30))
+      - if: steps.try2.outcome == 'failure'
+        uses: actions/add-to-project@v2.0.0
         with:
           project-url: https://github.com/orgs/ACwing-UAV/projects/1
           github-token: ${{ secrets.ADD_TO_PROJECT_TOKEN }}

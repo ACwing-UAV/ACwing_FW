@@ -289,7 +289,13 @@ class FcLink:
         return frames
 
     def _run(self, op: int, args: bytes = b"", on_frame=None, timeout: Optional[float] = None):
-        """Sends a command, feeds every other frame to on_frame until the final ACK."""
+        """Sends a command, feeds every other frame to on_frame until the final ACK.
+
+        The wait is extended only by the answers of the log commands (LOG_ENTRY,
+        LOG_DATA): from firmware 0.6.0 the USB port is a ground link that also
+        streams telemetry (FLIGHT, STATE, STATUS...), which must not keep a
+        command whose ACK was lost waiting for ever.
+        """
         seq = self._send(op, args)
         t_end = time.monotonic() + (timeout or self.timeout)
         while time.monotonic() < t_end:
@@ -305,7 +311,8 @@ class FcLink:
                     return
                 if on_frame:
                     on_frame(f)
-                t_end = max(t_end, time.monotonic() + (timeout or self.timeout))
+                if f.type in (FT_LOG_ENTRY, FT_LOG_DATA):
+                    t_end = max(t_end, time.monotonic() + (timeout or self.timeout))
         raise LinkError(f"0x{op:02X}: no answer (is this the FC USB port?)")
 
     def list_logs(self) -> List[Struct]:

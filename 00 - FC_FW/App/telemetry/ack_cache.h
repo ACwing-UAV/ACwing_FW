@@ -19,6 +19,10 @@
 enum { ACKC_NEW = 0, ACKC_PENDING = 1, ACKC_DONE = 2 };
 
 void    ackc_reset(void);
+/** Forgets only the entries whose op satisfies (op & mask) == value: one link's
+ * entries (USB keys have bit 7 set), so that a new session on one link does not
+ * make the other link re-execute a repeated command. */
+void    ackc_reset_ops(uint8_t mask, uint8_t value);
 /** Looks up (op, seq). ACKC_DONE: result/reason filled, re-send them.
  * ACKC_PENDING: ignore. ACKC_NEW: a pending entry was created, execute it. */
 uint8_t ackc_begin(uint8_t op, uint8_t seq, uint8_t *result, uint8_t *reason);

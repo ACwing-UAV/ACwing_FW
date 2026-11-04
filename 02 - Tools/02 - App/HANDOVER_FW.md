@@ -97,8 +97,9 @@ Required changes on this layer:
    `PARAM` > `FLIGHT` > `CHECKS` > `POWER` > `NAV` > `MOTORS` > `SYSTEM` >
    `STATUS` > `STATE`. Dropping STATE is fine; dropping an ACK costs a 600 ms
    retry; dropping an EVENT may hide a warning.
-4. **USB/UART** may carry the same frames (the PC tools ignore unknown
-   types), but the app does not use USB yet.
+4. **USB/UART** carry the same frames (the PC tools ignore unknown types).
+   From firmware 0.6.0 the USB port is a **ground link** (§5.2): telemetry,
+   parameters, calibrations and log, never flight commands.
 
 ## 3. Framing and frame catalogue
 
@@ -303,6 +304,10 @@ INIT) and `0x02 N` (STATE decimation) keep their phase-2 format without seq.
 
 **Sequence and ACK rules**
 
+- The ACK cache is **per link** (BLE and USB keep separate entries) and is
+  forgotten only for the link that starts a new session (BLE subscribe, USB
+  port opened): a new session restarts its sequence numbers, the other link's
+  retries are still answered from its cache (firmware 0.6.1).
 - Every command with a seq is answered by exactly one ACK `{op, seq, result,
   reason}`, **except RC (0x11) and HEARTBEAT (0x10)** (seq = 0, no ACK).
 - The app re-sends a command without ACK after **600 ms**, **twice at most**,
@@ -340,7 +345,7 @@ INIT) and `0x02 N` (STATE decimation) keep their phase-2 format without seq.
 | `0x36` | MOTOR_TEST | `motor u8 (1…n), pct u8 (≤ 20), ms u16 (≤ 3000), 0x50` | `PROPS_CONFIRM_MISSING` without `0x50`; `ARMED`; `INVALID/OUT_OF_RANGE`. App sends pct 8, 2000 ms |
 | `0x37` | MOTOR_REVERSE | `motor u8` | toggle direction (DShot spin-direction command / ESC setting), store with CAL_SAVE |
 | `0x38` | MOTOR_REMAP | `map u8×n` (n ≤ 8; map[i] = output for motor i+1) | `ARMED`. Reserved: the app does not send it yet |
-| `0x40` | STREAM_RATES | `flight, power, nav, motors, system` u8 Hz | clamp to the ranges in §3; 0 = keep current. Reserved: the app uses the defaults today |
+| `0x40` | STREAM_RATES | `flight, power, nav, motors, system` u8 Hz | clamp to the ranges in §3; 0 = keep current. **Lasts one session**: the defaults of §3 again at every new subscription (and when the USB port opens with no app subscribed) — firmware 0.6.1. Reserved: the app uses the defaults today |
 | `0x41` | REQUEST | `frameType u8` | send that frame once now (CAPS, CHECKS, INIT, FLIGHT, POWER, NAV, MOTORS, SYSTEM); others `UNSUPPORTED` |
 | `0x42` | SET_NAME | `name char[16]` (zero padded UTF-8) | store in flash, re-send CAPS |
 | `0x43` | SET_TIME | `unix_s u32` (UTC), `ms u16` (0…999), `tzMin i16` (−840…840, minutes east of UTC) | the wall clock for the flight log (§5.1), any state. `INVALID/OUT_OF_RANGE` before 2024-01-01. The app sends it at every connection — firmware 0.6.0; older firmware answers `UNSUPPORTED` |
@@ -468,7 +473,10 @@ drone acts on its own timers above.
 >   the MCU rather than flying on stale commands.
 > - Stale RC: when `silence > 0.25 s`, stop using the last RC values for
 >   attitude/thrust setpoints (hold the last mode's neutral: level attitude,
->   hold altitude where available) before the 1 s failsafe proper.
+>   hold altitude where available) before the 1 s failsafe proper. In ACRO /
+>   ANGLE the neutral collective is the last one **in the air** and **idle on
+>   the ground**: a throttle left up (cockpit closed, then slide-to-arm, §7.1)
+>   must never lift the drone off (firmware 0.6.1).
 >
 > Test: with the drone in flight state on the bench (props off), stall the
 > BLE thread on purpose (debug flag that blocks its loop) and check that the
@@ -495,6 +503,34 @@ deadband/expo/sensitivity):
 
 Beginner mode (`beginner`=1) halves maxTilt, maxYawRate, maxClimb, maxHSpeed
 and forbids ACRO. Indoor models cap horizontal speed at 2 m/s.
+
+**Manual collective** (ACRO / ANGLE, and any mode while no altitude estimate is
+available) — firmware 0.6.1, simulator alike:
+
+- **Stick → collective**: bottom = 0, **centre = hover**, top = 1 (piecewise
+  linear). The hover collective is **learned** in steady flight (|vz| <
+  0.15 m/s, any mode with an altitude estimate, time constant 3 s), starting
+  from 0.45 and kept for the next flights of the same power cycle.
+- **No jump at a mode change in the air.** The app puts the throttle stick at
+  the **centre** when the mode changes from a hold mode to ACRO / ANGLE in the
+  air (never at the bottom: that would be collective 0), so the collective
+  starts at hover; entering an altitude-hold mode (or HOLD, LAND, a failsafe)
+  starts the vertical loop from the learned hover, not from an old integrator.
+- **Geofence in the manual modes too**: with an altitude estimate the
+  collective may not push above gfMaxAlt / gfCeiling. The allowed climb rate
+  falls with the distance to the ceiling (√(2·2.5 m/s²·d)), so a full-throttle
+  climb stops in time; EVENT 23 once, FLIGHT.failsafe bit 3 at the ceiling.
+- **Without an altitude estimate** (no baro/ToF, or not valid):
+  - *in air* is detected from the collective (> 0.8 × hover for 0.3 s), so the
+    in-air failsafes work and the 10 s no-take-off auto-disarm never stops the
+    motors in flight; *touchdown* = stick at the bottom for 1 s;
+  - HOLD and the failsafe hover hold the **hover collective** (open loop: the
+    height drifts);
+  - LAND / RTH (and the failsafes that land) descend **open loop**: the
+    collective ramps in 1 s from its value to 0.85 × hover and is kept for at
+    most 20 s, then touchdown (idle) and auto-disarm.
+  - TAKEOFF stays refused (`SENSOR_MISSING`); a TAKEOFF that loses the
+    estimate becomes HOLD.
 
 **Other failsafes** (bits in FLIGHT.failsafe, one EVENT each):
 
@@ -537,6 +573,13 @@ available), detect touchdown, EVENT 4, `flags.LANDED`, then **auto-disarm
 after `autoDisarm` s** (default 2) → EVENT 2. Any stick input does not cancel
 LAND (only KILL, a mode change or a new TAKEOFF).
 
+**After any touchdown the motors stay at idle** until the disarm, or until the
+throttle stick has been at the bottom (≤ −900) once: in ACRO / ANGLE the stick
+may still stand at the centre after an automatic landing, which is about hover
+collective and would lift the drone off again. A pilot who lands by hand
+already has the stick at the bottom and can take off again before the
+auto-disarm (firmware 0.6.1).
+
 ### 7.4 RTH (GNSS models only)
 
 Climb to `rthAlt` (or stay higher), fly home, land as 7.3. Cancelled by
@@ -547,7 +590,10 @@ and every failsafe action "RTH" becomes "land".
 ### 7.5 HOLD (pause)
 
 In air: stop, hold position (POS_HOLD capable) or altitude. Moving any stick
-by more than 30 % gives control back (`auto` = NONE).
+by more than 30 % gives control back (`auto` = NONE). Yaw, pitch and roll are
+measured from the centre; the **throttle from its position when HOLD began**
+(in ACRO / ANGLE it is the collective and is not centred, so an absolute test
+would cancel HOLD at once) — firmware 0.6.1.
 
 ### 7.6 KILL
 
@@ -592,7 +638,11 @@ reuse). Stored in flash with a version/CRC; on a bad CRC load defaults.
 Rules: battWarn > battCrit > battEmerg (if a SET breaks the order →
 `INVALID/OUT_OF_RANGE`). Enum values the model cannot do (RTH without GNSS)
 are accepted but executed as "land". `flags.bit0` dirty = RAM ≠ flash; the app
-shows "Changes not saved on the drone yet" until PARAM_SAVE. Parameters that
+shows "Changes not saved on the drone yet" until PARAM_SAVE. **Only PARAM_SAVE
+writes the parameters**: CAL_SAVE, CAL_RESTORE and SET_NAME also write the
+flash but keep the parameters last saved, so unsaved edits stay dirty. A flash
+write that fails leaves the drone's settings in RAM as they were (firmware
+0.6.1). Parameters that
 need a sensor the drone lacks may be omitted from PARAM_LIST.
 
 ## 9. Pre-flight checks (CHECKS)
@@ -884,16 +934,16 @@ simulator (Connect › Simulator).
 
 - **Firmware update over BLE** – not in v2 (Settings shows "with the USB
   tools"). A later DFU service can be added without touching this protocol.
-- **USB as a flight link** (telemetry, RC, app-link supervision) – the FC's
-  USB port carries only the log commands today (§5.1); the Connect screen's
-  USB tab stays "not available yet" until the firmware routes CMD frames from
-  USB into the app link and sends the frames to USB too. **Wi-Fi** bridge: not
-  available yet. The frames are transport-independent.
+- **USB as a flight link** – by design never (ADR 0009): from firmware 0.6.0
+  USB is a ground link (§5.2). App side still to do: a `Drone` over Web
+  Serial for telemetry, settings and calibrations with the flight controls
+  hidden. **Wi-Fi** bridge: not available yet. The frames are
+  transport-independent.
 - **Older logs over BLE** – only the last flight (a full flash over BLE would
   take about half an hour); the whole memory goes over USB.
-- **Wall-clock time in the logs** – times are relative to power-on; the app
-  stamps each download with the phone's date. An RTC set by the app at
-  connection would need a new command.
+- **Wall-clock time in the logs** – done in firmware 0.6.0: SET_TIME (§5,
+  §5.1). Logs written before the first connection since power-on have no
+  date.
 - **MOTOR_REMAP** and **STREAM_RATES** are defined and accepted by the
   simulator but the app UI does not send them yet.
 - **Open point for the firmware owner:** if a field cannot be produced with

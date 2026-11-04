@@ -728,7 +728,7 @@ void app_start(void)
     }
     const uint8_t batt = (uint8_t)(APP_BATT_ADC && batt_adc_init() == 0);
     {
-        const fc_config_t fc = { .sensors = 0u, .n_motors = 4u, .motors_built = MOTORS_ENABLE,
+        const fc_config_t fc = { .sensors = 0u, .n_motors = MOTORS_N, .motors_built = MOTORS_ENABLE,
                                  .motors_arm = motors_arm, .motor_test = motor_test_hook,
                                  .on_event = logf_event, .batt_monitor = batt,
 #if APP_USB_CDC
@@ -749,7 +749,7 @@ void app_start(void)
         app_task_cfg_t ac;
         memset(&ac, 0, sizeof ac);
         ac.hw_rev = APP_HW_REV;
-        ac.n_motors = 4u;
+        ac.n_motors = MOTORS_N;
         ac.motors_built = MOTORS_ENABLE;
         ac.uid[0] = HAL_GetUIDw0(); ac.uid[1] = HAL_GetUIDw1(); ac.uid[2] = HAL_GetUIDw2();
         ac.get_init = get_init;
