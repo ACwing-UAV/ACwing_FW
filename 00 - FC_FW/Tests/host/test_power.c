@@ -13,6 +13,7 @@
 #include "app_task.h"
 #include "battery.h"
 #include "batt_task.h"
+extern int g_flash_fail;
 #include "calib_mgr.h"
 #include "checks.h"
 #include <stdio.h>
@@ -543,12 +544,30 @@ static void test_power_frame(void)
     batt_state_t b; batt_read(&b);
     CHECK(NEAR(b.vbat, 11.70f, 0.02f), "after calibration the reading matches the multimeter (%.3f)", b.vbat);
     cmd(PV2_OP_CAL_CAPTURE, 43, NULL, 0);
+    for (int k = 0; k < 20; ++k) { now += 4; fc_service(now, 1, &v); app_step(now); drain(); }
+    /* an unsaved parameter edit, then a CAL_SAVE whose flash write fails: REJECTED, nothing changed */
+    { uint8_t why; (void)params_set(1, 2.0f, &why); }            /* takeoffAlt, not saved */
+    g_flash_fail = 1;
+    cmd(PV2_OP_CAL_SAVE, 60, NULL, 0);
+    for (int k = 0; k < 20; ++k) { now += 4; fc_service(now, 1, &v); app_step(now); drain(); }
+    g_flash_fail = 0;
+    a = find_ack(f1, PV2_OP_CAL_SAVE, 60);
+    CHECK(a && a->result == PV2_ACK_REJECTED, "CAL_SAVE with a flash error: REJECTED");
     cmd(PV2_OP_CAL_SAVE, 44, NULL, 0);
     for (int k = 0; k < 20; ++k) { now += 4; fc_service(now, 1, &v); app_step(now); drain(); }
     a = find_ack(f1, PV2_OP_CAL_SAVE, 44);
     cfg_image_t img;
     CHECK(a && a->result == PV2_ACK_OK && cfg_load(&img) == 0 && NEAR(img.cal.battery.scale_v, SCALE_TRUE, 0.2f),
           "CAL_SAVE stores scaleV (%.2f)", img.cal.battery.scale_v);
+    /* the failed attempt left no trace: the backup is still the set saved before (the default) */
+    CHECK(NEAR(img.bak.battery.scale_v, 110.0f, 0.01f) && (img.bak_mask & (1u << (PV2_CAL_BATTERY - 1u))),
+          "backup = the previous set after a failed save (%.2f)", img.bak.battery.scale_v);
+    /* CAL_SAVE does not write the unsaved parameter edit, which stays flagged dirty */
+    {
+        float pv[PARAM_COUNT]; cfg_params_get(&img, pv);
+        CHECK(NEAR(pv[P_TAKEOFF_ALT], 1.0f, 1e-6f) && params_dirty(P_TAKEOFF_ALT), "unsaved takeoffAlt not in flash (%.2f), still dirty", pv[P_TAKEOFF_ALT]);
+    }
+    { uint8_t why; (void)params_set(1, 1.0f, &why); }
 
     /* a flight: its charge is saved when disarmed, for the current calibration */
     const uint8_t arm[2] = { PV2_ARM_MAGIC0, PV2_ARM_MAGIC1 };

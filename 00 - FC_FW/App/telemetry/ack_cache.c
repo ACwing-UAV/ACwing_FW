@@ -11,6 +11,12 @@ static uint32_t s_clock;
 
 void ackc_reset(void) { memset(s_e, 0, sizeof s_e); s_clock = 0; }
 
+void ackc_reset_ops(uint8_t mask, uint8_t value)
+{
+    for (unsigned i = 0; i < ACK_CACHE_LEN; ++i)
+        if (s_e[i].used && (s_e[i].op & mask) == value) memset(&s_e[i], 0, sizeof s_e[i]);
+}
+
 static entry_t *find(uint8_t op, uint8_t seq)
 {
     for (unsigned i = 0; i < ACK_CACHE_LEN; ++i)

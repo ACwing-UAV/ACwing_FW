@@ -416,6 +416,155 @@ static void test_app_link_failsafe(void)
     g_fc_dbg_in_air = 0;
 }
 
+
+/* ------------------------------------------------------------ manual collective (HANDOVER_FW §6, §7) */
+static void rc(int16_t thr, int16_t yaw, int16_t pitch, int16_t roll)
+{
+    uint8_t b[9];
+    memcpy(&b[0], &thr, 2); memcpy(&b[2], &yaw, 2); memcpy(&b[4], &pitch, 2); memcpy(&b[6], &roll, 2); b[8] = 0;
+    cmd(PV2_OP_RC, 0, b, sizeof b);
+}
+
+/* runs the core with the plant for ms; thr != INT16_MIN: RC at 25 Hz, else heartbeats only */
+static void run_plant(plant_t *pl, fc_vert_t *v, uint32_t ms, int16_t thr)
+{
+    for (uint32_t k = 0; k < ms / 4; ++k) {
+        now += 4;
+        if (k % 10 == 0) { if (thr != INT16_MIN) rc(thr, 0, 0, 0); else heartbeat(); }
+        fc_setpoint_t sp; fc_setpoint(&sp);
+        if (pl) { plant_step(pl, sp.thrust, sp.armed, 0.004f); v->h = pl->h; v->vz = pl->vz; }
+        fc_service(now, 1, v);
+    }
+}
+
+static void test_manual_collective(void)
+{
+    const uint8_t arm[2] = { 0xA5, 0x5A };
+    fc_state_t s; fc_setpoint_t sp; fc_res_t r;
+
+    /* 1. stale RC on the ground: a stick left up never lifts the drone off */
+    fc_setup(PV2_S_IMU | PV2_S_BARO);
+    now = 1000;
+    plant_t pl = { 0, 0, 0.42f };
+    fc_vert_t v = { 1, 0, 0, 0, 0, 0, 1.0f, 0xFF, 0 };
+    run_plant(&pl, &v, 200, 800);                       /* cockpit closed with the throttle high */
+    run_plant(&pl, &v, 600, INT16_MIN);                 /* RC older than 0.5 s: slide-to-arm allowed */
+    r = post(PV2_OP_ARM, 1, arm, 2, &v);
+    CHECK(r.result == PV2_ACK_OK, "slide-to-arm with an old RC %d/%d", r.result, r.reason);
+    run_plant(&pl, &v, 2000, INT16_MIN);
+    fc_setpoint(&sp); fc_snapshot(&s);
+    CHECK(sp.thrust < 0.01f && !s.in_air && pl.h < 0.01f, "stale RC on the ground: idle (thrust %.2f)", sp.thrust);
+
+    /* 6. takeoff in ALT_HOLD learns the hover; ANGLE with the stick at the centre holds it */
+    run_plant(&pl, &v, 100, 0);
+    r = post(PV2_OP_TAKEOFF, 2, NULL, 0, &v);
+    CHECK(r.result == PV2_ACK_OK, "takeoff");
+    run_plant(&pl, &v, 12000, 0);
+    fc_snapshot(&s);
+    CHECK(fabsf(s.hover - 0.42f) < 0.03f, "hover learned in ALT_HOLD (%.3f, plant 0.42)", s.hover);
+    fc_setpoint(&sp);
+    const float thr_hold = sp.thrust;
+    uint8_t m = PV2_MODE_ANGLE;
+    r = post(PV2_OP_SET_MODE, 3, &m, 1, &v);
+    fc_setpoint(&sp);
+    CHECK(r.result == PV2_ACK_OK && fabsf(sp.thrust - thr_hold) < 0.03f, "ALT_HOLD -> ANGLE: no thrust jump (%.3f -> %.3f)", thr_hold, sp.thrust);
+    const float h0 = pl.h;
+    run_plant(&pl, &v, 3000, 0);
+    CHECK(fabsf(pl.h - h0) < 0.4f, "ANGLE, centre stick = hover (%.2f -> %.2f m)", h0, pl.h);
+    m = PV2_MODE_ALT_HOLD;
+    (void)post(PV2_OP_SET_MODE, 4, &m, 1, &v);
+    fc_setpoint(&sp);
+    CHECK(fabsf(sp.thrust - s.hover) < 0.05f, "ANGLE -> ALT_HOLD: starts from the hover (%.3f)", sp.thrust);
+    m = PV2_MODE_ANGLE;
+    (void)post(PV2_OP_SET_MODE, 5, &m, 1, &v);
+
+    /* 2. HOLD in ANGLE with the throttle off the centre: not cancelled; a 30 % change cancels it */
+    run_plant(&pl, &v, 500, 200);
+    (void)post(PV2_OP_HOLD, 6, NULL, 0, &v);
+    run_plant(&pl, &v, 1000, 200);
+    fc_snapshot(&s);
+    CHECK(s.autom == PV2_AUTO_HOLD, "HOLD kept with the collective stick at +20 %% (auto %d)", s.autom);
+    run_plant(&pl, &v, 200, 600);
+    fc_snapshot(&s);
+    CHECK(s.autom == PV2_AUTO_NONE, "HOLD cancelled by +40 %% throttle (auto %d)", s.autom);
+
+    /* 5. geofence in ANGLE: full collective does not climb above gfMaxAlt */
+    { uint8_t why; (void)params_set(30, 5.0f, &why); }
+    (void)drain_events(0);
+    float hmax = 0;
+    for (int k = 0; k < 40; ++k) { run_plant(&pl, &v, 250, 1000); if (pl.h > hmax) hmax = pl.h; }
+    CHECK(hmax < 5.6f, "ANGLE stays below the 5 m ceiling (max %.2f)", hmax);
+    CHECK(drain_events(PV2_E_GEOFENCE_BREACH) == 1, "EVENT 23 once");
+    { uint8_t why; (void)params_set(30, 30.0f, &why); }
+
+    /* 3. LAND in ANGLE with the stick at the centre: idle after the touchdown, no second lift-off */
+    run_plant(&pl, &v, 3000, 0);
+    (void)post(PV2_OP_LAND, 7, NULL, 0, &v);
+    uint32_t t_td = 0; float h_after = 0;
+    for (int k = 0; k < 2000 && s.armed; ++k) {
+        run_plant(&pl, &v, 8, 0);
+        fc_snapshot(&s);
+        if (!t_td && s.landed) t_td = now;
+        if (t_td) { fc_setpoint(&sp); if (s.armed) CHECK(sp.thrust < 0.01f, "idle after touchdown (%.2f)", sp.thrust); if (pl.h > h_after) h_after = pl.h; }
+    }
+    CHECK(t_td && !s.armed && h_after < 0.05f, "landed, stayed down, auto-disarmed (h %.2f)", h_after);
+
+    /* 3b. a manual landing (stick at the bottom) releases the idle: a new take-off is possible */
+    fc_setup(PV2_S_IMU | PV2_S_BARO);
+    now = 100000; pl = (plant_t){ 0, 0, 0.42f }; v.h = 0; v.vz = 0;
+    run_plant(&pl, &v, 100, -1000);
+    (void)post(PV2_OP_ARM, 1, arm, 2, &v);
+    run_plant(&pl, &v, 1500, 300);
+    fc_snapshot(&s);
+    CHECK(s.in_air && pl.h > 0.3f, "ANGLE manual lift-off (h %.2f)", pl.h);
+    run_plant(&pl, &v, 4000, -1000);
+    fc_snapshot(&s);
+    CHECK(!s.in_air && s.landed && !s.land_idle, "manual touchdown, stick at the bottom: idle released");
+    run_plant(&pl, &v, 800, 300);
+    fc_snapshot(&s);
+    CHECK(s.in_air, "re-take-off before the auto-disarm");
+}
+
+/* 4. no altitude estimate: in air from the collective, failsafe LAND open loop */
+static void test_no_alt_estimate(void)
+{
+    const uint8_t arm[2] = { 0xA5, 0x5A };
+    fc_state_t s; fc_setpoint_t sp;
+    fc_setup(PV2_S_IMU);
+    now = 1000;
+    run_plant(NULL, NULL, 100, -1000);
+    fc_res_t r = post(PV2_OP_ARM, 1, arm, 2, NULL);
+    CHECK(r.result == PV2_ACK_OK, "arm without baro");
+    for (uint32_t k = 0; k < 12000 / 4; ++k) { now += 4; if (k % 10 == 0) rc(200, 0, 0, 0); fc_service(now, 1, NULL); }
+    fc_snapshot(&s);
+    CHECK(s.armed && s.in_air && s.air_by_thrust, "in air from the collective, no 10 s auto-disarm in flight");
+
+    /* app silent: HOLD (open-loop hover), then the long action LAND (RTH without GNSS) */
+    float thr_hold = -1, thr_land_end = -1; uint32_t t_dis = 0;
+    const uint32_t t0 = now;
+    for (uint32_t k = 0; k < 30000 / 4; ++k) {
+        now += 4; fc_service(now, 1, NULL);
+        fc_snapshot(&s); fc_setpoint(&sp);
+        if (now - t0 == 2000) thr_hold = sp.thrust;
+        if (now - t0 == 3000 + 5000) thr_land_end = sp.thrust;
+        if (!s.armed && !t_dis) t_dis = now;
+    }
+    CHECK(fabsf(thr_hold - FC_HOVER_DEFAULT) < 0.01f, "short failsafe: hover collective (%.3f)", thr_hold);
+    CHECK(fabsf(thr_land_end - FC_LAND_OL_K * FC_HOVER_DEFAULT) < 0.01f, "open-loop LAND at 0.85 x hover (%.3f)", thr_land_end);
+    /* touchdown FC_LAND_OL_MS after the start of LAND; on the ground with the app silent (> 3 s) the disarm is immediate */
+    CHECK(t_dis && t_dis - t0 > 2900 + FC_LAND_OL_MS && t_dis - t0 < 3000 + FC_LAND_OL_MS + 2100, "touchdown after the open-loop LAND, disarm (%u ms)", (unsigned)(t_dis - t0));
+
+    /* manual touchdown without an estimate: stick at the bottom for 1 s */
+    fc_setup(PV2_S_IMU);
+    now = 100000;
+    run_plant(NULL, NULL, 100, -1000);
+    (void)post(PV2_OP_ARM, 1, arm, 2, NULL);
+    run_plant(NULL, NULL, 1000, 200);
+    run_plant(NULL, NULL, 1200, -1000);
+    fc_snapshot(&s);
+    CHECK(!s.in_air && s.landed, "manual touchdown without an altitude estimate");
+}
+
 static void test_alt_est(void)
 {
     alt_est_cfg_t c; alt_est_default_cfg(&c);
@@ -687,12 +836,22 @@ static void test_app(void)
     a = find_ack(f0, PV2_OP_PARAM_SAVE, 30, NULL);
     CHECK(a && a->result == PV2_ACK_REJECTED, "flash error -> REJECTED");
     g_flash_fail = 0;
+    /* STREAM_RATES: FLIGHT at 2 Hz for this session */
+    const uint8_t rates[5] = { 2, 0, 0, 0, 0 };
+    cmd(PV2_OP_STREAM_RATES, 31, rates, 5); app_run(40, &v, 1);
+    f0 = s_nf;
+    app_run(2000, &v, 1);
+    CHECK(count_type(f0, PV2_FT_FLIGHT) >= 3 && count_type(f0, PV2_FT_FLIGHT) <= 5, "STREAM_RATES: FLIGHT 2 Hz (%d in 2 s)", count_type(f0, PV2_FT_FLIGHT));
     /* new connection: the cache restarts, CAPS/INIT/CHECKS again */
     tlm_ble_set_state(TLM_BLE_CONNECTED);
     tlm_ble_set_state(TLM_BLE_STREAMING);
     f0 = s_nf;
     app_run(20, &v, 1);
     CHECK(s_nf - f0 >= 3 && s_f[f0].type == PV2_FT_CAPS && s_f[f0 + 1].type == PV2_FT_INIT && s_f[f0 + 2].type == PV2_FT_CHECKS, "re-subscribe order");
+    /* ... and the stream rates are the defaults again */
+    f0 = s_nf;
+    app_run(2000, &v, 1);
+    CHECK(count_type(f0, PV2_FT_FLIGHT) >= 18, "new session: FLIGHT back at 10 Hz (%d in 2 s)", count_type(f0, PV2_FT_FLIGHT));
 }
 
 static void test_ble_priority(void)
@@ -727,6 +886,8 @@ int main(void)
     test_takeoff_land();
     test_takeoff_tof();
     test_app_link_failsafe();
+    test_manual_collective();
+    test_no_alt_estimate();
     test_alt_est();
     test_drivers();
     test_checks_flow();

@@ -53,6 +53,19 @@ static uint8_t    s_to_lifted, s_dbg_forced, s_landed, s_geofence, s_geofence_ev
 static uint32_t   s_touch_ms, s_flow_bad_ms;
 static alt_ctrl_t s_ac;
 static fc_setpoint_t s_sp;
+static uint8_t    s_prev_auto;      /* setpoints(): automatic action of the previous step */
+static uint8_t    s_prev_vert;      /* setpoints(): the altitude loop ran at the previous step */
+static uint8_t    s_hold_prev;      /* HOLD active at the previous step (stick-cancel reference) */
+static float      s_hold_thr;       /* throttle stick when HOLD began                  */
+
+/* manual collective, landing idle, in air without an altitude estimate (§6) */
+static float      s_hover = FC_HOVER_DEFAULT;
+static uint8_t    s_land_idle;      /* touched down: idle until disarm or stick at the bottom */
+static uint8_t    s_air_thr;        /* in air detected from the collective                    */
+static uint32_t   s_air_thr_ms;     /* collective above the lift-off level for this long      */
+static uint32_t   s_land_ol_t0;     /* open-loop LAND started (no altitude estimate)          */
+static uint8_t    s_land_ol;
+static float      s_land_ol_from;   /* collective when the open-loop LAND started            */
 
 /* battery */
 static uint8_t           s_batt_level, s_batt_present, s_batt_lock, s_batt_stale, s_batt_have_hb;
@@ -83,8 +96,13 @@ void fc_init(const fc_config_t *cfg)
     g_fc_dbg_in_air = 0u;
     s_have_v = 0u; s_dbg_forced = 0u; s_landed = 0u; s_geofence = s_geofence_ev = 0u;
     s_touch_ms = s_flow_bad_ms = 0u;
-    alt_ctrl_init(&s_ac, 0.45f);
+    alt_ctrl_init(&s_ac, FC_HOVER_DEFAULT);
     memset(&s_sp, 0, sizeof s_sp);
+    s_prev_auto = PV2_AUTO_NONE; s_prev_vert = 0u; s_hold_prev = 0u; s_hold_thr = 0.0f;
+    s_hover = FC_HOVER_DEFAULT; s_land_idle = 0u; s_air_thr = 0u; s_air_thr_ms = 0u;
+    s_land_ol = 0u; s_land_ol_t0 = 0u; s_land_ol_from = 0.0f;
+    s_have_rc = 0u; s_rc_stale = 1u; s_last_thr = -1.0f;
+    memset(s_stick, 0, sizeof s_stick);
     spsc_reset(&s_batq);
     s_batt_level = PV2_BATT_OK; s_batt_present = 0u; s_batt_lock = 0u;
     s_batt_stale = cfg->batt_monitor;      /* unknown until the first heartbeat */
@@ -164,13 +182,18 @@ static float ceiling_h(void) { return ceiling_h_kind(0); }
 
 static void lift_off(void)
 {
-    s_in_air = 1u; s_took_off = 1u; s_landed = 0u; s_touch_ms = 0u;
+    s_in_air = 1u; s_took_off = 1u; s_landed = 0u; s_touch_ms = 0u; s_land_idle = 0u;
 }
 
 static void touch_down(uint32_t now)
 {
     s_in_air = 0u;
     s_landed = 1u;
+    s_air_thr = 0u; s_air_thr_ms = 0u; s_land_ol = 0u;
+    /* motors at idle until disarm, or until the pilot puts the stick at the bottom
+     * (then a manual take-off is possible again): after an automatic landing the
+     * stick may stand at the centre, which would be about hover thrust (§7.3) */
+    s_land_idle = 1u;
     if (s_auto == PV2_AUTO_LAND || s_auto == PV2_AUTO_RTH) event(PV2_EV_INFO, PV2_E_LANDED, 0);
     s_auto = PV2_AUTO_NONE;
     s_landed_ms = now;
@@ -197,6 +220,7 @@ static void disarm(void)
     s_dbg_forced = 0u;
     s_geofence = 0u;
     s_batt_lock = 0u;
+    s_land_idle = 0u; s_air_thr = 0u; s_air_thr_ms = 0u; s_land_ol = 0u;
     if (was) event(PV2_EV_INFO, PV2_E_DISARMED, 0);
 }
 
@@ -267,8 +291,9 @@ static void exec(const fc_cmd_t *c, uint32_t now, uint8_t est_running)
         s_auto = PV2_AUTO_NONE; s_failsafe = 0u; s_fs_long = 0u;
         s_took_off = 0u; s_arm_ms = now; s_flight_ms = 0u;
         s_landed = 0u; s_geofence_ev = 0u;
+        s_land_idle = 0u; s_air_thr = 0u; s_air_thr_ms = 0u; s_land_ol = 0u;
         if (s_have_v && s_v.valid) { s_h_ref = s_h_ground = s_h_sp = s_v.h; }
-        alt_ctrl_reset(&s_ac, 0.0f);
+        alt_ctrl_reset(&s_ac, s_hover - s_ac.hover);     /* hover learned in an earlier flight */
         if (s_cfg.motors_arm) s_cfg.motors_arm(1u);
         OK();
         event(PV2_EV_INFO, PV2_E_ARMED, 0);
@@ -299,7 +324,7 @@ static void exec(const fc_cmd_t *c, uint32_t now, uint8_t est_running)
         }
         s_h_sp = s_h_ground;
         s_to_t0 = now; s_to_lifted = 0u;
-        alt_ctrl_reset(&s_ac, 0.0f);
+        alt_ctrl_reset(&s_ac, s_hover - s_ac.hover);
         lift_off();                  /* motors spool up: not landed any more (as the app simulator) */
         s_auto = PV2_AUTO_TAKEOFF;
         OK();
@@ -392,17 +417,23 @@ static void update_sticks(uint32_t now)
         /* stale RC: the last mode's neutral -- level attitude, no yaw rate;
          * altitude hold modes: centre stick = hold altitude; otherwise keep
          * the last collective (no altitude sensor to do better) */
-        s_stick[0] = hold_mode() ? 0.0f : (s_armed ? s_last_thr : -1.0f);
+        /* stale RC: on the ground the collective goes to idle, so that a stick left
+         * up (cockpit closed, then slide-to-arm) never lifts the drone off (§6) */
+        s_stick[0] = hold_mode() ? 0.0f : ((s_armed && s_in_air) ? s_last_thr : -1.0f);
         s_stick[1] = s_stick[2] = s_stick[3] = 0.0f;
     }
 }
 
+/* HOLD is cancelled by a stick moved by more than 30 % (§7.5). Yaw, pitch and
+ * roll spring to the centre; the throttle counts as a change from where it was
+ * when HOLD began: in ACRO / ANGLE it is the collective and does not stand at
+ * the centre, so an absolute test would cancel HOLD at once. */
 static int stick_moved(void)
 {
     if (s_rc_stale) return 0;
-    const int16_t v[4] = { s_rc.thr, s_rc.yaw, s_rc.pitch, s_rc.roll };
-    for (int i = 0; i < 4; ++i) if (v[i] > FC_STICK_CANCEL || v[i] < -FC_STICK_CANCEL) return 1;
-    return 0;
+    const int16_t v[3] = { s_rc.yaw, s_rc.pitch, s_rc.roll };
+    for (int i = 0; i < 3; ++i) if (v[i] > FC_STICK_CANCEL || v[i] < -FC_STICK_CANCEL) return 1;
+    return fabsf((float)s_rc.thr / 1000.0f - s_hold_thr) > (float)FC_STICK_CANCEL / 1000.0f;
 }
 
 static void app_link_failsafe(uint32_t now)
@@ -487,6 +518,28 @@ static void battery(uint32_t now)
     if (s_batt_lock) s_auto = PV2_AUTO_LAND;          /* nothing but KILL overrides it */
 }
 
+/* ---- in air / on ground without an altitude estimate (no baro / ToF, or not valid) ----
+ * Lift-off: the collective commanded at the previous step stays above
+ * FC_AIR_THR_K x hover for FC_AIR_MS. Touchdown: stick at the bottom for
+ * FC_TOUCH_MS_NO_TOF, or the open-loop LAND has run for FC_LAND_OL_MS. Without
+ * this the drone flown by hand stays "on the ground": no in-air failsafe, and the
+ * 10 s no-take-off auto-disarm would stop the motors in flight. */
+static void air_ground_no_alt(uint32_t now, uint32_t dt)
+{
+    if (s_auto == PV2_AUTO_TAKEOFF) s_auto = s_in_air ? PV2_AUTO_HOLD : PV2_AUTO_NONE;   /* lost the estimate */
+    if (!s_in_air) {
+        if (!s_land_idle && s_sp.thrust > FC_AIR_THR_K * s_hover) {
+            s_air_thr_ms += dt;
+            if (s_air_thr_ms >= FC_AIR_MS) { lift_off(); s_air_thr = 1u; }
+        } else s_air_thr_ms = 0u;
+        return;
+    }
+    if (s_land_ol && (now - s_land_ol_t0) > FC_LAND_OL_MS) { touch_down(now); return; }
+    const uint8_t low = (uint8_t)(!s_rc_stale && s_stick[0] < FC_THR_LOW && s_auto == PV2_AUTO_NONE);
+    if (low) s_touch_ms += dt; else s_touch_ms = 0u;
+    if (s_touch_ms > FC_TOUCH_MS_NO_TOF) touch_down(now);
+}
+
 /* ---- in air / on ground ---- */
 static void air_ground(uint32_t now, uint32_t dt)
 {
@@ -500,7 +553,9 @@ static void air_ground(uint32_t now, uint32_t dt)
         if (!g_fc_dbg_in_air && s_in_air) { s_dbg_forced = 0u; touch_down(now); }
         return;
     }
-    if (!s_armed || !alt_ok()) return;
+    if (!s_armed) return;
+    if (!alt_ok()) { air_ground_no_alt(now, dt); return; }
+    s_air_thr = 0u; s_air_thr_ms = 0u;
 
     const float dh = s_v.h - s_h_ground;
     if (!s_in_air) {
@@ -570,10 +625,50 @@ static void flow_failsafe(uint32_t dt)
 }
 
 /* ---- setpoints for the control loops ---- */
+
+/* collective from the throttle stick (ACRO / ANGLE, or no altitude estimate):
+ * bottom = 0, centre = the learned hover, top = 1. Centre = hover makes the
+ * change between the altitude-hold modes and the manual ones free of jumps:
+ * the app puts the throttle stick at the centre when the mode changes in the
+ * air (§6). */
+static float collective(float stick)
+{
+    const float st = clampf(stick, -1.0f, 1.0f);
+    return (st <= 0.0f) ? (st + 1.0f) * s_hover : s_hover + st * (1.0f - s_hover);
+}
+
+/* learns the hover collective in steady flight (any mode, with an altitude estimate) */
+static void learn_hover(float thrust, float dt)
+{
+    if (!s_in_air || !alt_ok() || s_v.tof_ground || fabsf(s_v.vz) > FC_HOVER_STEADY_VZ) return;
+    if (s_auto == PV2_AUTO_TAKEOFF && !s_to_lifted) return;          /* spool-up ramp */
+    const float h = thrust * (s_v.cos_tilt > 0.5f ? s_v.cos_tilt : 0.5f);
+    s_hover = clampf(s_hover + (h - s_hover) * (dt / (FC_HOVER_TAU_S + dt)), FC_HOVER_MIN, FC_HOVER_MAX);
+}
+
+/* geofence on the height (§6, gfMaxAlt / gfCeiling): *vz limited; flags and EVENT 23 */
+static void geofence_vz(float *vz)
+{
+    int32_t gf_kind;
+    const float ceil = ceiling_h_kind(&gf_kind);
+    if (s_v.h >= ceil && *vz > 0.0f) {
+        *vz = (s_v.h > ceil + 0.3f) ? -0.3f : 0.0f;
+        if (s_h_sp > ceil) s_h_sp = ceil;
+        if (s_auto == PV2_AUTO_TAKEOFF) s_to_target = s_v.h;
+        if (!s_geofence) {
+            s_geofence = 1u;
+            s_failsafe |= PV2_FS_GEOFENCE;
+            if (!s_geofence_ev) { event(PV2_EV_WARN, PV2_E_GEOFENCE_BREACH, gf_kind); s_geofence_ev = 1u; }
+        }
+    } else if (s_v.h < ceil - 0.2f && s_geofence) {
+        s_geofence = 0u;
+        s_failsafe &= (uint8_t)~PV2_FS_GEOFENCE;
+        s_geofence_ev = 0u;
+    }
+}
+
 static void setpoints(uint32_t now, uint32_t dt_ms)
 {
-    (void)now;
-    static uint8_t prev_auto;
     const float dt = (float)dt_ms * 1e-3f;
     const float beg = (PARAM(P_BEGINNER) > 0.5f) ? 0.5f : 1.0f;
     fc_setpoint_t sp;
@@ -581,8 +676,8 @@ static void setpoints(uint32_t now, uint32_t dt_ms)
     sp.armed = s_armed; sp.mode = s_mode; sp.autom = s_auto;
 
     /* entering HOLD / failsafe HOLD: hold the current height */
-    if (s_auto != prev_auto && (s_auto == PV2_AUTO_HOLD || s_auto == PV2_AUTO_FAILSAFE)) s_h_sp = s_v.h;
-    prev_auto = s_auto;
+    if (s_auto != s_prev_auto && (s_auto == PV2_AUTO_HOLD || s_auto == PV2_AUTO_FAILSAFE)) s_h_sp = s_v.h;
+    s_prev_auto = s_auto;
 
     /* attitude from the sticks (neutral when the RC is stale) */
     const float tilt = PARAM(P_MAX_TILT) * beg * DEG2RAD;
@@ -593,19 +688,58 @@ static void setpoints(uint32_t now, uint32_t dt_ms)
     sp.pitch_rate = s_stick[2] * 4.0f * yawr;
     sp.yaw_rate   = s_stick[1] * yawr;
 
-    if (!s_armed) { s_sp = sp; return; }
+    if (!s_armed) { s_prev_vert = 0u; s_sp = sp; return; }
     sp.pos_hold = (uint8_t)(s_in_air && (s_mode == PV2_MODE_POS_HOLD || s_auto == PV2_AUTO_HOLD) &&
                             s_have_v && s_v.flow_usable && !(s_failsafe & PV2_FS_FLOW));
+
+    /* the pilot put the stick at the bottom after a touchdown: manual take-off allowed again */
+    if (s_land_idle && !s_rc_stale && s_stick[0] < FC_THR_LOW) s_land_idle = 0u;
 
     const uint8_t vert = (uint8_t)(s_in_air && alt_ok() &&
                                    (s_auto != PV2_AUTO_NONE || hold_mode()));
     if (!vert) {
-        /* manual collective (ACRO / ANGLE, or no altitude estimate) */
-        sp.thrust = clampf(0.5f * (s_stick[0] + 1.0f), 0.0f, 1.0f);
-        if (hold_mode() && !s_in_air) sp.thrust = 0.0f;      /* hold modes: take off with TAKEOFF */
+        s_prev_vert = 0u;
+        float thr;
+        if (!s_in_air && (hold_mode() || s_land_idle)) {
+            thr = 0.0f;                                      /* hold modes take off with TAKEOFF; idle after a landing */
+            s_land_ol = 0u;
+        } else if (s_in_air && (s_auto == PV2_AUTO_LAND || s_auto == PV2_AUTO_RTH)) {
+            /* no altitude estimate: open-loop descent, from the collective at the start
+             * to FC_LAND_OL_K x hover in FC_LAND_OL_RAMP_MS (touchdown in air_ground_no_alt) */
+            if (!s_land_ol) { s_land_ol = 1u; s_land_ol_t0 = now; s_land_ol_from = s_sp.thrust; }
+            const float k = clampf((float)(now - s_land_ol_t0) / (float)FC_LAND_OL_RAMP_MS, 0.0f, 1.0f);
+            thr = s_land_ol_from + (FC_LAND_OL_K * s_hover - s_land_ol_from) * k;
+        } else if (s_in_air && (s_auto == PV2_AUTO_HOLD || s_auto == PV2_AUTO_FAILSAFE)) {
+            thr = s_hover;                                   /* open-loop hover: drifts in height */
+            s_land_ol = 0u;
+        } else {
+            thr = collective(s_stick[0]);                    /* ACRO / ANGLE (any mode without an estimate) */
+            s_land_ol = 0u;
+            /* geofence also in the manual modes: the collective may not push above the
+             * ceiling. The climb rate allowed falls with the distance to the ceiling
+             * (braking at FC_GF_BRAKE_A), so a full-throttle climb stops in time; the
+             * vertical loop limits the collective only while it asks for less. */
+            if (s_in_air && alt_ok()) {
+                const float d = ceiling_h() - s_v.h;
+                const float vz_ok = (d > 0.0f) ? sqrtf(2.0f * FC_GF_BRAKE_A * d) : (d < -0.3f ? -0.3f : 0.0f);
+                float vz_now = s_v.vz;
+                geofence_vz(&vz_now);                         /* flags and EVENT 23 at the ceiling */
+                const float lim = alt_ctrl_step(&s_ac, vz_ok, s_v.vz, s_v.cos_tilt, dt);
+                if (lim < thr) thr = lim;
+                else alt_ctrl_reset(&s_ac, s_hover - s_ac.hover);   /* not limiting: ready for a bumpless change */
+                learn_hover(thr, dt);
+            }
+        }
+        sp.thrust = clampf(thr, 0.0f, 1.0f);
         s_sp = sp;
         return;
     }
+    s_land_ol = 0u;
+
+    /* entering the altitude loop in the air (ACRO / ANGLE -> ALT_HOLD, HOLD, LAND...): start
+     * from the hover collective, not from an old integrator (§6, no thrust jump) */
+    if (!s_prev_vert && s_auto != PV2_AUTO_TAKEOFF) alt_ctrl_reset(&s_ac, s_hover - s_ac.hover);
+    s_prev_vert = 1u;
 
     const float maxc = PARAM(P_MAX_CLIMB) * beg;
     const float land = PARAM(P_LAND_SPEED);
@@ -631,23 +765,7 @@ static void setpoints(uint32_t now, uint32_t dt_ms)
         break;
     }
 
-    /* geofence: no climb above the ceiling, come back below it (§6, gfMaxAlt / gfCeiling) */
-    int32_t gf_kind;
-    const float ceil = ceiling_h_kind(&gf_kind);
-    if (s_v.h >= ceil && vz > 0.0f) {
-        vz = (s_v.h > ceil + 0.3f) ? -0.3f : 0.0f;
-        if (s_h_sp > ceil) s_h_sp = ceil;
-        if (s_auto == PV2_AUTO_TAKEOFF) s_to_target = s_v.h;
-        if (!s_geofence) {
-            s_geofence = 1u;
-            s_failsafe |= PV2_FS_GEOFENCE;
-            if (!s_geofence_ev) { event(PV2_EV_WARN, PV2_E_GEOFENCE_BREACH, gf_kind); s_geofence_ev = 1u; }
-        }
-    } else if (s_v.h < ceil - 0.2f && s_geofence) {
-        s_geofence = 0u;
-        s_failsafe &= (uint8_t)~PV2_FS_GEOFENCE;
-        s_geofence_ev = 0u;
-    }
+    geofence_vz(&vz);
 
     /* take-off spool-up: thrust ramps from idle until the drone leaves the ground;
      * the ramp is the controller's upper limit, so the integrator does not wind up */
@@ -658,6 +776,7 @@ static void setpoints(uint32_t now, uint32_t dt_ms)
     }
     const float thr = alt_ctrl_step(&s_ac, vz, s_v.vz, s_v.cos_tilt, dt);
     s_ac.thr_max = thr_max;
+    learn_hover(thr, dt);
     sp.alt_ctrl = 1u;
     sp.thrust = thr;
     sp.vz_sp = vz;
@@ -691,6 +810,9 @@ static void publish(void)
         s_snap.alt_rel_cm = 0; s_snap.vz_cms = 0;
     }
     s_snap.silence_ms = s_silence;
+    s_snap.land_idle = s_land_idle;
+    s_snap.air_by_thrust = s_air_thr;
+    s_snap.hover = s_hover;
     memcpy(s_snap.stick, s_stick, sizeof s_stick);
     SPSC_BARRIER();
     s_snap_seq++;
@@ -712,6 +834,10 @@ void fc_service(uint32_t now, uint8_t est_running, const fc_vert_t *v)
     app_link_failsafe(now);
     flow_failsafe(dt);
     battery(now);
+
+    /* ---- HOLD began: the throttle stick at that moment is the cancel reference ---- */
+    if (s_auto == PV2_AUTO_HOLD && !s_hold_prev) s_hold_thr = s_stick[0];
+    s_hold_prev = (uint8_t)(s_auto == PV2_AUTO_HOLD);
 
     /* ---- pilot cancels HOLD (and RTH, if allowed) with the sticks ---- */
     if (s_armed && s_in_air && s_silence < FC_LINK_BACK_MS && !(s_failsafe & PV2_FS_APP_LINK)) {

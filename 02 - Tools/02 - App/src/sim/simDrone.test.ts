@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { SimDrone } from "./simDrone";
 import { Cmd } from "../protocol/commands";
-import { FlightMode } from "../protocol/ids";
+import { AutoAction, FlightMode } from "../protocol/ids";
 
 /** private state of the simulator, read by the tests */
-type Peek = { armed: boolean; inAir: boolean; alt: number; vz: number; vN: number; vE: number; pitch: number; roll: number; heading: number; mode: number };
+type Peek = { auto: number; armed: boolean; inAir: boolean; alt: number; vz: number; vN: number; vE: number; pitch: number; roll: number; heading: number; mode: number };
 
 /** runs the simulator for `s` seconds with the given sticks (RC at 25 Hz, as the cockpit) */
 function fly(d: SimDrone, s: number, rc: { throttle: number; yaw?: number; pitch?: number; roll?: number }) {
@@ -82,4 +82,26 @@ describe("simulator: manual collective in ANGLE and ACRO", () => {
     beat(2);
     expect(p.inAir).toBe(false);
   });
+
+  it("HOLD in ANGLE is not cancelled by a collective off the centre; a 30 % throttle change cancels it", () => {
+    const { d, p } = armIn(FlightMode.ANGLE);
+    fly(d, 1.5, { throttle: 300 });
+    expect(p.inAir).toBe(true);
+    d.command(Cmd.hold(9));
+    fly(d, 1, { throttle: 300 });
+    expect(p.auto).toBe(AutoAction.HOLD);
+    fly(d, 0.3, { throttle: 700 });
+    expect(p.auto).toBe(AutoAction.NONE);
+  });
+
+  it("after a LAND in ANGLE the motors stay at idle: a stick above the centre does not lift off again", () => {
+    const { d, p } = armIn(FlightMode.ANGLE);
+    fly(d, 1.5, { throttle: 300 });
+    d.command(Cmd.land(9));
+    fly(d, 15, { throttle: 300 });                       // stick left above hover during and after the landing
+    expect(p.inAir).toBe(false);
+    expect(p.alt).toBe(0);
+    expect(p.armed).toBe(false);                         // auto-disarm, no second lift-off
+  });
 });
+

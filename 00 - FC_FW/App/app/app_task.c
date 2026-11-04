@@ -46,6 +46,8 @@ static uint32_t s_pend_t;
 
 /* stream rates (Hz) and next send times */
 static uint8_t  s_hz_flight = 10, s_hz_power = 5, s_hz_nav = 5, s_hz_motors = 5, s_hz_system = 2;
+/* STREAM_RATES lasts one session: defaults again for every new subscriber (§3 rates) */
+static void rates_default(void) { s_hz_flight = 10; s_hz_power = 5; s_hz_nav = 5; s_hz_motors = 5; s_hz_system = 2; }
 static uint32_t s_t_power;
 static uint16_t s_fl_count;
 static uint32_t s_t_flight, s_t_nav, s_t_motors, s_t_system, s_t_checks, s_t_caps, s_t_calib, s_t_ground;
@@ -61,8 +63,14 @@ static rep_t    s_rep[6];
 static uint32_t s_t_ev_mag, s_t_ev_vib;
 static uint8_t  s_have_ev_mag, s_have_ev_vib;
 
-/* checks */
+/* checks: built once per CHECKS_MAX_AGE_MS and shared by the 10 Hz ground information,
+ * the CHECKS stream and REQUEST(CHECKS) */
+#define CHECKS_MAX_AGE_MS 100u
 static uint8_t  s_ready, s_batt_fail;
+static pv2_check_t s_chk[PV2_CHECKS_MAX];
+static uint8_t  s_chk_n, s_chk_have;
+static uint32_t s_chk_t;
+static uint32_t s_now;                    /* time of the current app_step */
 
 /* links: BLE (the app, can fly) and USB (ground link: telemetry, parameters,
  * calibrations; never flight commands, ADR 0009). The first link opened has
@@ -380,12 +388,18 @@ static void build_checks(pv2_check_t *it, uint8_t *n)
     *n = checks_build(&in, it, &s_ready, &s_batt_fail);
 }
 
-static void send_checks(void)
+/* the checks, rebuilt when older than CHECKS_MAX_AGE_MS (or when forced) */
+static void refresh_checks(uint8_t force)
 {
-    pv2_check_t it[PV2_CHECKS_MAX];
-    uint8_t n = 0;
-    build_checks(it, &n);
-    tx(s_frame, pv2_checks(s_ready, it, n, s_frame, sizeof s_frame));
+    if (!force && s_chk_have && (s_now - s_chk_t) < CHECKS_MAX_AGE_MS) return;
+    build_checks(s_chk, &s_chk_n);
+    s_chk_t = s_now; s_chk_have = 1u;
+}
+
+static void send_checks(uint8_t force)
+{
+    refresh_checks(force);
+    tx(s_frame, pv2_checks(s_ready, s_chk, s_chk_n, s_frame, sizeof s_frame));
 }
 
 static void send_init(void)
@@ -423,17 +437,23 @@ static void send_calib(void)
     tx(s_frame, n);
 }
 
-/* ------------------------------------------------------------------ flash */
-static int save_image(void)
-{
-    float v[PARAM_COUNT];
-    params_get_all(v);
-    cfg_params_put(&s_img, v);
-    return cfg_save(&s_img);
-}
+/* ------------------------------------------------------------------ flash
+ * Every change of the flash image is made on a copy (s_next) and becomes the
+ * image in RAM (s_img) only once it is in flash: a failed write leaves RAM as it
+ * was (calibration backups, done mask, name). s_img.params always holds the
+ * parameters last SAVED: only PARAM_SAVE puts the RAM values in; CAL_SAVE,
+ * CAL_RESTORE, SET_NAME and the battery record keep them, so unsaved edits are
+ * not written behind the user's back and stay flagged "not saved". */
+static cfg_image_t s_next;
 
-/* the flash image as it is, with the parameters last saved (no unsaved edits) */
-static int save_image_keep_params(void) { return cfg_save(&s_img); }
+static cfg_image_t *image_begin(void) { s_next = s_img; return &s_next; }
+
+static int image_commit(void)
+{
+    if (cfg_save(&s_next) != 0) return -1;
+    s_img = s_next;
+    return 0;
+}
 
 /* calibration apply hook (calib_mgr -> ImuTask, BATTERY -> BattTask) */
 static void cal_apply(uint8_t type, const cal_set_t *set)
@@ -460,9 +480,10 @@ static void battery_flight(void)
     if (fl.count == s_fl_count) return;
     s_fl_count = fl.count;
     if (fl.used_mah < 20.0f || armed_now()) return;       /* not a flight worth keeping */
-    s_img.batt_used_mah = fl.used_mah;
-    s_img.batt_used_scale_i = fl.scale_i;
-    (void)save_image_keep_params();                       /* disarmed: flash write allowed */
+    cfg_image_t *im = image_begin();
+    im->batt_used_mah = fl.used_mah;
+    im->batt_used_scale_i = fl.scale_i;
+    (void)image_commit();                                 /* disarmed: flash write allowed */
 }
 
 /* ------------------------------------------------------------------ commands */
@@ -498,7 +519,12 @@ static void local_cmd(uint8_t op, uint8_t seq, const uint8_t *p, uint8_t plen, u
     }
     case PV2_OP_PARAM_SAVE:
         if (armed_now()) { ack(op, seq, PV2_ACK_REJECTED, PV2_R_ARMED); return; }
-        if (save_image() != 0) { ack(op, seq, PV2_ACK_REJECTED, PV2_R_NONE); return; }   /* flash error */
+        {
+            float v[PARAM_COUNT];
+            params_get_all(v);
+            cfg_params_put(image_begin(), v);
+        }
+        if (image_commit() != 0) { ack(op, seq, PV2_ACK_REJECTED, PV2_R_NONE); return; }   /* flash error */
         params_mark_saved();
         ack(op, seq, PV2_ACK_OK, PV2_R_NONE);
         send_event(PV2_EV_INFO, PV2_E_PARAMS_SAVED, 0, now);
@@ -532,13 +558,14 @@ static void local_cmd(uint8_t op, uint8_t seq, const uint8_t *p, uint8_t plen, u
         res = cal_save_check(&why);
         if (res != PV2_ACK_OK) { ack(op, seq, res, why); return; }
         const uint8_t t = cal_type();
+        cfg_image_t *im = image_begin();
         /* the set saved until now becomes the backup of this type */
-        cal_copy_type(&s_img.bak, &s_img.cal, t);
-        s_img.bak_mask |= bit(t);
-        cal_copy_type(&s_img.cal, cal_result(), t);
-        s_img.cal.done_mask |= bit(t);
+        cal_copy_type(&im->bak, &im->cal, t);
+        im->bak_mask |= bit(t);
+        cal_copy_type(&im->cal, cal_result(), t);
+        im->cal.done_mask |= bit(t);
+        if (image_commit() != 0) { ack(op, seq, PV2_ACK_REJECTED, PV2_R_NONE); return; }   /* RAM unchanged */
         s_cal.done_mask |= bit(t);
-        if (save_image() != 0) { ack(op, seq, PV2_ACK_REJECTED, PV2_R_NONE); return; }
         cal_saved();
         ack(op, seq, PV2_ACK_OK, PV2_R_NONE);
         send_calib();
@@ -552,10 +579,10 @@ static void local_cmd(uint8_t op, uint8_t seq, const uint8_t *p, uint8_t plen, u
         if (armed_now()) { ack(op, seq, PV2_ACK_REJECTED, PV2_R_ARMED); return; }
         if (cal_running()) { ack(op, seq, PV2_ACK_REJECTED, PV2_R_CALIBRATING); return; }
         if (!(s_img.bak_mask & bit(t))) { ack(op, seq, PV2_ACK_REJECTED, PV2_R_NONE); return; }
-        cal_set_t cur = s_img.cal;
-        cal_copy_type(&s_img.cal, &s_img.bak, t);     /* swap: a second RESTORE undoes it */
-        cal_copy_type(&s_img.bak, &cur, t);
-        if (save_image() != 0) { ack(op, seq, PV2_ACK_REJECTED, PV2_R_NONE); return; }
+        cfg_image_t *im = image_begin();
+        cal_copy_type(&im->cal, &s_img.bak, t);       /* swap: a second RESTORE undoes it */
+        cal_copy_type(&im->bak, &s_img.cal, t);
+        if (image_commit() != 0) { ack(op, seq, PV2_ACK_REJECTED, PV2_R_NONE); return; }
         cal_copy_type(&s_cal, &s_img.cal, t);
         cal_apply(t, &s_cal);
         ack(op, seq, PV2_ACK_OK, PV2_R_NONE);
@@ -587,7 +614,7 @@ static void local_cmd(uint8_t op, uint8_t seq, const uint8_t *p, uint8_t plen, u
         if (plen < 1u) { ack(op, seq, PV2_ACK_INVALID, PV2_R_NONE); return; }
         switch (p[0]) {
         case PV2_FT_CAPS:   ack(op, seq, PV2_ACK_OK, PV2_R_NONE); send_caps();   return;
-        case PV2_FT_CHECKS: ack(op, seq, PV2_ACK_OK, PV2_R_NONE); send_checks(); return;
+        case PV2_FT_CHECKS: ack(op, seq, PV2_ACK_OK, PV2_R_NONE); send_checks(1u); return;
         case PV2_FT_INIT:   ack(op, seq, PV2_ACK_OK, PV2_R_NONE); send_init();   return;
         case PV2_FT_FLIGHT: ack(op, seq, PV2_ACK_OK, PV2_R_NONE); send_flight(); return;
         case PV2_FT_NAV:    ack(op, seq, PV2_ACK_OK, PV2_R_NONE); send_nav();    return;
@@ -601,11 +628,10 @@ static void local_cmd(uint8_t op, uint8_t seq, const uint8_t *p, uint8_t plen, u
     case PV2_OP_SET_NAME: {
         if (armed_now()) { ack(op, seq, PV2_ACK_REJECTED, PV2_R_ARMED); return; }
         if (plen < 1u) { ack(op, seq, PV2_ACK_INVALID, PV2_R_NONE); return; }
-        char old[16];
-        memcpy(old, s_img.name, sizeof old);
-        memset(s_img.name, 0, sizeof s_img.name);
-        memcpy(s_img.name, p, plen > 16u ? 16u : plen);
-        if (save_image() != 0) { memcpy(s_img.name, old, sizeof old); ack(op, seq, PV2_ACK_REJECTED, PV2_R_NONE); return; }
+        cfg_image_t *im = image_begin();
+        memset(im->name, 0, sizeof im->name);
+        memcpy(im->name, p, plen > 16u ? 16u : plen);
+        if (image_commit() != 0) { ack(op, seq, PV2_ACK_REJECTED, PV2_R_NONE); return; }
         ack(op, seq, PV2_ACK_OK, PV2_R_NONE);
         send_caps();
         return;
@@ -797,7 +823,7 @@ static void streams(uint32_t now, uint8_t armed)
     if (due(now, &s_t_nav,    1000u / s_hz_nav))    send_nav();
     if (due(now, &s_t_motors, 1000u / s_hz_motors)) send_motors();
     if (due(now, &s_t_system, 1000u / s_hz_system)) send_system();
-    if (due(now, &s_t_checks, armed ? 2000u : 500u)) send_checks();
+    if (due(now, &s_t_checks, armed ? 2000u : 500u)) send_checks(0u);
     if (due(now, &s_t_caps, 5000u)) send_caps();
     if (s_cfg.batt_monitor && due(now, &s_t_power, 1000u / s_hz_power)) send_power();
 }
@@ -833,7 +859,7 @@ const cal_set_t *app_task_boot(const float mag_hi_default[3])
 void app_init(const app_task_cfg_t *cfg)
 {
     s_cfg = *cfg;
-    if (s_cfg.n_motors == 0u) s_cfg.n_motors = 4u;
+    if (s_cfg.n_motors == 0u || s_cfg.n_motors > PV2_MOTORS_MAX) s_cfg.n_motors = 4u;
     s_sensors = sensors_now();
     fc_set_sensors(s_sensors);
     ackc_reset();
@@ -846,10 +872,13 @@ void app_init(const app_task_cfg_t *cfg)
     s_have_logmsg = 0u;
     s_owner = LINK_NONE; s_dest = DEST_ALL; s_link = LINK_BLE;
     s_usb_was = s_usb_now = 0u; s_cal_link = LINK_BLE;
+    s_chk_have = 0u; s_chk_n = 0u;
+    rates_default();
 }
 
 void app_step(uint32_t now)
 {
+    s_now = now;
     /* sensors found later (expansion board plugged in while disarmed) */
     const uint16_t sn = sensors_now();
     if (sn != s_sensors && !armed_now()) {
@@ -869,10 +898,12 @@ void app_step(uint32_t now)
     }
     /* a program opened the USB port: CAPS, INIT, CHECKS to it, as to a BLE subscriber */
     if (s_usb_now && !s_usb_was) {
+        ackc_reset_ops(0x80u, 0x80u);                    /* new USB session: forget its old ACKs only */
         s_dest = LINK_USB;
-        send_caps(); send_init(); send_checks();
+        send_caps(); send_init(); send_checks(1u);
         s_dest = DEST_ALL;
         if (tlm_ble_state() != TLM_BLE_STREAMING) {
+            rates_default();
             s_t_flight = s_t_nav = s_t_motors = s_t_system = s_t_power = now;
             s_t_checks = now + 500u; s_t_caps = now + 5000u;
         }
@@ -881,12 +912,13 @@ void app_step(uint32_t now)
 
     /* new subscriber: CAPS, INIT, CHECKS first, then the periodic streams (§2) */
     if (tlm_ble_take_subscribe()) {
-        ackc_reset();
+        ackc_reset_ops(0x80u, 0x00u);                    /* BLE entries only: the USB link keeps its cache */
         s_list_next = -1;
+        rates_default();
         s_dest = LINK_BLE;
         send_caps();
         send_init();
-        send_checks();
+        send_checks(1u);
         s_dest = DEST_ALL;
         tlm_ble_open_streams();
         s_t_flight = s_t_nav = s_t_motors = s_t_system = s_t_power = now;
@@ -901,9 +933,7 @@ void app_step(uint32_t now)
 
     /* ground information for ARM (10 Hz) */
     if (due(now, &s_t_ground, 100u)) {
-        pv2_check_t it[PV2_CHECKS_MAX];
-        uint8_t n;
-        build_checks(it, &n);
+        refresh_checks(0u);
         fc_set_ground_info(s_ready, s_batt_fail, cal_running());
     }
 

@@ -400,6 +400,9 @@ export class SimDrone {
   private fsLong = false;
   private collectiveThr = 0; // ACRO / ANGLE: collective 0..1 from the throttle stick
   private gfCeilEv = false;  // EVENT 23 sent for the current ceiling breach
+  private holdThr = 0;       // throttle stick when HOLD began (cancel reference)
+  private holdPrev = false;
+  private landIdle = false;  // touched down: idle until disarm or stick at the bottom
 
   /**
    * ACRO / ANGLE, no automatic action: thrust from the throttle stick (as the firmware,
@@ -408,7 +411,8 @@ export class SimDrone {
    */
   private stepCollective(dt: number, thr: number, yawIn: number, pIn: number, rIn: number, beginner: number) {
     const g = 9.81;
-    this.collectiveThr = clamp((thr + 1) / 2, 0, 1);
+    // bottom 0, centre = hover, top 1 (fc_core.c collective(); the simulated hover is HOVER_THR)
+    this.collectiveThr = this.landIdle && !this.inAir ? 0 : thr <= 0 ? (thr + 1) * HOVER_THR : HOVER_THR + thr * (1 - HOVER_THR);
     if (this.inAir) {
       if (this.mode === FlightMode.ANGLE) {
         const tilt = this.p("maxTilt") * beginner;
@@ -459,6 +463,7 @@ export class SimDrone {
 
   private disarm() {
     this.armed = false;
+    this.landIdle = false;
     if (this.usedMah - this.mahAtArm > 20) {
       this.lastFlightMah = Math.round(this.usedMah - this.mahAtArm);
       this.lastFlightScaleI = this.scaleI;
@@ -785,9 +790,14 @@ export class SimDrone {
     let tgtVN = 0, tgtVE = 0, tgtVz = 0;
     const h = this.heading * D2R;
 
-    // HOLD (pause) ends as soon as the pilot moves the sticks
+    // HOLD (pause) ends as soon as the pilot moves the sticks by more than 30 % (§7.5). The throttle
+    // counts from where it was when HOLD began: in ACRO / ANGLE it is the collective, not centred (fc_core.c)
+    if (this.auto === AutoAction.HOLD && !this.holdPrev) this.holdThr = thr;
+    this.holdPrev = this.auto === AutoAction.HOLD;
     if (this.auto === AutoAction.HOLD && silent < 0.5 && !(this.failsafe & FS.APP_LINK) &&
-        (Math.abs(pIn) > 0.3 || Math.abs(rIn) > 0.3 || Math.abs(yawIn) > 0.3 || Math.abs(thr) > 0.3)) this.auto = AutoAction.NONE;
+        (Math.abs(pIn) > 0.3 || Math.abs(rIn) > 0.3 || Math.abs(yawIn) > 0.3 || Math.abs(thr - this.holdThr) > 0.3)) this.auto = AutoAction.NONE;
+    // after a touchdown the motors stay at idle until disarm or until the stick is at the bottom (§7.3)
+    if (this.landIdle && !rcStale && thr < -0.9) this.landIdle = false;
 
     if (this.armed && !this.killedFall) {
       if (this.auto === AutoAction.TAKEOFF) {
@@ -852,6 +862,7 @@ export class SimDrone {
       if (this.auto === AutoAction.LAND || this.auto === AutoAction.RTH) this.event(EventLevel.INFO, EventCode.LANDED, "Landed");
       this.auto = AutoAction.NONE;
       this.landedT = 0;
+      this.landIdle = this.armed;
     }
     if (this.armed && !this.inAir) {
       this.landedT += dt;
@@ -909,7 +920,7 @@ export class SimDrone {
 
   private emitCaps() {
     this.emit(FT.CAPS, M.encodeCaps({
-      proto: 2, fw: [0, 5, 0], hwRev: "H", model: this.outdoor ? Model.OUTDOOR : Model.INDOOR, sensors: this.sensors,
+      proto: 2, fw: [0, 6, 1], hwRev: "H", model: this.outdoor ? Model.OUTDOOR : Model.INDOOR, sensors: this.sensors,
       nMotors: this.nMotors, frame: FrameType.QUAD_X, cells: this.cells, name: this.name, serial: this.outdoor ? "ACW-0001" : "ACW-0002",
     }));
   }

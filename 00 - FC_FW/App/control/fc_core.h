@@ -47,6 +47,21 @@
 #define FC_FLOW_CHECK_H      0.15f   /* m: FLOW_LOST is judged only above this height,
                                         never on the ground, in TAKEOFF or LAND */
 
+/* ---- manual collective (ACRO / ANGLE, or no altitude estimate), HANDOVER_FW §6 ---- */
+#define FC_HOVER_DEFAULT     0.45f   /**< hover collective before one is learned    */
+#define FC_HOVER_MIN         0.15f
+#define FC_HOVER_MAX         0.75f
+#define FC_HOVER_TAU_S       3.0f    /**< learning time constant (steady flight)    */
+#define FC_HOVER_STEADY_VZ   0.15f   /**< |vz| below this: the collective is hover  */
+#define FC_THR_LOW           (-0.9f) /**< stick "at the bottom"                     */
+/* ---- in air / on ground without an altitude estimate (§6) ---- */
+#define FC_AIR_THR_K         0.8f    /**< collective > 0.8 x hover ...              */
+#define FC_AIR_MS            300u    /**< ... this long: airborne                   */
+#define FC_LAND_OL_K         0.85f   /**< open-loop LAND: 0.85 x hover ...          */
+#define FC_LAND_OL_RAMP_MS   1000u   /**< ... reached in 1 s ...                    */
+#define FC_LAND_OL_MS        20000u  /**< ... for at most 20 s, then touchdown      */
+#define FC_GF_BRAKE_A        2.5f    /**< m/s^2: manual modes slow down below the ceiling */
+
 /* ---- battery (§6): signals from the BattTask ---- */
 #define FC_BATT_STALE_MS     1000u   /**< no BattTask heartbeat: battery unknown   */
 
@@ -97,6 +112,9 @@ typedef struct {
     int32_t  alt_rel_cm;             /**< above the take-off point                  */
     int16_t  vz_cms;
     uint32_t silence_ms;             /**< app link silence seen by the failsafe    */
+    uint8_t  land_idle;              /**< touched down: idle until disarm or stick at the bottom */
+    uint8_t  air_by_thrust;          /**< in air detected from the collective (no altitude estimate) */
+    float    hover;                  /**< learned hover collective 0..1            */
     float    stick[4];               /**< setpoint inputs -1..1: thr, yaw, pitch, roll */
 } fc_state_t;
 

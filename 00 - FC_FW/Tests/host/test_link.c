@@ -238,9 +238,16 @@ static void test_usb_only(void)
     run(2500);
     CHECK(!cal_active(), "USB link closed: calibration aborted");
 
-    /* a repeated (op, seq) gets the cached ACK and is not executed twice */
+    /* a new USB session forgets the ACKs of the previous one (a new program starts its
+     * sequence numbers again): seq 10 is executed, not answered from the old cache */
     usbl_set_dtr(1);
     run(50);
+    f0 = U.n;
+    usb_cmd(PV2_OP_PARAM_SET, 10, a, 6);
+    run(50);
+    k = ack_in(&U, f0, PV2_OP_PARAM_SET, 10);
+    CHECK(k && k->result == PV2_ACK_OK && count(&U, f0, PV2_FT_PARAM) == 1, "new USB session: seq 10 executed again");
+    /* within a session, a repeated (op, seq) gets the cached ACK and is not executed twice */
     f0 = U.n;
     usb_cmd(PV2_OP_PARAM_SET, 10, a, 6);
     run(50);
@@ -367,6 +374,18 @@ static void test_owner(void)
     run(50);
     k = ack_in(&U, fu, PV2_OP_PARAM_SET, 4);
     CHECK(k && k->result == PV2_ACK_OK, "BLE gone: USB has control");
+
+    /* the app subscribes again: only the BLE entries of the ACK cache are forgotten */
+    ble_connect();
+    run(200);
+    fu = U.n; fb = B.n;
+    usb_cmd(PV2_OP_PARAM_SET, 4, a, 6);                     /* USB retry of the same command */
+    ble_cmd(PV2_OP_PARAM_SET, 1, a, 6);                     /* new BLE session, a seq used in the old one */
+    run(100);
+    k = ack_in(&U, fu, PV2_OP_PARAM_SET, 4);
+    CHECK(k && k->result == PV2_ACK_OK && count(&U, fu, PV2_FT_PARAM) == 0, "BLE re-subscribe: USB retry still answered from its cache, not re-executed");
+    k = ack_in(&B, fb, PV2_OP_PARAM_SET, 1);
+    CHECK(k && k->result == PV2_ACK_REJECTED && k->reason == PV2_R_OTHER_LINK, "BLE re-subscribe: BLE seq 1 evaluated again (USB has control)");
     CHECK(U.bad == 0 && B.bad == 0, "every frame whole on both links");
 }
 

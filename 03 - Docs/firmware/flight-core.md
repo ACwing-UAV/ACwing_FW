@@ -88,7 +88,7 @@ gantt
 
 | Silence | Effect |
 |---|---|
-| > 0.25 s | RC stale: neutral sticks (level, no yaw rate, hold the height in the hold modes) |
+| > 0.25 s | RC stale: neutral sticks (level, no yaw rate, hold the height in the hold modes; ACRO / ANGLE keep the last collective in the air and go to idle on the ground) |
 | > 1 s | **short** failsafe (`fsAppShort`): HOLD (0) or LAND (1); FLIGHT.failsafe bit APP_LINK |
 | > 3 s | **long** failsafe (`fsAppLong`): RTH (only with GNSS and home, else LAND), LAND or HOLD; EVENT 20, ERROR |
 | < 0.5 s again | link back: the failsafe bit clears; a short HOLD gives control back, a long action is kept until the pilot changes mode |
@@ -96,6 +96,27 @@ gantt
 
 The motor test stops on any other command, at its timeout, or when the
 silence exceeds 1 s.
+
+## Manual collective (ACRO / ANGLE)
+
+The throttle stick is the collective: bottom 0, **centre = hover**, top 1. The
+hover is learned in steady flight (`learn_hover()`, |vz| < 0.15 m/s, 3 s) and
+used wherever the core changes who flies the collective, so there is no thrust
+jump: entering the altitude loop resets its integrator to the learned hover,
+and the app centres the stick when it switches to ACRO / ANGLE in the air.
+
+| Situation | Collective |
+|---|---|
+| ACRO / ANGLE, pilot | stick → 0 … hover … 1; above the ceiling limited by the vertical loop (climb ≤ √(2·2.5·d)), EVENT 23 |
+| touched down (any mode) | idle until disarm or until the stick has been at the bottom |
+| no altitude estimate, HOLD / failsafe hover | learned hover, open loop |
+| no altitude estimate, LAND / RTH | ramp to 0.85 × hover in 1 s, at most 20 s, then touchdown |
+
+Without an altitude estimate, *in air* comes from the collective (> 0.8 ×
+hover for 0.3 s) and *touchdown* from the stick at the bottom for 1 s, so the
+in-air failsafes work and the 10 s no-take-off auto-disarm cannot stop the
+motors in flight. HOLD is cancelled by yaw / pitch / roll beyond 30 % or by the
+throttle moved 30 % from where it was when HOLD began.
 
 ## Battery failsafe
 
