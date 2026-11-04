@@ -12,6 +12,7 @@ if nargin < 2, baud = 921600; end
 if nargin < 3, duration = 3; end
 
 s = serialport(port, baud, "Timeout", 1);
+try, setDTR(s, true); catch, end  % FC USB port (fw >= 0.6.0): the drone streams while DTR is set
 flush(s);
 pause(duration);
 nb = s.NumBytesAvailable;

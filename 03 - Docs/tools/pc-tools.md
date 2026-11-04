@@ -69,7 +69,9 @@ acwing-tools log get --ble                            # last flight over Bluetoo
 ```
 
 ```matlab
-files = acwingLogDownload("COM7", "all", "logs");
+files = acwingLogDownload("COM7", "all", "logs");   % USB: every log
+files = acwingLogDownload("ble", "all");             % BLE: the last flight
+acwingLogDownload("COM7", "erase");                  % USB only, asks to type YES
 F = acwingLogDecode(files{1});
 ```
 

@@ -1,8 +1,9 @@
-# Continuous integration: the three test suites that keep firmware, app and PC tools
+# Continuous integration: the test suites that keep firmware, app and PC tools
 # in agreement on the protocol and on the flight behaviour.
 #   firmware  host tests of 00 - FC_FW (flight core, AppTask, links, battery, log, IEKF), ASan/UBSan
 #   app       ACwing Pilot: typecheck, unit tests (protocol, simulator, log decoder), production build
 #   python    acwing_tools: log decoder (the reference of the app's), telemetry, filters
+#   matlab    flight-log decoder and download client in GNU Octave (same tests as Python)
 # Runs in UTC on purpose: tests must not depend on the developer's time zone.
 name: ci
 
@@ -67,3 +68,15 @@ jobs:
           cache-dependency-path: "02 - Tools/01 - Python/pyproject.toml"
       - run: pip install -e ".[test]"
       - run: python -m pytest -q
+
+  matlab:
+    name: MATLAB tools (Octave)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+      - name: Install GNU Octave
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq --no-install-recommends octave
+      - name: Flight log decoder and download client
+        working-directory: "02 - Tools/00 - Matlab/tests"
+        run: octave --no-gui --quiet --eval "testFlightLog"

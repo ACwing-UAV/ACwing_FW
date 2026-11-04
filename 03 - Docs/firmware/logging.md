@@ -13,7 +13,7 @@ the PC over the FC's USB port. Recording and download are done by the
 | W25Q128JV driver | `App/drivers/w25q/w25q.c` |
 | RAM "flash" for the bench | `App/log/log_flash_ram.c` |
 | USB link (framing) and CDC binding | `App/telemetry/usb_link.c`, `App/bsp/usb_cdc.c`, `App/bsp/usb/` |
-| PC: download and decode | `acwing-tools log …` (Python, USB or BLE), `acwingLogDownload` (USB) / `acwingLogDecode` (MATLAB) |
+| PC: download and decode | `acwing-tools log …` (Python, USB or BLE), `acwingLogDownload` (USB or BLE) / `acwingLogDecode` (MATLAB) |
 
 ## Data path
 
@@ -197,12 +197,17 @@ mAh, events) and writes one CSV per record type and/or a `.mat` file (variable
 
 ```matlab
 run('<repo>/02 - Tools/00 - Matlab/initPath.m')
-files = acwingLogDownload('COM7', 'all', 'logs');
+files = acwingLogDownload('COM7', 'all', 'logs');   % or 'ble' / 'ble:ACwFC': last flight only
 F = acwingLogDecode(files{end});
+acwingLogDownload('COM7', 'erase')                  % USB only, asks to type YES
 plot(F.power.t, F.power.cell), hold on, plot(F.vert.t, F.vert.h)
 ```
 
-The Python and MATLAB decoders give the same numbers on the same file.
+The Python and MATLAB decoders give the same numbers on the same file, and the
+two download clients follow the same rules (chunks of 256 KB over USB and 32 KB
+over BLE, the wait extended only by log frames, so the telemetry a ground link
+streams never hides a lost ACK). Tests: `tests/test_flightlog.py` and
+`00 - Matlab/tests/testFlightLog.m` (MATLAB or Octave), both in CI.
 
 ## Status and limits
 

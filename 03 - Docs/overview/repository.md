@@ -64,7 +64,7 @@ ACwing_FW/
 │   │   ├── Viewer/                 acwingLiveViewer.m (live 3D triad + logging, USB or BLE), quat2rotmLocal.m
 │   │   ├── Telemetry/              parseTelemetry, decode*, crc16ccitt, statusDiagnosis
 │   │   ├── MagCalib/               calibMagAxes.m (axis map + hard-iron), fitHardIron.m, magCheck.m
-│   │   ├── FlightLog/              acwingLogDownload.m (USB), acwingLogDecode.m (flight log format 1)
+│   │   ├── FlightLog/              acwingLogDownload.m (USB, BLE), acwingLogDecode.m (flight log format 1)
 │   │   └── FiltersComparison/      tlmCapture, tlmSniffer, compareEmbeddedVsMatlab
 │   │       ├── IEKF_originalVersion/   ORIGINAL filter developed in MATLAB: iekfAttitude.m, expSO3, logSO3, skewSym
 │   │       └── IEKF_embeddedVersion/   EXTENDED filter: iekfAttitudeEmb.m + iekfCore*.m (MATLAB mirror of the C code)
