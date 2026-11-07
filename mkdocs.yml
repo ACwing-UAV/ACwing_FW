@@ -84,6 +84,7 @@ nav:
       - decisions/0007-battery-task.md
       - decisions/0008-flash-log-and-usb-cdc.md
       - decisions/0009-usb-ground-link.md
+      - decisions/0010-hover-thrust-model.md
   - Project:
       - Lessons learned: project/lessons-learned.md
       - Roadmap: project/roadmap.md
