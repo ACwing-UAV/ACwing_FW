@@ -119,6 +119,9 @@ static uint32_t  s_tof_ms;
 static float     s_vib2;                     /* EMA of (|a| - 1 g)^2, g^2 */
 static float     s_a_up_lp;                  /* vertical acceleration, ~10 Hz low-pass (hover estimate) */
 static uint16_t  s_acc_clip;
+static uint8_t   s_gyro_sat;                 /* a gyro axis saturated since the last fc_service (launch) */
+static float     s_f_g = 1.0f;               /* specific force of the last acc window, g */
+static float     s_a_w[3];                   /* world acceleration without gravity, m/s^2 */
 static float     s_loop_hz, s_jitter_us, s_cpu_pct;
 static uint32_t  s_cpu_cyc;
 static float     s_baro_temp;
@@ -156,6 +159,20 @@ static void push_frame(size_t len)
     if (osMessageQueuePut(qTlm, &s_msg, 0, 0) != osOK) s_tlmDrop++;
 }
 
+/* specific force magnitude (g) and world acceleration without gravity (m/s^2, NWU) of an acc window */
+static void world_accel(const float q[4], const float f[3], float nom)
+{
+    const float w = q[0], x = q[1], y = q[2], z = q[3];
+    const float fw[3] = {
+        (1.0f - 2.0f * (y*y + z*z)) * f[0] + 2.0f * (x*y - w*z) * f[1] + 2.0f * (x*z + w*y) * f[2],
+        2.0f * (x*y + w*z) * f[0] + (1.0f - 2.0f * (x*x + z*z)) * f[1] + 2.0f * (y*z - w*x) * f[2],
+        2.0f * (x*z - w*y) * f[0] + 2.0f * (y*z + w*x) * f[1] + (1.0f - 2.0f * (x*x + y*y)) * f[2] };
+    s_f_g = sqrtf(f[0]*f[0] + f[1]*f[1] + f[2]*f[2]) / nom;
+    s_a_w[0] = fw[0] / nom * 9.80665f;
+    s_a_w[1] = fw[1] / nom * 9.80665f;
+    s_a_w[2] = (fw[2] / nom - 1.0f) * 9.80665f;
+}
+
 static void on_state(const est_t *e, void *user)
 {
     (void)user;
@@ -169,8 +186,10 @@ static void on_state(const est_t *e, void *user)
         s_a_up_lp += 0.207f * (a_up - s_a_up_lp);     /* 240 Hz, fc ~ 10 Hz: alpha = dt / (1/(2 pi 10) + dt) */
         const float am = sqrtf(e->acc_mean[0]*e->acc_mean[0] + e->acc_mean[1]*e->acc_mean[1] +
                                e->acc_mean[2]*e->acc_mean[2]);
-        const float d = am - (e->f.nom_acc > 0.5f ? e->f.nom_acc : 1.0f);
+        const float nom = (e->f.nom_acc > 0.5f ? e->f.nom_acc : 1.0f);
+        const float d = am - nom;
         s_vib2 += 0.004f * (d*d - s_vib2);            /* ~1 s at 240 Hz */
+        world_accel(q, e->acc_mean, nom);             /* specific force and world acceleration (hand launch) */
 
         /* raw samples for a calibration in progress (~48 Hz) */
         static uint8_t k;
@@ -233,7 +252,10 @@ static void correct_events(imu_event_t *ev, size_t n)
         float *v = ev[j].v;
         switch (ev[j].type) {
         case IMU_EV_GYRO:
-            for (int i = 0; i < 3; ++i) v[i] -= s_calset.gyro.bias[i];
+            for (int i = 0; i < 3; ++i) {
+                if (fabsf(v[i]) > IMU_GYRO_SAT_RADS) s_gyro_sat = 1u;
+                v[i] -= s_calset.gyro.bias[i];
+            }
             break;
         case IMU_EV_ACC:
             if (fabsf(v[0]) > 15.9f || fabsf(v[1]) > 15.9f || fabsf(v[2]) > 15.9f) {
@@ -431,6 +453,7 @@ static void flight_service(uint32_t *lastSvc)
     /* a stalled IMU (bus error, sensor reset) makes the estimate unusable at once */
     const uint8_t est_ok = (uint8_t)(s_est.running && (now - s_lastGyroMs) < IMU_STALE_MS);
     fc_vert_t v;
+    memset(&v, 0, sizeof v);
     v.valid = s_alt.valid && est_ok;
     v.h = alt_est_h(&s_alt);
     v.vz = alt_est_vz(&s_alt);
@@ -443,6 +466,16 @@ static void flight_service(uint32_t *lastSvc)
     v.a_up = s_a_up_lp - s_alt.x[3];                /* accelerometer bias of the altitude filter removed */
     v.vel_b[0] = s_flow_v[0]; v.vel_b[1] = s_flow_v[1];  /* flow ground speed, body axes (0 when not usable) */
     v.yaw = atan2f(2.0f * (q[0]*q[3] + q[1]*q[2]), 1.0f - 2.0f * (q[2]*q[2] + q[3]*q[3]));
+    v.f_g = s_f_g;
+    v.a_w[0] = s_a_w[0]; v.a_w[1] = s_a_w[1]; v.a_w[2] = s_a_w[2];
+    v.w = sqrtf(s_est.omega[0]*s_est.omega[0] + s_est.omega[1]*s_est.omega[1] + s_est.omega[2]*s_est.omega[2]);
+    v.gyro_sat = s_gyro_sat; s_gyro_sat = 0u;
+    {
+        batt_state_t b;
+        memset(&b, 0, sizeof b);
+        batt_read(&b);
+        v.v_cell = (b.present && b.cells) ? b.cell_v : 0.0f;
+    }
     fc_service(now, est_ok, &v);
     (void)ctrl_service(now);              /* rate loop stalled while armed: motors off */
     {

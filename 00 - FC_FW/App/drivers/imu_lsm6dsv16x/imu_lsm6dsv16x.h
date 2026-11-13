@@ -52,6 +52,11 @@ typedef enum {
 
 typedef enum { IMU_EV_GYRO = 1, IMU_EV_ACC = 2, IMU_EV_MAG = 3, IMU_EV_BARO = 4 } imu_ev_type_t;
 
+/** gyro full scale (ADR 0011 §2): 4000 dps, 140 mdps/LSB; a sample above IMU_GYRO_SAT_RADS on an axis is saturated */
+#define IMU_GYRO_FS_DPS     4000.0f
+#define IMU_GYRO_MDPS_LSB   140.0f
+#define IMU_GYRO_SAT_RADS   (0.98f * IMU_GYRO_FS_DPS * 0.0174532925f)
+
 typedef struct {
     uint8_t type;      /**< imu_ev_type_t                               */
     float   v[3];      /* gyro rad/s, acc g, mag uT (sensor frame);

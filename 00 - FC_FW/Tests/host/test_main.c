@@ -11,6 +11,7 @@
 #include "app_link.h"
 #include "ack_cache.h"
 #include "fc_core.h"
+#include "launch.h"
 #include "params.h"
 #include "cfg_store.h"
 #include "fc_shared.h"
@@ -169,7 +170,7 @@ static void test_takeoff_land(void)
     now = 1000;
     heartbeat();
     plant_t pl = { 0, 0, 0.42f, 0 };
-    fc_vert_t v = { 1, 0, 0, 0, 0, 0, 1.0f, 0xFF, 0, 0, { 0, 0 }, 0 };
+    fc_vert_t v = { 1, 0, 0, 0, 0, 0, 1.0f, 0xFF, 0, 0, { 0, 0 }, 0, 1.0f, { 0, 0, 0 }, 0, 0, 0 };
     fc_service(now, 1, &v);
     const uint8_t arm[2] = { 0xA5, 0x5A };
     fc_res_t r = post(PV2_OP_ARM, 1, arm, 2, &v);
@@ -230,7 +231,7 @@ static void test_takeoff_tof(void)
     fc_setup(PV2_S_IMU | PV2_S_BARO | PV2_S_TOF | PV2_S_FLOW);
     now = 1000; heartbeat();
     plant_t pl = { 0, 0, 0.40f, 0 };
-    fc_vert_t v = { 1, 0, 0, 0, 1, 0, 1.0f, 80, 0, 0, { 0, 0 }, 0 };
+    fc_vert_t v = { 1, 0, 0, 0, 1, 0, 1.0f, 80, 0, 0, { 0, 0 }, 0, 1.0f, { 0, 0, 0 }, 0, 0, 0 };
     const uint8_t arm[2] = { 0xA5, 0x5A };
     fc_res_t r = post(PV2_OP_ARM, 1, arm, 2, &v);
     const uint16_t alt = 150;
@@ -376,7 +377,7 @@ static void test_app_link_failsafe(void)
     fc_setup(PV2_S_IMU | PV2_S_BARO);
     now = 1000; heartbeat();
     plant_t pl = { 0, 0, 0.42f, 0 };
-    fc_vert_t v = { 1, 0, 0, 0, 0, 0, 1.0f, 0xFF, 0, 0, { 0, 0 }, 0 };
+    fc_vert_t v = { 1, 0, 0, 0, 0, 0, 1.0f, 0xFF, 0, 0, { 0, 0 }, 0, 1.0f, { 0, 0, 0 }, 0, 0, 0 };
     const uint8_t arm[2] = { 0xA5, 0x5A };
     (void)post(PV2_OP_ARM, 1, arm, 2, &v);
     (void)post(PV2_OP_TAKEOFF, 2, NULL, 0, &v);
@@ -467,7 +468,7 @@ static void test_pos_hold_flags(void)
     now = 1000;
     s_inv_bad = 0;
     plant_t pl = { 0, 0, 0.42f, 0 };
-    fc_vert_t v = { 1, 0, 0, 1, 1, 0, 1.0f, 80, 0, 0, { 0, 0 }, 0 };
+    fc_vert_t v = { 1, 0, 0, 1, 1, 0, 1.0f, 80, 0, 0, { 0, 0 }, 0, 1.0f, { 0, 0, 0 }, 0, 0, 0 };
     (void)post(PV2_OP_SET_MODE, 1, (const uint8_t[1]){ PV2_MODE_ANGLE }, 1, &v);
     run_pos(&pl, &v, 200, -1000, 0, 0);
     r = post(PV2_OP_ARM, 2, arm, 2, &v);
@@ -534,7 +535,7 @@ static void test_manual_collective(void)
     fc_setup(PV2_S_IMU | PV2_S_BARO);
     now = 1000;
     plant_t pl = { 0, 0, 0.42f, 0 };
-    fc_vert_t v = { 1, 0, 0, 0, 0, 0, 1.0f, 0xFF, 0, 0, { 0, 0 }, 0 };
+    fc_vert_t v = { 1, 0, 0, 0, 0, 0, 1.0f, 0xFF, 0, 0, { 0, 0 }, 0, 1.0f, { 0, 0, 0 }, 0, 0, 0 };
     run_plant(&pl, &v, 200, 800);                       /* cockpit closed with the throttle high */
     run_plant(&pl, &v, 600, INT16_MIN);                 /* RC older than 0.5 s: slide-to-arm allowed */
     r = post(PV2_OP_ARM, 1, arm, 2, &v);
@@ -671,7 +672,7 @@ static void test_ctrl_loop(void)
     fc_setup(PV2_S_IMU | PV2_S_BARO);
     ctrl_init();
     now = 1000;
-    fc_vert_t v = { 1, 0, 0, 0, 0, 0, 1.0f, 0xFF, 0, 0, { 0, 0 }, 0 };
+    fc_vert_t v = { 1, 0, 0, 0, 0, 0, 1.0f, 0xFF, 0, 0, { 0, 0 }, 0, 1.0f, { 0, 0, 0 }, 0, 0, 0 };
     run_plant(NULL, &v, 100, -1000);
     ctrl_steps(48, q0, g0);
     CHECK(ctrl_motor_pct(0) == 0 && !ctrl_service(now), "disarmed: no motor output");
@@ -882,6 +883,96 @@ static void test_radio_switches(void)
     rc_input_init();
 }
 
+/* ------------------------------------------------------------ hand launch through the flight core (ADR 0011) */
+static void lv_run(fc_vert_t *v, uint32_t ms, float f_g, float a_up)
+{
+    v->f_g = f_g; v->a_w[2] = a_up;
+    for (uint32_t k = 0; k < ms / 4; ++k) {
+        now += 4;
+        if (k % 25 == 0) heartbeat();
+        fc_service(now, 1, v);
+    }
+}
+
+static void test_launch_core(void)
+{
+    const uint8_t mg[2] = { 0xA5, 0x5A };
+    fc_state_t s; fc_setpoint_t sp; fc_res_t r;
+    fc_setup(PV2_S_IMU | PV2_S_BARO);
+    now = 1000;
+    fc_vert_t v = { 1, 1.2f, 0, 0, 0, 0, 1.0f, 0xFF, 0, 0, { 0, 0 }, 0, 1.0f, { 0, 0, 0 }, 0, 0, 4.1f };
+    lv_run(&v, 200, 1.0f, 0.0f);
+    /* refusals */
+    v.v_cell = 3.0f;
+    r = post(PV2_OP_LAUNCH, 1, mg, 2, &v);
+    CHECK(r.result == PV2_ACK_REJECTED && r.reason == PV2_R_THRUST_LOW, "LAUNCH at 3.0 V: THRUST_LOW (%u/%u)", r.result, r.reason);
+    v.v_cell = 0.0f;
+    r = post(PV2_OP_LAUNCH, 2, mg, 2, &v);
+    CHECK(r.result == PV2_ACK_REJECTED && r.reason == PV2_R_THRUST_LOW, "LAUNCH without a battery reading: refused");
+    v.v_cell = 4.1f;
+    r = post(PV2_OP_LAUNCH, 3, (const uint8_t[2]){ 0, 0 }, 2, &v);
+    CHECK(r.result == PV2_ACK_INVALID, "LAUNCH without the magic: INVALID");
+    { uint8_t why; (void)params_set(8, 1.0f, &why); }
+    r = post(PV2_OP_LAUNCH, 4, mg, 2, &v);
+    CHECK(r.result == PV2_ACK_REJECTED, "LAUNCH in beginner mode: refused");
+    { uint8_t why; (void)params_set(8, 0.0f, &why); }
+    /* accepted: armed, motors stopped, EVENT 10 */
+    (void)drain_events(0);
+    r = post(PV2_OP_LAUNCH, 5, mg, 2, &v);
+    CHECK(r.result == PV2_ACK_OK, "LAUNCH accepted (%u/%u)", r.result, r.reason);
+    fc_snapshot(&s); fc_setpoint(&sp);
+    int lvl = -1;
+    CHECK(s.armed && s.autom == PV2_AUTO_LAUNCH && sp.motors_off && sp.thrust == 0.0f && count_events(PV2_E_LAUNCH_READY, &lvl) == 1,
+          "ready: armed, motors stopped, EVENT 10");
+    /* lifted in the hand by 0.5 m: not "in the air" */
+    v.h = 1.7f;
+    lv_run(&v, 600, 1.0f, 0.0f);
+    fc_snapshot(&s);
+    CHECK(!s.in_air && s.armed && s.autom == PV2_AUTO_LAUNCH, "lifted in the hand: not in the air, still ready");
+    /* toss at 1.5 m/s */
+    lv_run(&v, 150, 1.8f, 1.02f * 9.80665f);
+    int32_t arg = -1;
+    v.vz = 1.0f;
+    for (int k = 0; k < 60; ++k) {
+        lv_run(&v, 4, 0.02f, -9.80665f);
+        fc_setpoint(&sp);
+        if (!sp.motors_off) break;
+    }
+    fc_snapshot(&s); fc_setpoint(&sp);
+    {
+        fc_event_t e; int n11 = 0;
+        while (fc_take_event(&e)) if (e.code == PV2_E_LAUNCH_RELEASED) { n11++; arg = e.arg; }
+        CHECK(n11 == 1 && arg >= 80 && arg <= 120, "released: EVENT 11 once, motors after %d ms", (int)arg);
+    }
+    CHECK(s.in_air && !sp.motors_off && sp.thrust > 0.5f && fabsf(sp.roll) < 1e-6f && fabsf(sp.pitch) < 1e-6f,
+          "recover: in the air, thrust %.2f, level", sp.thrust);
+    /* stable: hold the height reached, mode from the sensors */
+    v.vz = 0.0f; v.h = 1.9f;
+    lv_run(&v, 300, 1.0f, 0.0f);
+    fc_snapshot(&s); fc_setpoint(&sp);
+    CHECK(s.autom == PV2_AUTO_NONE && s.mode == PV2_MODE_ALT_HOLD && sp.alt_ctrl && fabsf(sp.h_sp - 1.9f) < 0.05f,
+          "done: ALT_HOLD at the height reached (%.2f)", sp.h_sp);
+    (void)post(PV2_OP_KILL, 6, "KILL", 4, &v);
+    /* ready for 10 s: disarmed, EVENT 12 */
+    v.h = 1.2f; v.vz = 0.0f;
+    lv_run(&v, 300, 1.0f, 0.0f);
+    (void)drain_events(0);
+    r = post(PV2_OP_LAUNCH, 7, mg, 2, &v);
+    CHECK(r.result == PV2_ACK_OK, "LAUNCH again");
+    lv_run(&v, 10500, 1.0f, 0.0f);
+    fc_snapshot(&s);
+    {
+        fc_event_t e; int n12 = 0; arg = -1;
+        while (fc_take_event(&e)) if (e.code == PV2_E_LAUNCH_ABORTED) { n12++; arg = e.arg; }
+        CHECK(!s.armed && n12 == 1 && arg == LN_AB_TIMEOUT, "10 s in the hand: disarmed, EVENT 12 TIMEOUT (%d, %d)", n12, (int)arg);
+    }
+    /* DISARM in the hand */
+    r = post(PV2_OP_LAUNCH, 8, mg, 2, &v);
+    r = post(PV2_OP_DISARM, 9, NULL, 0, &v);
+    fc_snapshot(&s); fc_setpoint(&sp);
+    CHECK(r.result == PV2_ACK_OK && !s.armed && !sp.motors_off, "DISARM in the hand");
+}
+
 static void test_alt_est(void)
 {
     alt_est_cfg_t c; alt_est_default_cfg(&c);
@@ -1026,7 +1117,7 @@ static void test_app(void)
     ac.hw_rev = 'N'; ac.n_motors = 4; ac.uid[0] = 0x12345678; ac.get_init = fake_init;
     app_init(&ac);
 
-    fc_vert_t v = { 1, 0, 0, 0, 0, 0, 1.0f, 0xFF, 0, 0, { 0, 0 }, 0 };
+    fc_vert_t v = { 1, 0, 0, 0, 0, 0, 1.0f, 0xFF, 0, 0, { 0, 0 }, 0, 1.0f, { 0, 0, 0 }, 0, 0, 0 };
     tlm_ble_set_state(TLM_BLE_CONNECTED);
     tlm_ble_set_state(TLM_BLE_STREAMING);
     appl_on_connect();
@@ -1241,6 +1332,7 @@ int main(void)
     test_radio();
     test_radio_switches();
     test_pos_hold_flags();
+    test_launch_core();
     test_alt_est();
     test_drivers();
     test_checks_flow();

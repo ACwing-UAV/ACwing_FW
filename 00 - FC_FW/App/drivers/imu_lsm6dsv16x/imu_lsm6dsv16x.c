@@ -154,7 +154,7 @@ int32_t imu_init(imu_t *imu, const sensor_bus_t *bus, const imu_config_t *cfg)
 
     /* 2) full scales and filters */
     int32_t ret = 0;
-    ret |= lsm6dsv16x_gy_full_scale_set(&imu->ctx, LSM6DSV16X_2000dps);
+    ret |= lsm6dsv16x_gy_full_scale_set(&imu->ctx, LSM6DSV16X_4000dps);   /* IMU_GYRO_FS_DPS (ADR 0011) */
     ret |= lsm6dsv16x_xl_full_scale_set(&imu->ctx, LSM6DSV16X_16g);
     ret |= lsm6dsv16x_filt_gy_lp1_set(&imu->ctx, PROPERTY_ENABLE);
     ret |= lsm6dsv16x_filt_gy_lp1_bandwidth_set(&imu->ctx,
@@ -233,8 +233,8 @@ static int16_t le16(const uint8_t *p) { return (int16_t)((uint16_t)p[0] | ((uint
 size_t imu_fifo_parse(imu_t *imu, const uint8_t *raw, uint16_t words,
                       imu_event_t *ev, size_t cap, imu_parse_stats_t *st)
 {
-    /* 2000 dps -> 70 mdps/LSB ; 16 g -> 0.488 mg/LSB (as lsm6dsv16x_from_fs*_) */
-    const float kg = 70.0e-3f * DEG2RAD_F;
+    /* 4000 dps -> 140 mdps/LSB ; 16 g -> 0.488 mg/LSB (as lsm6dsv16x_from_fs*_) */
+    const float kg = IMU_GYRO_MDPS_LSB * 1e-3f * DEG2RAD_F;
     const float ka = 0.488e-3f;
     size_t n = 0;
 
