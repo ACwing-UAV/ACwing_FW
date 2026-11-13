@@ -28,6 +28,7 @@ static uint8_t  s_type, s_state, s_step, s_progress, s_quality, s_reason;
 static uint8_t  s_changed, s_failed_type;
 static uint32_t s_t0;               /* start of the current window (ms)        */
 static uint32_t s_now;
+static cs_proc_t S;                 /* STICKS procedure (cal_sticks.c)            */
 
 /* ---- per-type working data ---- */
 static struct {                      /* ACCEL */
@@ -78,6 +79,7 @@ void cal_copy_type(cal_set_t *d, const cal_set_t *s, uint8_t type)
     case PV2_CAL_COMPASS: d->compass = s->compass; break;
     case PV2_CAL_MOTORS:  d->motors  = s->motors;  break;
     case PV2_CAL_BATTERY: d->battery = s->battery; break;
+    case PV2_CAL_STICKS:  d->sticks  = s->sticks;  break;
     default: return;
     }
     const uint32_t bit = 1u << (type - 1u);
@@ -161,7 +163,7 @@ uint8_t cal_start(uint8_t type, uint8_t option, uint8_t armed, uint32_t now, uin
         if (!(s_cfg.sensors & PV2_S_CURRENT) || !s_cfg.batt) { *reason = PV2_R_SENSOR_MISSING; return PV2_ACK_REJECTED; }
         break;
     case PV2_CAL_STICKS:
-        if (!(s_cfg.sensors & PV2_S_ELRS)) { *reason = PV2_R_SENSOR_MISSING; return PV2_ACK_REJECTED; }
+        if (!(s_cfg.sensors & PV2_S_ELRS) || !s_cfg.rc) { *reason = PV2_R_SENSOR_MISSING; return PV2_ACK_REJECTED; }
         break;
     case PV2_CAL_MOTORS:
         if (!s_cfg.motors_built) { *reason = PV2_R_SENSOR_MISSING; return PV2_ACK_REJECTED; }
@@ -173,8 +175,7 @@ uint8_t cal_start(uint8_t type, uint8_t option, uint8_t armed, uint32_t now, uin
         break;
     }
     /* the sensors exist but this firmware has no procedure for them yet */
-    if (type == PV2_CAL_FLOW_TOF || type == PV2_CAL_STICKS ||
-        type == PV2_CAL_MOTORS) return PV2_ACK_UNSUPPORTED;
+    if (type == PV2_CAL_FLOW_TOF || type == PV2_CAL_MOTORS) return PV2_ACK_UNSUPPORTED;
 
     /* a previous calibration left in DONE (not saved) is discarded */
     if (s_state == PV2_CS_DONE) revert();
@@ -209,6 +210,10 @@ uint8_t cal_start(uint8_t type, uint8_t option, uint8_t armed, uint32_t now, uin
     case PV2_CAL_BATTERY:
         memset(&B, 0, sizeof B);
         s_cfg.batt(&B.vbat, &B.used, &B.scale_i_used);
+        set_state(PV2_CS_WAITING_USER, 1);
+        break;
+    case PV2_CAL_STICKS:
+        cs_start(&S);
         set_state(PV2_CS_WAITING_USER, 1);
         break;
     default:
@@ -523,6 +528,11 @@ void cal_tick(uint32_t now)
     if (s_type == PV2_CAL_BATTERY && s_cfg.batt &&
         (s_state == PV2_CS_WAITING_USER || s_state == PV2_CS_DONE))
         s_cfg.batt(&B.vbat, &B.used, &B.scale_i_used);      /* vbat live, with the new scale once applied */
+    if (s_type == PV2_CAL_STICKS && s_cfg.rc && (s_state == PV2_CS_WAITING_USER || s_state == PV2_CS_RUNNING)) {
+        uint16_t st[4], aux[4];
+        if (s_cfg.rc(st, aux)) cs_sample(&S, st, aux);
+        s_progress = cs_progress(&S);
+    }
 }
 
 uint8_t cal_capture(uint32_t now, uint8_t *reason)
@@ -532,6 +542,15 @@ uint8_t cal_capture(uint32_t now, uint8_t *reason)
     if (!cal_active()) { *reason = PV2_R_NOT_CALIBRATING; return PV2_ACK_REJECTED; }
     if (s_type == PV2_CAL_BATTERY && s_state == PV2_CS_WAITING_USER) {
         set_state(PV2_CS_DONE, 3);          /* skip the current step (§10.6) */
+        return PV2_ACK_OK;
+    }
+    if (s_type == PV2_CAL_STICKS && (s_state == PV2_CS_WAITING_USER || s_state == PV2_CS_RUNNING)) {
+        const uint8_t first = (uint8_t)(s_state == PV2_CS_WAITING_USER);
+        if (!cs_capture(&S)) { *reason = PV2_R_OUT_OF_RANGE; return PV2_ACK_REJECTED; }  /* sticks not moved enough */
+        if (first) { set_state(PV2_CS_RUNNING, 2); return PV2_ACK_OK; }
+        s_res.sticks = S.r;
+        s_quality = 100;
+        done(3);
         return PV2_ACK_OK;
     }
     if (s_type == PV2_CAL_ACCEL && s_state == PV2_CS_WAITING_USER) {
@@ -595,7 +614,7 @@ size_t cal_frame(uint8_t *out, size_t cap)
     pv2_calib_hdr_t h = { s_type, s_state, s_step, s_progress, s_quality, s_reason };
     union {
         pv2_cal_accel_t a; pv2_cal_level_t l; pv2_cal_gyro_t g; pv2_cal_compass_t c;
-        pv2_cal_battery_t b;
+        pv2_cal_battery_t b; pv2_cal_sticks_t s;
     } d;
     uint8_t n = 0;
     memset(&d, 0, sizeof d);
@@ -648,6 +667,16 @@ size_t cal_frame(uint8_t *out, size_t cap)
                                 clu16(s_res.battery.scale_i * 1e4f), clu16(B.used) };
         memcpy(&d.b, b, sizeof b);
         n = sizeof d.b;
+        break;
+    }
+    case PV2_CAL_STICKS: {
+        /* step 1: the live values as centres; then the centres, min, max being tracked */
+        const cal_sticks_t *r = &S.r;
+        memcpy(d.s.centre, S.step == 1u ? S.live : r->centre, sizeof d.s.centre);
+        memcpy(d.s.min, S.step == 1u ? S.live : r->min, sizeof d.s.min);
+        memcpy(d.s.max, S.step == 1u ? S.live : r->max, sizeof d.s.max);
+        memcpy(d.s.aux_pos, r->aux_pos, sizeof d.s.aux_pos);
+        n = sizeof d.s;
         break;
     }
     default:

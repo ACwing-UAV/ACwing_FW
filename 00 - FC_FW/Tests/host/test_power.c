@@ -1,7 +1,7 @@
 /*
  * Host tests of the battery chain: estimator (battery.c), BattTask signals,
  * battery failsafes in the flight core, BATTERY calibration, CHECKS item 1,
- * POWER frame, configuration image v1 -> v2 migration.
+ * POWER frame, configuration image v1 -> v2 and v2 -> v3 migrations.
  */
 #include "proto_v2.h"
 #include "tlm_ble.h"
@@ -370,13 +370,19 @@ static float s_cb_vbat = 4.0f, s_cb_used = 400.0f, s_cb_si = 1.0f;
 static uint8_t s_applied_type; static cal_set_t s_applied;
 static void cb_batt(float *v, float *u, float *si) { *v = s_cb_vbat; *u = s_cb_used; *si = s_cb_si; }
 static void cb_apply(uint8_t t, const cal_set_t *s) { s_applied_type = t; s_applied = *s; }
+static uint8_t s_rc_ok; static uint16_t s_rc_st[4], s_rc_aux[4] = { 1000, 1000, 1000, 1000 };
+static uint8_t cb_rc(uint16_t st[4], uint16_t aux[4])
+{
+    memcpy(st, s_rc_st, sizeof s_rc_st); memcpy(aux, s_rc_aux, sizeof s_rc_aux);
+    return s_rc_ok;
+}
 
 static void test_calibration(void)
 {
     static cal_set_t active;
     cal_set_defaults(&active, NULL);
     CHECK(active.battery.scale_v == 110.0f && active.battery.scale_i == 1.0f, "default scales");
-    cal_config_t cc = { PV2_S_IMU, 0, cb_apply, cb_batt };
+    cal_config_t cc = { PV2_S_IMU, 0, cb_apply, cb_batt, NULL };
     uint8_t why;
 
     cc.sensors = PV2_S_IMU;
@@ -430,6 +436,42 @@ static void test_calibration(void)
     CHECK(cal_start(PV2_CAL_BATTERY, 0, 0, 0, &why) == PV2_ACK_OK, "start 3");
     CHECK(cal_set_ref(PV2_CAL_BATTERY, 1, 440.0f, &why) == PV2_ACK_OK && NEAR(s_applied.battery.scale_i, 1.1f, 1e-4f),
           "same flight, same answer");
+    (void)cal_abort(&why);
+
+    /* STICKS: centres, ranges, DONE, applied */
+    cc.sensors = PV2_S_IMU;
+    cc.rc = cb_rc;
+    cal_init(&cc, &active);
+    CHECK(cal_start(PV2_CAL_STICKS, 0, 0, 0, &why) == PV2_ACK_REJECTED && why == PV2_R_SENSOR_MISSING, "STICKS without a receiver");
+    cc.sensors = PV2_S_IMU | PV2_S_ELRS;
+    cal_init(&cc, &active);
+    s_rc_ok = 0;
+    CHECK(cal_start(PV2_CAL_STICKS, 0, 0, 0, &why) == PV2_ACK_OK, "STICKS start");
+    cal_tick(10);
+    CHECK(cal_capture(10, &why) == PV2_ACK_REJECTED, "no frame yet: capture refused");
+    s_rc_ok = 1;
+    const uint16_t rest[4] = { 1000, 1495, 1510, 1500 };
+    memcpy(s_rc_st, rest, sizeof rest);
+    cal_tick(20);
+    n = cal_frame(f, sizeof f);
+    {
+        pv2_calib_hdr_t h; memcpy(&h, f + 4, sizeof h);
+        pv2_cal_sticks_t d; memcpy(&d, f + 4 + 6, sizeof d);
+        CHECK(n == 6 + 6 + 28 && h.type == PV2_CAL_STICKS && h.state == PV2_CS_WAITING_USER && h.step == 1 &&
+              d.centre[1] == 1495, "STICKS step 1: live values");
+    }
+    CHECK(cal_capture(20, &why) == PV2_ACK_OK, "centres");
+    CHECK(cal_capture(20, &why) == PV2_ACK_REJECTED && why == PV2_R_OUT_OF_RANGE, "no travel -> OUT_OF_RANGE");
+    const uint16_t e1[4] = { 2000, 1000, 1000, 1000 }, e2[4] = { 1000, 2000, 2000, 2000 };
+    memcpy(s_rc_st, e1, sizeof e1); s_rc_aux[0] = 2000; cal_tick(30);
+    memcpy(s_rc_st, e2, sizeof e2); s_rc_aux[0] = 1000; cal_tick(40);
+    n = cal_frame(f, sizeof f);
+    { pv2_calib_hdr_t h; memcpy(&h, f + 4, sizeof h); CHECK(h.state == PV2_CS_RUNNING && h.step == 2 && h.progress == 100, "ranges: progress 100"); }
+    s_applied_type = 0;
+    CHECK(cal_capture(50, &why) == PV2_ACK_OK, "STICKS done");
+    CHECK(s_applied_type == PV2_CAL_STICKS && s_applied.sticks.centre[2] == 1510 && s_applied.sticks.max[3] == 2000 &&
+          s_applied.sticks.aux_pos[0] == 2, "applied (AUX1 two positions)");
+    CHECK(cal_save_check(&why) == PV2_ACK_OK && cal_result()->sticks.min[1] == 1000, "STICKS result");
     (void)cal_abort(&why);
 }
 
@@ -662,6 +704,45 @@ static void test_migration(void)
     CHECK(v[P_MAX_TILT] == g_param_def[P_MAX_TILT].def, "unknown id ignored, missing -> default");
 }
 
+/* version 2 image, as firmware 0.5-0.7.0 wrote it: cal_set_t without the sticks */
+typedef struct {
+    cal_accel_t accel; cal_level_t level; cal_gyro_t gyro; cal_compass_t compass; cal_motors_t motors;
+    cal_battery_t battery; uint32_t done_mask;
+} cal_v2_t;
+typedef struct {
+    uint32_t magic; uint16_t version, size; uint32_t seq;
+    cfg_param_t params[CFG_PARAM_SLOTS]; char name[16]; cal_v2_t cal, bak; uint32_t bak_mask;
+    float batt_used_mah, batt_used_scale_i; uint8_t reserved[56]; uint32_t crc;
+} img_v2_t;
+
+static void test_migration_v2(void)
+{
+    host_flash_erase();
+    static img_v2_t v2; memset(&v2, 0, sizeof v2);
+    v2.magic = CFG_MAGIC; v2.version = 2; v2.size = sizeof v2; v2.seq = 41;
+    v2.params[0].id = g_param_def[P_TAKEOFF_ALT].id; v2.params[0].value = 1.3f;
+    memcpy(v2.name, "Old", 3);
+    v2.cal.accel.off[1] = -0.02f; v2.cal.battery.scale_v = 108.0f; v2.cal.battery.scale_i = 0.97f;
+    v2.cal.done_mask = 0x2F; v2.bak.gyro.bias[0] = 0.003f; v2.bak_mask = 2;
+    v2.batt_used_mah = 123.0f; v2.batt_used_scale_i = 0.97f;
+    v2.crc = cfg_crc32(&v2, offsetof(img_v2_t, crc));
+    (void)cfg_flash_write(1, &v2, sizeof v2);
+
+    static cfg_image_t img;
+    CHECK(cfg_load(&img) == 0 && img.seq == 41, "v2 image loaded");
+    float v[PARAM_COUNT];
+    cfg_params_get(&img, v);
+    CHECK(v[P_TAKEOFF_ALT] == 1.3f && !strcmp(img.name, "Old"), "v2 parameters and name kept");
+    CHECK(img.cal.accel.off[1] == -0.02f && img.cal.battery.scale_v == 108.0f && img.cal.battery.scale_i == 0.97f &&
+          img.cal.done_mask == 0x2F && img.bak.gyro.bias[0] == 0.003f && img.bak_mask == 2, "v2 calibrations kept");
+    CHECK(img.batt_used_mah == 123.0f && img.batt_used_scale_i == 0.97f, "v2 last flight kept");
+    CHECK(img.cal.sticks.max[0] == 0 && !(img.cal.done_mask & (1u << (PV2_CAL_STICKS - 1))), "sticks not calibrated");
+    CHECK(cfg_save(&img) == 0, "save v3");
+    static cfg_image_t img2;
+    CHECK(cfg_load(&img2) == 0 && img2.version == CFG_VERSION && img2.seq == 42 && img2.cal.battery.scale_v == 108.0f,
+          "reload v3 (seq %u)", (unsigned)img2.seq);
+}
+
 int main(void)
 {
     test_estimator();
@@ -670,6 +751,7 @@ int main(void)
     test_checks();
     test_power_frame();
     test_migration();
+    test_migration_v2();
     printf("power: %d passed, %d failed\n", s_pass, s_fail);
     return s_fail ? 1 : 0;
 }

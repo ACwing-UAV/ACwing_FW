@@ -19,7 +19,7 @@
 #include "calib_mgr.h"
 
 #define CFG_MAGIC        0x43574341u    /**< "ACWC" */
-#define CFG_VERSION      2u
+#define CFG_VERSION      3u
 #define CFG_PARAM_SLOTS  48u            /**< room for parameters added later      */
 
 /** one parameter: stored by id, so the table can grow without a migration */
@@ -29,8 +29,8 @@ typedef struct {
     float    value;
 } cfg_param_t;
 
-/** Version 2. Version 1 (positional parameters, no battery) is migrated by
- *  cfg_load(); the next save writes version 2. */
+/** Version 3 (firmware 0.7: STICKS calibration in cal_set_t). Versions 1 (positional parameters, no battery)
+ *  and 2 (no sticks) are migrated by cfg_load(); the next save writes version 3. */
 typedef struct {
     uint32_t    magic;
     uint16_t    version;

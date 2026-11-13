@@ -20,6 +20,7 @@
 
 #include <stdint.h>
 #include <stddef.h>
+#include "cal_sticks.h"
 
 /* ---- calibration sets (RAM and flash) ---- */
 typedef struct { float off[3], scale[3]; } cal_accel_t;     /**< g: a = scale * (raw - off) */
@@ -37,6 +38,7 @@ typedef struct {
     cal_motors_t  motors;
     cal_battery_t battery;
     uint32_t      done_mask;     /**< bit (type-1): this calibration was done and saved */
+    cal_sticks_t  sticks;        /**< STICKS (cfg image version 3); zeros = not calibrated */
 } cal_set_t;
 
 void cal_set_defaults(cal_set_t *s, const float mag_hi_default[3]);
@@ -61,11 +63,16 @@ typedef void (*cal_apply_fn)(uint8_t type, const cal_set_t *set);
  *  current scale it was counted with */
 typedef void (*cal_batt_fn)(float *vbat, float *last_used_mah, float *last_scale_i);
 
+/** RC receiver readings for the STICKS calibration (AppTask context): raw sticks (thr, yaw, pitch, roll) and
+ *  AUX1-4 in us; returns 1 while the receiver link is up */
+typedef uint8_t (*cal_rc_fn)(uint16_t stick_us[4], uint16_t aux_us[4]);
+
 typedef struct {
     uint16_t     sensors;        /**< CAPS bits */
     uint8_t      motors_built;
     cal_apply_fn apply;
     cal_batt_fn  batt;           /**< NULL: BATTERY -> SENSOR_MISSING */
+    cal_rc_fn    rc;             /**< NULL: STICKS -> SENSOR_MISSING */
 } cal_config_t;
 
 /** active: the set in effect (RAM), owned by the caller. DONE applies the new
