@@ -27,9 +27,9 @@ const fr: Translation = {
     battMonitorLost: "Surveillance batterie arrêtée : niveau de batterie inconnu et armement bloqué. Redémarrez le drone.",
   },
   checks: {
-    noBattery: "Pas de batterie (alimentation USB)", battMonitor: "Surveillance batterie arrêtée",
+    noBattery: "Pas de batterie (alimentation USB)", battMonitor: "Surveillance batterie arrêtée", thrustNeeded: "{p} % de la poussée pour le vol stationnaire",
     1: "Batterie", 2: "IMU et niveau", 3: "Boussole", 4: "GNSS", 5: "Home défini", 6: "Radio ELRS", 7: "État EKF",
-    8: "Géobarrière · failsafe", 9: "Flux optique", 10: "Gaz au minimum", 11: "Calibration", 12: "USB débranché",
+    8: "Géobarrière · failsafe", 9: "Flux optique", 10: "Gaz au minimum", 11: "Calibration", 12: "USB débranché", 13: "Marge de poussée",
     state: { 0: "OK", 1: "À vérifier", 2: "Pas prêt", 3: "n/d" },
   },
   cockpit: {
@@ -81,7 +81,7 @@ const fr: Translation = {
     1: "Armé", 2: "Désarmé", 3: "Décollage", 4: "Atterri", 5: "Mode de vol changé", 6: "Retour au point de départ", 7: "Home défini",
     20: "Liaison app perdue : failsafe", 21: "Liaison radio perdue : failsafe", 22: "Failsafe batterie", 23: "Géobarrière atteinte",
     24: "GPS perdu", 25: "Flux optique perdu", 30: "Batterie faible", 31: "Batterie critique", 32: "Batterie vide : atterrissage",
-    40: "Interférence boussole", 41: "Vibrations élevées", 42: "Moteur ou ESC chaud", 43: "La radio ELRS a la main",
+    40: "Interférence boussole", 41: "Vibrations élevées", 42: "Moteur ou ESC chaud", 43: "La radio ELRS a la main", 44: "Poussée de stationnaire anormale",
     50: "Calibration enregistrée", 51: "Échec de la calibration", 60: "Réglages enregistrés", 70: "Moteurs arrêtés",
   },
   reasons: {
@@ -107,6 +107,7 @@ const fr: Translation = {
     units: "Unités", metric: "Métriques", imperial: "Impériales", theme: "Thème", dark: "Sombre", daylight: "Plein jour", droneName: "Nom du drone",
   },
   controls: {
+    hoverHint: "Poussée de stationnaire du châssis, valeur de départ de l'estimation en vol : T400 0,51, T800 0,58, T1200 0,65, +0,04 avec la carte GPS.",
     tuning: "Réglage du vol (avancé)", tuningHint: "Gains et filtres des boucles du contrôleur de vol. Changez une valeur à la fois, d'abord sans hélices ; Enregistrer les écrit dans le drone.", notchHint: "0 = désactivé. Réglez-le sur le pic de bruit des moteurs visible dans le journal de vol.",
     idleHint: "Poussée de chaque moteur une fois armé, en fraction du maximum.", curveHint: "1 = poussée quadratique en rapport cyclique (moteurs à balais), 0 = linéaire. Mesurée au banc de poussée.",
     sticks: "Manches", stickMode: "Mode des manches", mode1: "Mode 1", mode2: "Mode 2", sensitivity: "Sensibilité", expo: "Expo",
@@ -121,6 +122,7 @@ const fr: Translation = {
     elrsHelp: "Priorité maximale : quand elle est active, l'app passe en télémétrie seule",
   },
   params: {
+    hoverThr: "Poussée de stationnaire",
     rateP: "P vitesse roulis/tangage", rateI: "I vitesse roulis/tangage", rateD: "D vitesse roulis/tangage", yawP: "P vitesse lacet", yawI: "I vitesse lacet", attP: "P angle", gyroLpf: "Passe-bas gyroscope", dtermLpf: "Passe-bas terme D", gyroNotch: "Coupe-bande gyroscope", motorIdle: "Ralenti moteurs", thrCurve: "Courbe de poussée",
     battCapacity: "Capacité", battCells: "Éléments", logMode: "Journal de vol",
     takeoffAlt: "Altitude de décollage", landSpeed: "Vitesse d'atterrissage", autoDisarm: "Désarmement auto après l'atterrissage", maxTilt: "Inclinaison max",

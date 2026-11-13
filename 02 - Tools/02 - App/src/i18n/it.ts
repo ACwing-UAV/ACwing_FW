@@ -27,9 +27,9 @@ const it: Translation = {
     battMonitorLost: "Monitor batteria fermo: livello della batteria sconosciuto e armamento bloccato. Riavvia il drone.",
   },
   checks: {
-    noBattery: "Nessuna batteria (alimentazione USB)", battMonitor: "Monitor batteria fermo",
+    noBattery: "Nessuna batteria (alimentazione USB)", battMonitor: "Monitor batteria fermo", thrustNeeded: "{p}% della spinta per l'hover",
     1: "Batteria", 2: "IMU e livello", 3: "Bussola", 4: "GNSS", 5: "Home impostata", 6: "Radio ELRS", 7: "Stato EKF",
-    8: "Geofence · failsafe", 9: "Flusso ottico", 10: "Gas al minimo", 11: "Calibrazione", 12: "USB scollegato",
+    8: "Geofence · failsafe", 9: "Flusso ottico", 10: "Gas al minimo", 11: "Calibrazione", 12: "USB scollegato", 13: "Margine di spinta",
     state: { 0: "OK", 1: "Verifica", 2: "Non pronto", 3: "n/d" },
   },
   cockpit: {
@@ -81,7 +81,7 @@ const it: Translation = {
     1: "Armato", 2: "Disarmato", 3: "Decollo", 4: "Atterrato", 5: "Modalità di volo cambiata", 6: "Ritorno a casa", 7: "Home impostata",
     20: "Link app perso: failsafe", 21: "Link radio perso: failsafe", 22: "Failsafe batteria", 23: "Geofence raggiunto",
     24: "GPS perso", 25: "Flusso ottico perso", 30: "Batteria bassa", 31: "Batteria critica", 32: "Batteria scarica: atterraggio",
-    40: "Interferenza bussola", 41: "Vibrazioni elevate", 42: "Motore o ESC caldo", 43: "La radio ELRS ha il controllo",
+    40: "Interferenza bussola", 41: "Vibrazioni elevate", 42: "Motore o ESC caldo", 43: "La radio ELRS ha il controllo", 44: "Spinta di hover anomala",
     50: "Calibrazione salvata", 51: "Calibrazione fallita", 60: "Impostazioni salvate", 70: "Motori fermati",
   },
   reasons: {
@@ -107,6 +107,7 @@ const it: Translation = {
     units: "Unità", metric: "Metriche", imperial: "Imperiali", theme: "Tema", dark: "Scuro", daylight: "Luce diurna", droneName: "Nome del drone",
   },
   controls: {
+    hoverHint: "Spinta di hover del telaio, valore di partenza della stima in volo: T400 0,51, T800 0,58, T1200 0,65, +0,04 con la scheda GPS.",
     tuning: "Taratura del volo (avanzata)", tuningHint: "Guadagni e filtri dei loop del controllore di volo. Cambia un valore alla volta, prima senza eliche; Salva li scrive sul drone.", notchHint: "0 = spento. Impostalo sul picco di rumore dei motori visto nel log di volo.",
     idleHint: "Spinta di ogni motore da armato, come frazione della massima.", curveHint: "1 = spinta quadratica nel duty (motori a spazzole), 0 = lineare. Si misura al banco di spinta.",
     sticks: "Stick", stickMode: "Modo stick", mode1: "Modo 1", mode2: "Modo 2", sensitivity: "Sensibilità", expo: "Expo",
@@ -121,6 +122,7 @@ const it: Translation = {
     elrsHelp: "Priorità massima: quando è attiva, l'app passa alla sola telemetria",
   },
   params: {
+    hoverThr: "Spinta di hover",
     rateP: "P rate rollio/beccheggio", rateI: "I rate rollio/beccheggio", rateD: "D rate rollio/beccheggio", yawP: "P rate imbardata", yawI: "I rate imbardata", attP: "P angolo", gyroLpf: "Passa-basso giroscopio", dtermLpf: "Passa-basso termine D", gyroNotch: "Notch giroscopio", motorIdle: "Minimo motori", thrCurve: "Curva di spinta",
     battCapacity: "Capacità", battCells: "Celle", logMode: "Log di volo",
     takeoffAlt: "Quota di decollo", landSpeed: "Velocità di atterraggio", autoDisarm: "Disarmo automatico dopo l'atterraggio", maxTilt: "Inclinazione max",

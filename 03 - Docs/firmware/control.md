@@ -80,6 +80,24 @@ $$u_i = f^{-1}(t_i)\cdot\frac{4.2\ \text{V}}{V_{cell}},\qquad f(u) = \theta u^2 
 $V_{cell}$ is the sagged cell voltage of the BattTask (filtered 0.5 s). Without a battery monitor the factor is 1.
 $\theta$ is `thrCurve` (1 for the brushed 8520 motors until the thrust stand says otherwise).
 
+## Hover thrust
+
+The collective of the vertical loop and of the manual modes is built around the **hover thrust** $\hat t_h$
+(ADR 0010): the stick centre in ACRO/ANGLE, the base of `alt_ctrl` (its integrator only covers ±0.15 of model
+error), the airborne test and the open-loop LAND.
+
+- At every arm it starts from the parameter `hoverThr` (80), or from the estimate of an earlier flight of at least
+  20 s in the same power cycle.
+- In flight `hover_track.c` runs a 1-state Kalman filter (`hover_est.c`) at 50 Hz on the vertical acceleration
+  (accelerometer bias removed, 10 Hz low-pass) and the collective of 36 ms earlier (motor lag), only while the model
+  holds: airborne past the spool-up, ≥ 0.15 m above the floor, tilt < 30°, $\lvert v_z\rvert$ < 0.5 m/s, collective
+  not saturated, below the ceiling. Impacts are rejected by an innovation gate.
+- Outside 0.35…0.75 it sends EVENT 44 once; CHECKS item 13 warns when hovering needs more than 80 % of the thrust at
+  the present voltage.
+
+`make hover_test`: a ±30 % seed converges within 3 % in 0.6–0.7 s; a +15 g step in 2.0 s; a 4.2 → 3.5 V sag moves it
+by at most 2.8 %; a 1 m/s climb by 0.3 %.
+
 ## Safety
 
 - The motors are written **only while armed**. Disarmed, `motors_arm(0)` has stopped them, and a MOTOR_TEST owns

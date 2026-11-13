@@ -1,6 +1,6 @@
 # 0010. Hover thrust: normalised collective, battery-compensated mixer, online estimate
 
-- **Status:** Proposed
+- **Status:** Accepted (2026-11-13); implemented in firmware 0.7.0 with the amendments at the end
 - **Date:** 2026-11-07
 
 ## Context
@@ -174,3 +174,26 @@ duty of each motor. With these, the thrust curve and $\sigma_a$ can be checked f
    - a step climb of 1 m/s does not bias $\hat t_h$ by more than 2 %.
 2. **Thrust stand:** $T(u)$ at 4.2, 3.9 and 3.6 V, giving $\theta$ and the voltage exponent; $\tau_m$ from a step.
 3. **Tethered hover** (indoor, T400): $\hat t_h$ against the thrust-stand value, and the duty at the end of the pack.
+
+## Amendments (implementation, firmware 0.7.0)
+
+Validation item 1 (`Tests/host/test_hover.c`) showed that two numbers of §2 do not meet the
+requirements of the record itself:
+
+| Item | Proposed | Implemented | Why |
+|---|---|---|---|
+| Process noise $\sqrt q$ | 0.0036 s$^{-1/2}$ | **0.012** s$^{-1/2}$ | with 0.0036 the +15 g step was still 3 % off after 8 s (required: < 3 s). With 0.012: 2.0 s; the worst error over a 4.2 → 3.5 V sag rises from 1.4 % to 2.8 %, still within 3 %. |
+| Update gate | tilt, saturation, ToF height, ceiling | the same **and $\lvert v_z\rvert$ < 0.5 m/s** | the model leaves out the vertical drag: in a 1 m/s climb the estimate moved by 2.2 % (required < 2 %), whatever $q$. With the gate: 0.3 %. |
+
+Other choices of the implementation:
+
+- The estimator (`filters/hover_est`) and its use by the flight core (`control/hover_track`: seed, lag alignment,
+  memory between flights, the gate of the model, the warning) are separate modules; the flight core only reports
+  whether it is airborne in a steady state.
+- The warning is **EVENT 44** `HOVER_THRUST` (WARN, arg = $\hat t_h \times 1000$), once per flight after 50 updates.
+- The thrust-margin check is **CHECKS item 13** (value = hover thrust needed at the present voltage, %; WARN only, it
+  does not block the arming).
+- §5 (logging) is not implemented yet.
+- The seed matters during the take-off: the estimate does not update while climbing faster than 0.5 m/s. A seed 21 %
+  too high made the 0.6 m/s take-off climb at 0.83 m/s in the host test. The app must set `hoverThr` from the tray.
+

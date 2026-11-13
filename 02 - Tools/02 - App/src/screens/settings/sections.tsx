@@ -108,6 +108,7 @@ export function Controls() {
           <div className="row first" style={{ minHeight: 48, flexDirection: "column", alignItems: "flex-start", justifyContent: "center", gap: 2, padding: "10px 0" }}>
             <h2>{t("controls.tuning")}</h2><span className="small muted">{t("controls.tuningHint")}</span>
           </div>
+          <ParamNumber k="hoverThr" hint={t("controls.hoverHint")} />
           <ParamNumber k="rateP" />
           <ParamNumber k="rateI" />
           <ParamNumber k="rateD" />

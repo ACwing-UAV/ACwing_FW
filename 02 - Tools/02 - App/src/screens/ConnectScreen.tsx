@@ -24,6 +24,7 @@ export function checkValue(c: CheckItem, t: (k: string, v?: Record<string, strin
     case CheckId.RADIO: return c.state === CheckState.NA ? t("common.na") : `LQ ${c.value}%`;
     case CheckId.FLOW: return c.state === CheckState.NA ? t("common.na") : t("telemetry.quality", { q: c.value });
     case CheckId.FAILSAFE: return `${c.value} m`;
+    case CheckId.THRUST: return c.state === CheckState.NA ? t("common.na") : t("checks.thrustNeeded", { p: c.value });
     default: return t(`checks.state.${c.state}`);
   }
 }

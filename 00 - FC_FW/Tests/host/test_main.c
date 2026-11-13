@@ -110,13 +110,14 @@ static void cmd(uint8_t op, uint8_t seq, const void *p, uint8_t n)
 static void heartbeat(void) { cmd(PV2_OP_HEARTBEAT, 0, NULL, 0); }
 
 /* ------------------------------------------------------------ vertical plant */
-typedef struct { float h, vz, hover; } plant_t;
+typedef struct { float h, vz, hover, a; } plant_t;
 static void plant_step(plant_t *pl, float thrust, uint8_t armed, float dt)
 {
     float a = armed ? 9.81f * (thrust / pl->hover - 1.0f) - 0.6f * pl->vz : -9.81f;
     pl->vz += a * dt;
     pl->h  += pl->vz * dt;
-    if (pl->h <= 0.0f) { pl->h = 0.0f; if (pl->vz < 0.0f) pl->vz = 0.0f; }
+    if (pl->h <= 0.0f) { pl->h = 0.0f; if (pl->vz < 0.0f) pl->vz = 0.0f; a = 0.0f; }   /* resting: no acceleration */
+    pl->a = a;                          /* what the accelerometer gives (vertical, gravity removed) */
 }
 
 /* ============================================================ tests */
@@ -138,6 +139,7 @@ static void fc_setup(uint16_t sensors)
     const fc_config_t c = { sensors, 4, 0, NULL, NULL, NULL, 0, NULL };
     fc_init(&c);
     params_defaults();
+    { uint8_t why; (void)params_set(80, 0.42f, &why); }   /* hoverThr of the test vehicle (plant hover 0.40-0.42), as the app sets it */
     fc_set_ground_info(1, 0, 0);
 }
 
@@ -164,8 +166,8 @@ static void test_takeoff_land(void)
     fc_setup(PV2_S_IMU | PV2_S_BARO);
     now = 1000;
     heartbeat();
-    plant_t pl = { 0, 0, 0.42f };
-    fc_vert_t v = { 1, 0, 0, 0, 0, 0, 1.0f, 0xFF, 0 };
+    plant_t pl = { 0, 0, 0.42f, 0 };
+    fc_vert_t v = { 1, 0, 0, 0, 0, 0, 1.0f, 0xFF, 0, 0 };
     fc_service(now, 1, &v);
     const uint8_t arm[2] = { 0xA5, 0x5A };
     fc_res_t r = post(PV2_OP_ARM, 1, arm, 2, &v);
@@ -182,7 +184,7 @@ static void test_takeoff_land(void)
         if (k % 25 == 0) heartbeat();
         fc_setpoint_t sp; fc_setpoint(&sp);
         plant_step(&pl, sp.thrust, sp.armed, 0.004f);
-        v.h = pl.h; v.vz = pl.vz;
+        v.h = pl.h; v.vz = pl.vz; v.a_up = pl.a;
         fc_service(now, 1, &v);
         fc_snapshot(&s);
         if (pl.h > maxh) maxh = pl.h;
@@ -205,7 +207,7 @@ static void test_takeoff_land(void)
         if (k % 25 == 0) heartbeat();
         fc_setpoint_t sp; fc_setpoint(&sp);
         plant_step(&pl, sp.thrust, sp.armed, 0.004f);
-        v.h = pl.h; v.vz = pl.vz;
+        v.h = pl.h; v.vz = pl.vz; v.a_up = pl.a;
         fc_service(now, 1, &v);
         fc_event_t e;
         while (fc_take_event(&e)) {
@@ -225,8 +227,8 @@ static void test_takeoff_tof(void)
 {
     fc_setup(PV2_S_IMU | PV2_S_BARO | PV2_S_TOF | PV2_S_FLOW);
     now = 1000; heartbeat();
-    plant_t pl = { 0, 0, 0.40f };
-    fc_vert_t v = { 1, 0, 0, 0, 1, 0, 1.0f, 80, 0 };
+    plant_t pl = { 0, 0, 0.40f, 0 };
+    fc_vert_t v = { 1, 0, 0, 0, 1, 0, 1.0f, 80, 0, 0 };
     const uint8_t arm[2] = { 0xA5, 0x5A };
     fc_res_t r = post(PV2_OP_ARM, 1, arm, 2, &v);
     const uint16_t alt = 150;
@@ -237,7 +239,7 @@ static void test_takeoff_tof(void)
         now += 4; if (k % 25 == 0) heartbeat();
         fc_setpoint_t sp; fc_setpoint(&sp);
         plant_step(&pl, sp.thrust, sp.armed, 0.004f);
-        v.h = pl.h; v.vz = pl.vz;
+        v.h = pl.h; v.vz = pl.vz; v.a_up = pl.a;
         v.tof_h = pl.h; v.tof_ground = pl.h < 0.03f; v.tof_valid = !v.tof_ground; v.flow_usable = pl.h >= 0.08f;
         fc_service(now, 1, &v);
     }
@@ -256,7 +258,7 @@ static void test_takeoff_tof(void)
         now += 4; if (k % 25 == 0) heartbeat();
         fc_setpoint_t sp; fc_setpoint(&sp);
         plant_step(&pl, sp.thrust, sp.armed, 0.004f);
-        v.h = pl.h; v.vz = pl.vz;
+        v.h = pl.h; v.vz = pl.vz; v.a_up = pl.a;
         v.tof_h = pl.h; v.tof_ground = pl.h < 0.03f; v.tof_valid = !v.tof_ground; v.flow_usable = pl.h >= 0.08f;
         fc_service(now, 1, &v);
         if (pl.h < 0.8f && pl.h > 0.05f && pl.vz < vmin_low) vmin_low = pl.vz;
@@ -282,7 +284,7 @@ static void test_takeoff_tof(void)
         now += 4; if (k % 25 == 0) heartbeat();
         fc_setpoint_t sp; fc_setpoint(&sp);
         plant_step(&pl, sp.thrust, sp.armed, 0.004f);
-        v.h = pl.h; v.vz = pl.vz; v.tof_h = pl.h; v.tof_ground = pl.h < 0.03f; v.tof_valid = !v.tof_ground; v.flow_usable = pl.h >= 0.08f; v.flow_usable = pl.h >= 0.08f;
+        v.h = pl.h; v.vz = pl.vz; v.a_up = pl.a; v.tof_h = pl.h; v.tof_ground = pl.h < 0.03f; v.tof_valid = !v.tof_ground; v.flow_usable = pl.h >= 0.08f; v.flow_usable = pl.h >= 0.08f;
         if (k > 8000 / 4) v.flow_q = 10;
         fc_service(now, 1, &v);
         fc_event_t e; while (fc_take_event(&e)) lost += (e.code == PV2_E_FLOW_LOST);
@@ -303,7 +305,7 @@ static void test_takeoff_tof(void)
         now += 4; if (k % 25 == 0) heartbeat();
         fc_setpoint_t sp; fc_setpoint(&sp);
         plant_step(&pl, sp.thrust, sp.armed, 0.004f);
-        v.h = pl.h; v.vz = pl.vz; v.tof_h = pl.h;
+        v.h = pl.h; v.vz = pl.vz; v.a_up = pl.a; v.tof_h = pl.h;
         fc_service(now, 1, &v);
         if (pl.h > hmax) hmax = pl.h;
         fc_event_t e; while (fc_take_event(&e)) {}
@@ -371,8 +373,8 @@ static void test_app_link_failsafe(void)
     /* in the air (takeoff to 1 m), then the app goes silent: BLE stalled or app closed */
     fc_setup(PV2_S_IMU | PV2_S_BARO);
     now = 1000; heartbeat();
-    plant_t pl = { 0, 0, 0.42f };
-    fc_vert_t v = { 1, 0, 0, 0, 0, 0, 1.0f, 0xFF, 0 };
+    plant_t pl = { 0, 0, 0.42f, 0 };
+    fc_vert_t v = { 1, 0, 0, 0, 0, 0, 1.0f, 0xFF, 0, 0 };
     const uint8_t arm[2] = { 0xA5, 0x5A };
     (void)post(PV2_OP_ARM, 1, arm, 2, &v);
     (void)post(PV2_OP_TAKEOFF, 2, NULL, 0, &v);
@@ -380,7 +382,7 @@ static void test_app_link_failsafe(void)
         now += 4; if (k % 25 == 0) heartbeat();
         fc_setpoint_t sp; fc_setpoint(&sp);
         plant_step(&pl, sp.thrust, sp.armed, 0.004f);
-        v.h = pl.h; v.vz = pl.vz;
+        v.h = pl.h; v.vz = pl.vz; v.a_up = pl.a;
         fc_service(now, 1, &v);
     }
     (void)drain_events(0);
@@ -391,7 +393,7 @@ static void test_app_link_failsafe(void)
         now += 4;
         fc_setpoint_t sp; fc_setpoint(&sp);
         plant_step(&pl, sp.thrust, sp.armed, 0.004f);
-        v.h = pl.h; v.vz = pl.vz;
+        v.h = pl.h; v.vz = pl.vz; v.a_up = pl.a;
         fc_service(now, 1, &v);
         fc_snapshot(&s);
         if (!t_short && (s.failsafe & PV2_FS_APP_LINK)) t_short = now;
@@ -434,7 +436,7 @@ static void run_plant(plant_t *pl, fc_vert_t *v, uint32_t ms, int16_t thr)
         now += 4;
         if (k % 10 == 0) { if (thr != INT16_MIN) rc(thr, 0, 0, 0); else heartbeat(); }
         fc_setpoint_t sp; fc_setpoint(&sp);
-        if (pl) { plant_step(pl, sp.thrust, sp.armed, 0.004f); v->h = pl->h; v->vz = pl->vz; }
+        if (pl) { plant_step(pl, sp.thrust, sp.armed, 0.004f); v->h = pl->h; v->vz = pl->vz; v->a_up = pl->a; }
         fc_service(now, 1, v);
     }
 }
@@ -447,8 +449,8 @@ static void test_manual_collective(void)
     /* 1. stale RC on the ground: a stick left up never lifts the drone off */
     fc_setup(PV2_S_IMU | PV2_S_BARO);
     now = 1000;
-    plant_t pl = { 0, 0, 0.42f };
-    fc_vert_t v = { 1, 0, 0, 0, 0, 0, 1.0f, 0xFF, 0 };
+    plant_t pl = { 0, 0, 0.42f, 0 };
+    fc_vert_t v = { 1, 0, 0, 0, 0, 0, 1.0f, 0xFF, 0, 0 };
     run_plant(&pl, &v, 200, 800);                       /* cockpit closed with the throttle high */
     run_plant(&pl, &v, 600, INT16_MIN);                 /* RC older than 0.5 s: slide-to-arm allowed */
     r = post(PV2_OP_ARM, 1, arm, 2, &v);
@@ -513,7 +515,7 @@ static void test_manual_collective(void)
 
     /* 3b. a manual landing (stick at the bottom) releases the idle: a new take-off is possible */
     fc_setup(PV2_S_IMU | PV2_S_BARO);
-    now = 100000; pl = (plant_t){ 0, 0, 0.42f }; v.h = 0; v.vz = 0;
+    now = 100000; pl = (plant_t){ 0, 0, 0.42f, 0 }; v.h = 0; v.vz = 0;
     run_plant(&pl, &v, 100, -1000);
     (void)post(PV2_OP_ARM, 1, arm, 2, &v);
     run_plant(&pl, &v, 1500, 300);
@@ -551,8 +553,9 @@ static void test_no_alt_estimate(void)
         if (now - t0 == 3000 + 5000) thr_land_end = sp.thrust;
         if (!s.armed && !t_dis) t_dis = now;
     }
-    CHECK(fabsf(thr_hold - FC_HOVER_DEFAULT) < 0.01f, "short failsafe: hover collective (%.3f)", thr_hold);
-    CHECK(fabsf(thr_land_end - FC_LAND_OL_K * FC_HOVER_DEFAULT) < 0.01f, "open-loop LAND at 0.85 x hover (%.3f)", thr_land_end);
+    /* no altitude estimate: no update, the hover in use is the seed, parameter hoverThr (0.42 here) */
+    CHECK(fabsf(thr_hold - 0.42f) < 0.01f, "short failsafe: hover collective (%.3f)", thr_hold);
+    CHECK(fabsf(thr_land_end - FC_LAND_OL_K * 0.42f) < 0.01f, "open-loop LAND at 0.85 x hover (%.3f)", thr_land_end);
     /* touchdown FC_LAND_OL_MS after the start of LAND; on the ground with the app silent (> 3 s) the disarm is immediate */
     CHECK(t_dis && t_dis - t0 > 2900 + FC_LAND_OL_MS && t_dis - t0 < 3000 + FC_LAND_OL_MS + 2100, "touchdown after the open-loop LAND, disarm (%u ms)", (unsigned)(t_dis - t0));
 
@@ -584,7 +587,7 @@ static void test_ctrl_loop(void)
     fc_setup(PV2_S_IMU | PV2_S_BARO);
     ctrl_init();
     now = 1000;
-    fc_vert_t v = { 1, 0, 0, 0, 0, 0, 1.0f, 0xFF, 0 };
+    fc_vert_t v = { 1, 0, 0, 0, 0, 0, 1.0f, 0xFF, 0, 0 };
     run_plant(NULL, &v, 100, -1000);
     ctrl_steps(48, q0, g0);
     CHECK(ctrl_motor_pct(0) == 0 && !ctrl_service(now), "disarmed: no motor output");
@@ -765,7 +768,7 @@ static void test_app(void)
     ac.hw_rev = 'N'; ac.n_motors = 4; ac.uid[0] = 0x12345678; ac.get_init = fake_init;
     app_init(&ac);
 
-    fc_vert_t v = { 1, 0, 0, 0, 0, 0, 1.0f, 0xFF, 0 };
+    fc_vert_t v = { 1, 0, 0, 0, 0, 0, 1.0f, 0xFF, 0, 0 };
     tlm_ble_set_state(TLM_BLE_CONNECTED);
     tlm_ble_set_state(TLM_BLE_STREAMING);
     appl_on_connect();

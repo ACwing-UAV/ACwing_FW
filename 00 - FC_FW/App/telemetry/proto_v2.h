@@ -145,7 +145,9 @@ enum {
     PV2_E_BATTERY_LOW = 30, PV2_E_BATTERY_CRITICAL = 31, PV2_E_BATTERY_EMERGENCY = 32,
     PV2_E_BATTERY_MONITOR_LOST = 33, /**< firmware extension (ERROR): BattTask silent, battery unknown */
     PV2_E_MAG_INTERFERENCE = 40, PV2_E_HIGH_VIBRATION = 41, PV2_E_MOTOR_HOT = 42,
-    PV2_E_RADIO_OVERRIDE = 43, PV2_E_CALIB_DONE = 50, PV2_E_CALIB_FAILED = 51,
+    PV2_E_RADIO_OVERRIDE = 43,
+    PV2_E_HOVER_THRUST = 44,         /**< firmware 0.7 (WARN): hover thrust outside 0.35..0.75, arg = t_h x 1000 */
+    PV2_E_CALIB_DONE = 50, PV2_E_CALIB_FAILED = 51,
     PV2_E_PARAMS_SAVED = 60, PV2_E_MOTOR_KILLED = 70
 };
 
@@ -157,7 +159,8 @@ enum { PV2_CS_IDLE = 0, PV2_CS_RUNNING = 1, PV2_CS_WAITING_USER = 2, PV2_CS_DONE
 enum { PV2_CHK_BATTERY = 1, PV2_CHK_IMU = 2, PV2_CHK_COMPASS = 3, PV2_CHK_GNSS = 4,
        PV2_CHK_HOME = 5, PV2_CHK_RADIO = 6, PV2_CHK_EKF = 7, PV2_CHK_FAILSAFE = 8,
        PV2_CHK_FLOW = 9, PV2_CHK_THROTTLE = 10, PV2_CHK_CALIBRATION = 11,
-       PV2_CHK_USB = 12 /**< FAIL while a USB host is connected: no ARM */ };
+       PV2_CHK_USB = 12, /**< FAIL while a USB host is connected: no ARM */
+       PV2_CHK_THRUST = 13 /**< firmware 0.7: thrust margin, value = hover thrust needed now, % of the maximum */ };
 enum { PV2_CK_OK = 0, PV2_CK_WARN = 1, PV2_CK_FAIL = 2, PV2_CK_NA = 3 };
 
 /* ---------------- payload layouts (little-endian, packed) ----------------
@@ -312,9 +315,9 @@ _Static_assert(sizeof(pv2_log_data_hdr_t) == 6, "LOG_DATA layout");
 #endif
 
 #define PV2_EVENT_TEXT_MAX   40u
-#define PV2_CHECKS_MAX       12u
+#define PV2_CHECKS_MAX       13u
 #define PV2_MOTORS_MAX       8u
-#define PV2_PAYLOAD_MAX      (2u + 4u * PV2_CHECKS_MAX)   /**< largest v2 payload: 50 */
+#define PV2_PAYLOAD_MAX      (2u + 4u * PV2_CHECKS_MAX)   /**< largest v2 payload: 54 */
 /* ---------------- encoders: payload -> complete frame (A5 5A ... CRC) ----------------
  * Each returns the frame length, 0 if cap is too small. */
 size_t pv2_frame(uint8_t type, const void *payload, uint8_t len, uint8_t *out, size_t cap);

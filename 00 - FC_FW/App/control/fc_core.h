@@ -47,12 +47,9 @@
 #define FC_FLOW_CHECK_H      0.15f   /* m: FLOW_LOST is judged only above this height,
                                         never on the ground, in TAKEOFF or LAND */
 
-/* ---- manual collective (ACRO / ANGLE, or no altitude estimate), HANDOVER_FW §6 ---- */
-#define FC_HOVER_DEFAULT     0.45f   /**< hover collective before one is learned    */
-#define FC_HOVER_MIN         0.15f
-#define FC_HOVER_MAX         0.75f
-#define FC_HOVER_TAU_S       3.0f    /**< learning time constant (steady flight)    */
-#define FC_HOVER_STEADY_VZ   0.15f   /**< |vz| below this: the collective is hover  */
+/* ---- hover thrust (ADR 0010 §2-3): seed = parameter hoverThr, then hover_est in flight ---- */
+#define FC_HOVER_SPOOL_MS    500u    /**< no update this long after the lift-off    */
+#define FC_HOVER_MIN_TOF_H   0.15f   /**< m: ground effect below (2 prop diameters) */
 #define FC_THR_LOW           (-0.9f) /**< stick "at the bottom"                     */
 /* ---- in air / on ground without an altitude estimate (§6) ---- */
 #define FC_AIR_THR_K         0.8f    /**< collective > 0.8 x hover ...              */
@@ -113,6 +110,8 @@ typedef struct {
     int16_t  vz_cms;
     uint32_t silence_ms;             /**< app link silence seen by the failsafe    */
     uint8_t  land_idle;              /**< touched down: idle until disarm or stick at the bottom */
+    float    hover_sd;               /**< 1-sigma of the hover estimate             */
+    float    hover_nis;              /**< last NIS of the hover estimate            */
     uint8_t  air_by_thrust;          /**< in air detected from the collective (no altitude estimate) */
     float    hover;                  /**< learned hover collective 0..1            */
     float    stick[4];               /**< setpoint inputs -1..1: thr, yaw, pitch, roll */
@@ -128,6 +127,7 @@ typedef struct {
     uint8_t flow_q;                  /**< 0..100, 0xFF n/a                         */
     uint8_t flow_usable;             /* flow valid: above the PMW3901 minimum
                                         height (80 mm; landed it is ~11 mm)      */
+    float   a_up;                    /**< m/s^2, + up, gravity and accelerometer bias removed, ~10 Hz low-pass */
 } fc_vert_t;
 
 /** setpoints for the attitude / rate loops (phase 3) and the motor mixer */

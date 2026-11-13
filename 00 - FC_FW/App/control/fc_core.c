@@ -9,6 +9,7 @@
 #include "proto_v2.h"
 #include "spsc.h"
 #include "alt_ctrl.h"
+#include "hover_track.h"
 #include <string.h>
 #include <math.h>
 
@@ -59,7 +60,8 @@ static uint8_t    s_hold_prev;      /* HOLD active at the previous step (stick-c
 static float      s_hold_thr;       /* throttle stick when HOLD began                  */
 
 /* manual collective, landing idle, in air without an altitude estimate (§6) */
-static float      s_hover = FC_HOVER_DEFAULT;
+static float      s_hover = HT_SEED_DEFAULT;  /* hover thrust in use (hover_track.c) */
+static uint32_t   s_lift_ms, s_now;
 static uint8_t    s_land_idle;      /* touched down: idle until disarm or stick at the bottom */
 static uint8_t    s_air_thr;        /* in air detected from the collective                    */
 static uint32_t   s_air_thr_ms;     /* collective above the lift-off level for this long      */
@@ -96,10 +98,13 @@ void fc_init(const fc_config_t *cfg)
     g_fc_dbg_in_air = 0u;
     s_have_v = 0u; s_dbg_forced = 0u; s_landed = 0u; s_geofence = s_geofence_ev = 0u;
     s_touch_ms = s_flow_bad_ms = 0u;
-    alt_ctrl_init(&s_ac, FC_HOVER_DEFAULT);
+    s_lift_ms = s_now = 0u;
+    hover_track_init();
+    s_hover = hover_track_value();
+    alt_ctrl_init(&s_ac, s_hover);
     memset(&s_sp, 0, sizeof s_sp);
     s_prev_auto = PV2_AUTO_NONE; s_prev_vert = 0u; s_hold_prev = 0u; s_hold_thr = 0.0f;
-    s_hover = FC_HOVER_DEFAULT; s_land_idle = 0u; s_air_thr = 0u; s_air_thr_ms = 0u;
+    s_land_idle = 0u; s_air_thr = 0u; s_air_thr_ms = 0u;
     s_land_ol = 0u; s_land_ol_t0 = 0u; s_land_ol_from = 0.0f;
     s_have_rc = 0u; s_rc_stale = 1u; s_last_thr = -1.0f;
     memset(s_stick, 0, sizeof s_stick);
@@ -182,6 +187,7 @@ static float ceiling_h(void) { return ceiling_h_kind(0); }
 
 static void lift_off(void)
 {
+    s_lift_ms = s_now;
     s_in_air = 1u; s_took_off = 1u; s_landed = 0u; s_touch_ms = 0u; s_land_idle = 0u;
 }
 
@@ -221,6 +227,7 @@ static void disarm(void)
     s_geofence = 0u;
     s_batt_lock = 0u;
     s_land_idle = 0u; s_air_thr = 0u; s_air_thr_ms = 0u; s_land_ol = 0u;
+    if (was) hover_track_disarm(s_flight_ms);
     if (was) event(PV2_EV_INFO, PV2_E_DISARMED, 0);
 }
 
@@ -293,7 +300,9 @@ static void exec(const fc_cmd_t *c, uint32_t now, uint8_t est_running)
         s_landed = 0u; s_geofence_ev = 0u;
         s_land_idle = 0u; s_air_thr = 0u; s_air_thr_ms = 0u; s_land_ol = 0u;
         if (s_have_v && s_v.valid) { s_h_ref = s_h_ground = s_h_sp = s_v.h; }
-        alt_ctrl_reset(&s_ac, s_hover - s_ac.hover);     /* hover learned in an earlier flight */
+        hover_track_arm(PARAM(P_HOVER_THR));
+        s_hover = hover_track_value();
+        alt_ctrl_reset(&s_ac, 0.0f);
         if (s_cfg.motors_arm) s_cfg.motors_arm(1u);
         OK();
         event(PV2_EV_INFO, PV2_E_ARMED, 0);
@@ -324,7 +333,7 @@ static void exec(const fc_cmd_t *c, uint32_t now, uint8_t est_running)
         }
         s_h_sp = s_h_ground;
         s_to_t0 = now; s_to_lifted = 0u;
-        alt_ctrl_reset(&s_ac, s_hover - s_ac.hover);
+        alt_ctrl_reset(&s_ac, 0.0f);
         lift_off();                  /* motors spool up: not landed any more (as the app simulator) */
         s_auto = PV2_AUTO_TAKEOFF;
         OK();
@@ -637,15 +646,6 @@ static float collective(float stick)
     return (st <= 0.0f) ? (st + 1.0f) * s_hover : s_hover + st * (1.0f - s_hover);
 }
 
-/* learns the hover collective in steady flight (any mode, with an altitude estimate) */
-static void learn_hover(float thrust, float dt)
-{
-    if (!s_in_air || !alt_ok() || s_v.tof_ground || fabsf(s_v.vz) > FC_HOVER_STEADY_VZ) return;
-    if (s_auto == PV2_AUTO_TAKEOFF && !s_to_lifted) return;          /* spool-up ramp */
-    const float h = thrust * (s_v.cos_tilt > 0.5f ? s_v.cos_tilt : 0.5f);
-    s_hover = clampf(s_hover + (h - s_hover) * (dt / (FC_HOVER_TAU_S + dt)), FC_HOVER_MIN, FC_HOVER_MAX);
-}
-
 /* geofence on the height (§6, gfMaxAlt / gfCeiling): *vz limited; flags and EVENT 23 */
 static void geofence_vz(float *vz)
 {
@@ -670,6 +670,7 @@ static void geofence_vz(float *vz)
 static void setpoints(uint32_t now, uint32_t dt_ms)
 {
     const float dt = (float)dt_ms * 1e-3f;
+    s_ac.hover = s_hover;                 /* the vertical loop works around the live hover estimate */
     const float beg = (PARAM(P_BEGINNER) > 0.5f) ? 0.5f : 1.0f;
     fc_setpoint_t sp;
     memset(&sp, 0, sizeof sp);
@@ -726,8 +727,7 @@ static void setpoints(uint32_t now, uint32_t dt_ms)
                 geofence_vz(&vz_now);                         /* flags and EVENT 23 at the ceiling */
                 const float lim = alt_ctrl_step(&s_ac, vz_ok, s_v.vz, s_v.cos_tilt, dt);
                 if (lim < thr) thr = lim;
-                else alt_ctrl_reset(&s_ac, s_hover - s_ac.hover);   /* not limiting: ready for a bumpless change */
-                learn_hover(thr, dt);
+                else alt_ctrl_reset(&s_ac, 0.0f);    /* not limiting: ready for a bumpless change */
             }
         }
         sp.thrust = clampf(thr, 0.0f, 1.0f);
@@ -738,7 +738,7 @@ static void setpoints(uint32_t now, uint32_t dt_ms)
 
     /* entering the altitude loop in the air (ACRO / ANGLE -> ALT_HOLD, HOLD, LAND...): start
      * from the hover collective, not from an old integrator (§6, no thrust jump) */
-    if (!s_prev_vert && s_auto != PV2_AUTO_TAKEOFF) alt_ctrl_reset(&s_ac, s_hover - s_ac.hover);
+    if (!s_prev_vert && s_auto != PV2_AUTO_TAKEOFF) alt_ctrl_reset(&s_ac, 0.0f);
     s_prev_vert = 1u;
 
     const float maxc = PARAM(P_MAX_CLIMB) * beg;
@@ -776,12 +776,35 @@ static void setpoints(uint32_t now, uint32_t dt_ms)
     }
     const float thr = alt_ctrl_step(&s_ac, vz, s_v.vz, s_v.cos_tilt, dt);
     s_ac.thr_max = thr_max;
-    learn_hover(thr, dt);
     sp.alt_ctrl = 1u;
     sp.thrust = thr;
     sp.vz_sp = vz;
     sp.h_sp = s_h_sp;
     s_sp = sp;
+}
+
+/* ---- hover thrust (hover_track.c): the flight core only reports its state ---- */
+static uint8_t hover_airborne(uint32_t now)
+{
+    return (uint8_t)(s_in_air && alt_ok() && !s_v.tof_ground &&
+        (now - s_lift_ms) > FC_HOVER_SPOOL_MS &&
+        !(s_auto == PV2_AUTO_TAKEOFF && !s_to_lifted) &&
+        !(s_v.tof_valid && s_v.tof_h < FC_HOVER_MIN_TOF_H) &&
+        !s_geofence && !s_land_idle);
+}
+
+static void hover_update(uint32_t now)
+{
+    hover_gate_t g;
+    g.airborne = hover_airborne(now);
+    g.saturated = (uint8_t)(s_sp.thrust <= s_ac.thr_min + 0.01f || s_sp.thrust >= s_ac.thr_max - 0.01f);
+    g.a_up = s_v.a_up;
+    g.thrust = s_sp.thrust;
+    g.cos_tilt = s_v.cos_tilt;
+    g.vz = s_v.vz;
+    if (hover_track_step(now, s_armed, &g))
+        event(PV2_EV_WARN, PV2_E_HOVER_THRUST, (int32_t)(hover_track_value() * 1000.0f + 0.5f));
+    s_hover = hover_track_value();
 }
 
 static void publish(void)
@@ -813,6 +836,8 @@ static void publish(void)
     s_snap.land_idle = s_land_idle;
     s_snap.air_by_thrust = s_air_thr;
     s_snap.hover = s_hover;
+    s_snap.hover_sd = hover_track_sd();
+    s_snap.hover_nis = hover_track_nis();
     memcpy(s_snap.stick, s_stick, sizeof s_stick);
     SPSC_BARRIER();
     s_snap_seq++;
@@ -820,6 +845,7 @@ static void publish(void)
 
 void fc_service(uint32_t now, uint8_t est_running, const fc_vert_t *v)
 {
+    s_now = now;
     const uint32_t dt = s_have_last ? (now - s_last_ms) : 0u;
     s_last_ms = now; s_have_last = 1u;
     if (v) { s_v = *v; s_have_v = 1u; } else { s_have_v = 0u; s_v.valid = 0u; s_v.flow_q = 0xFFu; }
@@ -859,5 +885,6 @@ void fc_service(uint32_t now, uint8_t est_running, const fc_vert_t *v)
     if (s_test_motor && ((int32_t)(now - s_test_until) >= 0 || s_silence > FC_FS_SHORT_MS)) test_stop();
 
     setpoints(now, dt);
+    hover_update(now);
     publish();
 }

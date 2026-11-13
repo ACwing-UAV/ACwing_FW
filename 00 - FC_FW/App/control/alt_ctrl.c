@@ -9,8 +9,8 @@ void alt_ctrl_init(alt_ctrl_t *c, float hover)
 {
     c->hover = hover;
     c->kp_h = 1.2f;  c->kp_v = 0.25f;  c->ki_v = 0.15f;
-    c->thr_min = 0.05f;  c->thr_max = 0.90f;
-    c->i_lim = 0.35f;
+    c->thr_min = 0.05f;  c->thr_max = 0.95f;   /* normalised thrust (ADR 0010 §4); the mixer duty is the real limit */
+    c->i_lim = 0.15f;                          /* the hover term is the live estimate: I covers only the model error */
     c->integ = 0.0f;
 }
 
