@@ -292,7 +292,7 @@ Defined in `log_format.h`; the Python `decode_log()` and MATLAB
   |---|---|---|---|
   | `0x01` | INFO | 27 | fw u8×3, hwRev char, format u8, t0 ms u32, sensors u16, name char[16] |
   | `0x10` | ATT | 24 | t ms u32, q i16×4 (/32767, [w x y z] body → NWU), gyro i16×3 (mrad/s), acc i16×3 (mg) |
-  | `0x11` | VERT | 25 | t, h mm i32, vz mm/s i16, h_sp mm i32, vz_sp mm/s i16, thrust u8 (/255), tof mm u16 (0xFFFF n/a), flowQ u8 (0xFF n/a), baro Pa u32 (0 n/a), flags u8 (bit 0 alt valid, 1 ToF valid, 2 ToF ground, 3 flow usable, 4 alt loop) |
+  | `0x11` | VERT | 25 | t, h mm i32, vz mm/s i16, h_sp mm i32, vz_sp mm/s i16, thrust u8 (/255), tof mm u16 (0xFFFF n/a), flowQ u8 (0xFF n/a), baro Pa u32 (0 n/a), flags u8 (bit 0 alt valid, 1 ToF valid, 2 ToF ground, 3 flow usable, 4 alt loop, 5 position loop — firmware 0.9.0) |
   | `0x12` | FLIGHT | 15 | t, armed, mode, auto, failsafe u8, flags u8 (0 in air, 1 landed, 2 RC stale, 3 geofence), sticks i8×4 (/100: thr, yaw, pitch, roll), silence ms u16 |
   | `0x13` | EVENT | 11 | t, level u8, code u16, arg i32 (same codes as the EVENT frame) |
   | `0x14` | EST | 20 | t, gyro bias i16×3 (0.1 mrad/s), att unc cdeg u16, vib mg u16, loop Hz u16, jitter µs u16, cpu % u8, mag interf % u8 |

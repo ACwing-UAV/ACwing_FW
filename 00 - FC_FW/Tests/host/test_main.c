@@ -169,7 +169,7 @@ static void test_takeoff_land(void)
     now = 1000;
     heartbeat();
     plant_t pl = { 0, 0, 0.42f, 0 };
-    fc_vert_t v = { 1, 0, 0, 0, 0, 0, 1.0f, 0xFF, 0, 0 };
+    fc_vert_t v = { 1, 0, 0, 0, 0, 0, 1.0f, 0xFF, 0, 0, { 0, 0 }, 0 };
     fc_service(now, 1, &v);
     const uint8_t arm[2] = { 0xA5, 0x5A };
     fc_res_t r = post(PV2_OP_ARM, 1, arm, 2, &v);
@@ -230,7 +230,7 @@ static void test_takeoff_tof(void)
     fc_setup(PV2_S_IMU | PV2_S_BARO | PV2_S_TOF | PV2_S_FLOW);
     now = 1000; heartbeat();
     plant_t pl = { 0, 0, 0.40f, 0 };
-    fc_vert_t v = { 1, 0, 0, 0, 1, 0, 1.0f, 80, 0, 0 };
+    fc_vert_t v = { 1, 0, 0, 0, 1, 0, 1.0f, 80, 0, 0, { 0, 0 }, 0 };
     const uint8_t arm[2] = { 0xA5, 0x5A };
     fc_res_t r = post(PV2_OP_ARM, 1, arm, 2, &v);
     const uint16_t alt = 150;
@@ -376,7 +376,7 @@ static void test_app_link_failsafe(void)
     fc_setup(PV2_S_IMU | PV2_S_BARO);
     now = 1000; heartbeat();
     plant_t pl = { 0, 0, 0.42f, 0 };
-    fc_vert_t v = { 1, 0, 0, 0, 0, 0, 1.0f, 0xFF, 0, 0 };
+    fc_vert_t v = { 1, 0, 0, 0, 0, 0, 1.0f, 0xFF, 0, 0, { 0, 0 }, 0 };
     const uint8_t arm[2] = { 0xA5, 0x5A };
     (void)post(PV2_OP_ARM, 1, arm, 2, &v);
     (void)post(PV2_OP_TAKEOFF, 2, NULL, 0, &v);
@@ -443,6 +443,88 @@ static void run_plant(plant_t *pl, fc_vert_t *v, uint32_t ms, int16_t thr)
     }
 }
 
+/* ------------------------------------------------------------ horizontal position hold: the two flags */
+static int s_inv_bad;                 /* steps with pos_hold and not alt_ctrl */
+static void run_pos(plant_t *pl, fc_vert_t *v, uint32_t ms, int16_t thr, int16_t pitch, int16_t roll)
+{
+    for (uint32_t k = 0; k < ms / 4; ++k) {
+        now += 4;
+        if (k % 10 == 0) rc(thr, 0, pitch, roll);
+        fc_setpoint_t sp; fc_setpoint(&sp);
+        plant_step(pl, sp.thrust, sp.armed, 0.004f); v->h = pl->h; v->vz = pl->vz; v->a_up = pl->a;
+        v->tof_valid = 1u; v->tof_h = pl->h; v->tof_ground = (uint8_t)(pl->h < 0.02f);
+        fc_service(now, 1, v);
+        fc_setpoint(&sp);
+        if (sp.pos_hold && !sp.alt_ctrl) s_inv_bad++;
+    }
+}
+
+static void test_pos_hold_flags(void)
+{
+    const uint8_t arm[2] = { 0xA5, 0x5A };
+    fc_setpoint_t sp; fc_res_t r;
+    fc_setup(PV2_S_IMU | PV2_S_BARO | PV2_S_TOF | PV2_S_FLOW);
+    now = 1000;
+    s_inv_bad = 0;
+    plant_t pl = { 0, 0, 0.42f, 0 };
+    fc_vert_t v = { 1, 0, 0, 1, 1, 0, 1.0f, 80, 0, 0, { 0, 0 }, 0 };
+    (void)post(PV2_OP_SET_MODE, 1, (const uint8_t[1]){ PV2_MODE_ANGLE }, 1, &v);
+    run_pos(&pl, &v, 200, -1000, 0, 0);
+    r = post(PV2_OP_ARM, 2, arm, 2, &v);
+    CHECK(r.result == PV2_ACK_OK, "arm (%u/%u)", r.result, r.reason);
+    r = post(PV2_OP_TAKEOFF, 3, NULL, 0, &v);
+    CHECK(r.result == PV2_ACK_OK, "takeoff");
+    /* TAKEOFF with the flow usable and drifting forward: the position loop brakes (nose up) */
+    run_pos(&pl, &v, 1500, 0, 0, 0);
+    v.flow_usable = 1u; v.vel_b[0] = 0.4f;
+    run_pos(&pl, &v, 100, 0, 0, 0);
+    fc_setpoint(&sp);
+    CHECK(sp.pos_hold && sp.alt_ctrl && sp.pitch < -0.01f, "TAKEOFF with flow: position held, brakes a forward drift (pitch %.3f)", sp.pitch);
+    v.vel_b[0] = 0.0f;
+    run_pos(&pl, &v, 10000, 0, 0, 0);
+    fc_setpoint(&sp);
+    CHECK(sp.autom == PV2_AUTO_NONE && sp.mode == PV2_MODE_POS_HOLD && sp.pos_hold, "after TAKEOFF: POS_HOLD with the flow");
+    /* ANGLE, pilot: no position loop, roll / pitch from the sticks */
+    (void)post(PV2_OP_SET_MODE, 7, (const uint8_t[1]){ PV2_MODE_ANGLE }, 1, &v);
+    run_pos(&pl, &v, 200, 0, 0, 300);
+    fc_setpoint(&sp);
+    CHECK(sp.autom == PV2_AUTO_NONE && !sp.pos_hold && sp.alt_ctrl == 0 && sp.roll > 0.1f,
+          "ANGLE: sticks give the angles (pos_hold %u, roll %.3f)", sp.pos_hold, sp.roll);
+    /* POS_HOLD: stick forward = forward velocity asked (nose down while slower than asked) */
+    r = post(PV2_OP_SET_MODE, 4, (const uint8_t[1]){ PV2_MODE_POS_HOLD }, 1, &v);
+    CHECK(r.result == PV2_ACK_OK, "POS_HOLD accepted");
+    run_pos(&pl, &v, 200, 0, 500, 0);
+    fc_setpoint(&sp);
+    CHECK(sp.pos_hold && sp.alt_ctrl && sp.pitch > 0.05f && fabsf(sp.roll) < 0.01f,
+          "POS_HOLD, stick forward: pitch %.3f roll %.3f from the velocity loop", sp.pitch, sp.roll);
+    /* sticks centred while moving: brakes */
+    v.vel_b[1] = 0.5f;
+    run_pos(&pl, &v, 200, 0, 0, 0);
+    fc_setpoint(&sp);
+    CHECK(sp.pos_hold && sp.roll > 0.02f, "drifting left with centred sticks: roll right to brake (%.3f)", sp.roll);
+    /* the flow not usable (below its range, or lost): angles from the sticks, level when centred */
+    v.flow_usable = 0u;
+    run_pos(&pl, &v, 100, 0, 0, 0);
+    fc_setpoint(&sp);
+    CHECK(!sp.pos_hold && sp.alt_ctrl && fabsf(sp.roll) < 1e-4f && fabsf(sp.pitch) < 1e-4f,
+          "no flow: pos_hold off, altitude loop on, level");
+    /* ALT_HOLD: altitude loop only */
+    v.flow_usable = 1u; v.vel_b[1] = 0.0f;
+    (void)post(PV2_OP_SET_MODE, 5, (const uint8_t[1]){ PV2_MODE_ALT_HOLD }, 1, &v);
+    run_pos(&pl, &v, 100, 0, 0, 0);
+    fc_setpoint(&sp);
+    CHECK(!sp.pos_hold && sp.alt_ctrl, "ALT_HOLD: alt_ctrl only");
+    /* LAND holds the position too */
+    (void)post(PV2_OP_LAND, 6, NULL, 0, &v);
+    run_pos(&pl, &v, 300, 0, 0, 0);
+    fc_setpoint(&sp);
+    CHECK(sp.autom == PV2_AUTO_LAND && sp.pos_hold && sp.alt_ctrl, "LAND: position held while descending");
+    run_pos(&pl, &v, 8000, 0, 0, 0);
+    fc_setpoint(&sp);
+    CHECK(!sp.pos_hold, "on the ground: no position loop");
+    CHECK(s_inv_bad == 0, "pos_hold implies alt_ctrl at every step (%d violations)", s_inv_bad);
+}
+
 static void test_manual_collective(void)
 {
     const uint8_t arm[2] = { 0xA5, 0x5A };
@@ -452,7 +534,7 @@ static void test_manual_collective(void)
     fc_setup(PV2_S_IMU | PV2_S_BARO);
     now = 1000;
     plant_t pl = { 0, 0, 0.42f, 0 };
-    fc_vert_t v = { 1, 0, 0, 0, 0, 0, 1.0f, 0xFF, 0, 0 };
+    fc_vert_t v = { 1, 0, 0, 0, 0, 0, 1.0f, 0xFF, 0, 0, { 0, 0 }, 0 };
     run_plant(&pl, &v, 200, 800);                       /* cockpit closed with the throttle high */
     run_plant(&pl, &v, 600, INT16_MIN);                 /* RC older than 0.5 s: slide-to-arm allowed */
     r = post(PV2_OP_ARM, 1, arm, 2, &v);
@@ -589,7 +671,7 @@ static void test_ctrl_loop(void)
     fc_setup(PV2_S_IMU | PV2_S_BARO);
     ctrl_init();
     now = 1000;
-    fc_vert_t v = { 1, 0, 0, 0, 0, 0, 1.0f, 0xFF, 0, 0 };
+    fc_vert_t v = { 1, 0, 0, 0, 0, 0, 1.0f, 0xFF, 0, 0, { 0, 0 }, 0 };
     run_plant(NULL, &v, 100, -1000);
     ctrl_steps(48, q0, g0);
     CHECK(ctrl_motor_pct(0) == 0 && !ctrl_service(now), "disarmed: no motor output");
@@ -944,7 +1026,7 @@ static void test_app(void)
     ac.hw_rev = 'N'; ac.n_motors = 4; ac.uid[0] = 0x12345678; ac.get_init = fake_init;
     app_init(&ac);
 
-    fc_vert_t v = { 1, 0, 0, 0, 0, 0, 1.0f, 0xFF, 0, 0 };
+    fc_vert_t v = { 1, 0, 0, 0, 0, 0, 1.0f, 0xFF, 0, 0, { 0, 0 }, 0 };
     tlm_ble_set_state(TLM_BLE_CONNECTED);
     tlm_ble_set_state(TLM_BLE_STREAMING);
     appl_on_connect();
@@ -1158,6 +1240,7 @@ int main(void)
     test_ctrl_loop();
     test_radio();
     test_radio_switches();
+    test_pos_hold_flags();
     test_alt_est();
     test_drivers();
     test_checks_flow();

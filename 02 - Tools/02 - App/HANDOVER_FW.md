@@ -539,6 +539,19 @@ deadband/expo/sensitivity):
 Beginner mode (`beginner`=1) halves maxTilt, maxYawRate, maxClimb, maxHSpeed
 and forbids ACRO. Indoor models cap horizontal speed at 2 m/s.
 
+**Horizontal position hold** — firmware 0.9.0 (`control/pos_ctrl.c`, `03 - Docs/theory/control-loops.md`). With the
+optical flow usable (ToF ≥ 80 mm, flow quality, no flow failsafe) and the altitude loop on, the angles come from a
+position loop in **POS_HOLD and in every automatic action** (TAKEOFF, LAND, RTH, HOLD, failsafe hover):
+
+- POS_HOLD, pilot: pitch/roll sticks → horizontal velocity (`maxHSpeed`, 2 m/s indoor), along the heading; released
+  (±5 %), the drone brakes and holds the point where it stopped (no flying back the braking distance);
+- automatic actions: the sticks are ignored, the drone holds the point;
+- flow not usable (below 80 mm, lost): angles from the sticks, level when centred, height still held;
+- GNSS is not a position source yet: outdoors POS_HOLD holds the height only.
+
+The setpoint carries two flags, `alt_ctrl` (vertical loop) and `pos_hold` (position loop); `pos_hold` implies
+`alt_ctrl`. Both are in the flight log (VERT flags bits 4, 5).
+
 **Manual collective** (ACRO / ANGLE, and any mode while no altitude estimate is
 available) — firmware 0.6.1, simulator alike:
 

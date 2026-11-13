@@ -43,7 +43,7 @@ void logf_vert(uint32_t t, const fc_vert_t *v, const fc_setpoint_t *sp, uint16_t
     r.flow_q = v->flow_q;
     r.baro_pa = baro_pa;
     r.flags = (uint8_t)((v->valid ? 1u : 0u) | (v->tof_valid ? 2u : 0u) | (v->tof_ground ? 4u : 0u) |
-                        (v->flow_usable ? 8u : 0u) | (sp->alt_ctrl ? 16u : 0u));
+                        (v->flow_usable ? 8u : 0u) | (sp->alt_ctrl ? 16u : 0u) | (sp->pos_hold ? 32u : 0u));
     (void)log_q_put(LOG_SRC_IMU, LR_VERT, &r, sizeof r);
 }
 

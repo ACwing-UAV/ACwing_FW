@@ -135,7 +135,7 @@ static void run(int ms)
     for (int k = 0; k < ms; ++k) {
         now++;
         if (s_ble_hb && now % 200u == 0u) { const uint8_t hb[2] = { PV2_OP_HEARTBEAT, 0 }; appl_on_cmd_write(hb, 2, now); }
-        if (now % 4u == 0u) { fc_vert_t v = { 1, 1.0f, 0, 0, 0, 0, 1.0f, 0xFF, 0, 0 }; fc_service(now, 1, &v); }
+        if (now % 4u == 0u) { fc_vert_t v = { 1, 1.0f, 0, 0, 0, 0, 1.0f, 0xFF, 0, 0, { 0, 0 }, 0 }; fc_service(now, 1, &v); }
         if (now % 2u == 0u) log_task_step(now);
         if (now % 5u == 0u) { app_step(now); ble_drain(); }
     }

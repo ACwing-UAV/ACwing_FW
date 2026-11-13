@@ -13,6 +13,7 @@
 #include "input_arb.h"
 #include "radio_fs.h"
 #include "rc_switches.h"
+#include "pos_ctrl.h"
 #include <string.h>
 #include <math.h>
 
@@ -41,6 +42,7 @@ static ia_sticks_t s_app;          /* last app RC                               
 static ia_sticks_t s_rc;           /* sticks of the source in control (input_arb.c) */
 static uint8_t  s_radio_ctrl;      /* the RC radio has control                      */
 static uint32_t s_radio_sil;       /* since the last valid radio frame              */
+static pos_ctrl_t s_pc;             /* horizontal position hold                        */
 static rc_state_t s_radio;         /* last receiver state (switches)                 */
 static uint8_t  s_radio_took;      /* the radio took control on this step            */
 static uint8_t  s_exec_radio;      /* the command being executed comes from the radio switches */
@@ -104,6 +106,7 @@ void fc_init(const fc_config_t *cfg)
     memset(&s_app, 0, sizeof s_app); memset(&s_rc, 0, sizeof s_rc);
     s_radio_ctrl = 0u; s_radio_sil = UINT32_MAX; s_rfs_hold = 0u;
     ia_init(); rfs_init(); rsw_init();
+    { pc_gains_t pg; pc_gains_default(&pg); pc_init(&s_pc, &pg); }
     memset(&s_radio, 0, sizeof s_radio); s_radio_took = 0u; s_exec_radio = 0u;
     s_test_motor = 0u;
     s_checks_ready = s_batt_fail = s_calibrating = 0u;
@@ -789,8 +792,6 @@ static void setpoints(uint32_t now, uint32_t dt_ms)
     sp.yaw_rate   = -s_stick[1] * yawr;                  /* stick right = clockwise = -z (FLU) */
 
     if (!s_armed) { s_prev_vert = 0u; s_sp = sp; return; }
-    sp.pos_hold = (uint8_t)(s_in_air && (s_mode == PV2_MODE_POS_HOLD || s_auto == PV2_AUTO_HOLD) &&
-                            s_have_v && s_v.flow_usable && !(s_failsafe & PV2_FS_FLOW));
 
     /* the pilot put the stick at the bottom after a touchdown: manual take-off allowed again */
     if (s_land_idle && !s_rc_stale && s_stick[0] < FC_THR_LOW) s_land_idle = 0u;
@@ -880,6 +881,32 @@ static void setpoints(uint32_t now, uint32_t dt_ms)
     sp.vz_sp = vz;
     sp.h_sp = s_h_sp;
     s_sp = sp;
+}
+
+/* ---- horizontal position (pos_ctrl.c): after setpoints(), it may replace roll / pitch ---- */
+static uint8_t auto_holds_position(void)
+{
+    return (uint8_t)(s_auto == PV2_AUTO_TAKEOFF || s_auto == PV2_AUTO_LAND || s_auto == PV2_AUTO_RTH ||
+                     s_auto == PV2_AUTO_HOLD || s_auto == PV2_AUTO_FAILSAFE);
+}
+
+static void horizontal_setpoints(uint32_t dt_ms)
+{
+    fc_setpoint_t *sp = &s_sp;
+    const uint8_t wanted = (uint8_t)(s_mode == PV2_MODE_POS_HOLD || auto_holds_position());
+    /* a position needs the flow above its minimum height, and the height held by the altitude loop */
+    sp->pos_hold = (uint8_t)(s_armed && s_in_air && sp->alt_ctrl && wanted && s_have_v && s_v.flow_usable &&
+                             !(s_failsafe & PV2_FS_FLOW));
+    if (!sp->pos_hold) { pc_reset(&s_pc); return; }
+    const float beg = (PARAM(P_BEGINNER) > 0.5f) ? 0.5f : 1.0f;
+    float vmax = PARAM(P_MAX_HSPEED) * beg;
+    if (indoor() && vmax > FC_INDOOR_HSPEED) vmax = FC_INDOOR_HSPEED;
+    /* the pilot moves the drone only in POS_HOLD; an automatic action holds the point */
+    const uint8_t pilot = (uint8_t)(s_auto == PV2_AUTO_NONE && !s_rc_stale);
+    const pc_in_t in = { { s_v.vel_b[0], s_v.vel_b[1] }, s_v.yaw,
+                         pilot ? s_stick[2] : 0.0f, pilot ? -s_stick[3] : 0.0f,
+                         vmax, PARAM(P_MAX_TILT) * beg * DEG2RAD, (float)dt_ms * 1e-3f };
+    pc_step(&s_pc, &in, &sp->roll, &sp->pitch);
 }
 
 /* ---- hover thrust (hover_track.c): the flight core only reports its state ---- */
@@ -986,6 +1013,7 @@ void fc_service(uint32_t now, uint8_t est_running, const fc_vert_t *v)
     if (s_test_motor && ((int32_t)(now - s_test_until) >= 0 || s_silence > FC_FS_SHORT_MS)) test_stop();
 
     setpoints(now, dt);
+    horizontal_setpoints(dt);
     hover_update(now);
     publish();
 }
