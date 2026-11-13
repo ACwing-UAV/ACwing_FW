@@ -493,6 +493,21 @@ drone acts on its own timers above.
 2. **App** (RC frames) otherwise.
 3. **None**: no input → in air, failsafe as above.
 
+Firmware 0.7.0 (`control/input_arb.c`, `control/radio_fs.c`), for **any** RC receiver (parameter 100), the
+"ELRS" input above meaning the radio:
+
+- **Taking control:** the receiver link is up and the pilot uses the radio: arm switch AUX1 above 1700 µs, a
+  roll/pitch/yaw stick beyond 15 %, or the throttle above the bottom. EVENT 43 once. A radio lying at rest (switch
+  off, sticks centred, throttle down) never takes control from the app.
+- **Keeping it:** while armed, the radio keeps control, also with its link lost. Disarmed, control goes back to
+  the app after 1 s with the radio idle, or at once when its link is lost.
+- **While the radio has control:** the app RC is ignored, app ARM → `REJECTED/RADIO_OVERRIDE`, the app-link
+  failsafe does not act (FLIGHT.input = 2). LAND, RTH, HOLD and KILL from the app still work.
+- **Radio failsafe:** no valid radio frame for 1 s in the air → `fsRadio` (RTH without GNSS + home = land),
+  FLIGHT.failsafe bit 1, EVENT 21 ERROR once; RC values older than 0.25 s are already replaced by the neutral
+  sticks. Link back (< 0.5 s): a HOLD gives control back, LAND/RTH are kept until the pilot changes mode. Armed on
+  the ground with the link lost for 3 s → disarm.
+
 **RC mapping** (same as the ELRS mapping, after the app's own
 deadband/expo/sensitivity):
 

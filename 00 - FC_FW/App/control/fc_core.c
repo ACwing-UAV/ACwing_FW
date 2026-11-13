@@ -10,6 +10,8 @@
 #include "spsc.h"
 #include "alt_ctrl.h"
 #include "hover_track.h"
+#include "input_arb.h"
+#include "radio_fs.h"
 #include <string.h>
 #include <math.h>
 
@@ -34,9 +36,11 @@ static uint8_t  s_fs_long, s_fs_short_hold;
 static uint8_t  s_took_off;
 static uint32_t s_arm_ms, s_landed_ms, s_flight_ms, s_last_ms;
 static uint8_t  s_have_last;
-static appl_rc_t s_rc;
-static uint32_t s_rc_ms;
-static uint8_t  s_have_rc;
+static ia_sticks_t s_app;          /* last app RC                                   */
+static ia_sticks_t s_rc;           /* sticks of the source in control (input_arb.c) */
+static uint8_t  s_radio_ctrl;      /* the RC radio has control                      */
+static uint32_t s_radio_sil;       /* since the last valid radio frame              */
+static uint8_t  s_rfs_hold;        /* the radio failsafe chose HOLD                 */
 static float    s_last_thr = -1.0f;
 static float    s_stick[4];
 static uint8_t  s_rc_stale = 1;
@@ -92,7 +96,10 @@ void fc_init(const fc_config_t *cfg)
     s_armed = s_auto = s_failsafe = s_in_air = 0u;
     s_mode = PV2_MODE_ANGLE;
     s_fs_long = s_fs_short_hold = s_took_off = 0u;
-    s_flight_ms = 0u; s_have_last = 0u; s_have_rc = 0u;
+    s_flight_ms = 0u; s_have_last = 0u;
+    memset(&s_app, 0, sizeof s_app); memset(&s_rc, 0, sizeof s_rc);
+    s_radio_ctrl = 0u; s_radio_sil = UINT32_MAX; s_rfs_hold = 0u;
+    ia_init(); rfs_init();
     s_test_motor = 0u;
     s_checks_ready = s_batt_fail = s_calibrating = 0u;
     g_fc_dbg_in_air = 0u;
@@ -106,7 +113,7 @@ void fc_init(const fc_config_t *cfg)
     s_prev_auto = PV2_AUTO_NONE; s_prev_vert = 0u; s_hold_prev = 0u; s_hold_thr = 0.0f;
     s_land_idle = 0u; s_air_thr = 0u; s_air_thr_ms = 0u;
     s_land_ol = 0u; s_land_ol_t0 = 0u; s_land_ol_from = 0.0f;
-    s_have_rc = 0u; s_rc_stale = 1u; s_last_thr = -1.0f;
+    s_rc_stale = 1u; s_last_thr = -1.0f;
     memset(s_stick, 0, sizeof s_stick);
     spsc_reset(&s_batq);
     s_batt_level = PV2_BATT_OK; s_batt_present = 0u; s_batt_lock = 0u;
@@ -169,6 +176,8 @@ static uint8_t alt_sensor(void)   { return has(PV2_S_BARO | PV2_S_TOF); }
 static uint8_t alt_ok(void)       { return (uint8_t)(alt_sensor() && s_have_v && s_v.valid); }
 static uint8_t indoor(void)       { return (uint8_t)(has(PV2_S_TOF) && !gnss()); }
 static float   clampf(float v, float lo, float hi) { return v < lo ? lo : (v > hi ? hi : v); }
+/* age of a timestamp from another task: it may be a few ms newer than `now` */
+static uint32_t age_ms(uint32_t now, uint32_t t) { const int32_t d = (int32_t)(now - t); return d > 0 ? (uint32_t)d : 0u; }
 
 /* top of the allowed space, in the h frame; *kind = EVENT 23 arg (0 alt, 1 ceiling) */
 static float ceiling_h_kind(int32_t *kind)
@@ -286,8 +295,8 @@ static void exec(const fc_cmd_t *c, uint32_t now, uint8_t est_running)
         if (s_armed)       { REJ(PV2_R_ARMED); return; }
         if (s_calibrating) { REJ(PV2_R_CALIBRATING); return; }
         if (s_in_air)      { REJ(PV2_R_NOT_LANDED); return; }
-        /* ELRS in control -> RADIO_OVERRIDE: no receiver on this hardware */
-        if (s_have_rc && (now - s_rc_ms) < FC_ARM_RC_FRESH_MS &&
+        if (s_radio_ctrl) { REJ(PV2_R_RADIO_OVERRIDE); return; }          /* the RC radio flies (input_arb.c) */
+        if (s_rc.have && age_ms(now, s_rc.t_ms) < FC_ARM_RC_FRESH_MS &&
             s_rc.thr > (hold_mode() ? 100 : -900)) { REJ(PV2_R_THROTTLE_NOT_LOW); return; }
         if (s_batt_fail || batt_unusable()) { REJ(PV2_R_BATTERY_LOW); return; }
         /* never arm without a running attitude estimate, whatever armRequireChecks says */
@@ -410,12 +419,34 @@ static void exec(const fc_cmd_t *c, uint32_t now, uint8_t est_running)
 }
 
 /* ================================================================== */
-static void update_sticks(uint32_t now)
+/* the app RC, as the input arbitration wants it */
+static void read_app_rc(void)
 {
     appl_rc_t rc;
     uint32_t  t;
-    if (appl_rc_read(&rc, &t)) { s_rc = rc; s_rc_ms = t; s_have_rc = 1u; }
-    s_rc_stale = (uint8_t)(!s_have_rc || (now - s_rc_ms) > FC_RC_STALE_MS);
+    if (!appl_rc_read(&rc, &t)) return;
+    s_app.have = 1u; s_app.thr = rc.thr; s_app.yaw = rc.yaw; s_app.pitch = rc.pitch; s_app.roll = rc.roll; s_app.t_ms = t;
+}
+
+/* who flies (input_arb.c) and with which sticks */
+static void arbitrate(uint32_t now)
+{
+    rc_state_t radio;
+    memset(&radio, 0, sizeof radio);
+    const uint8_t have_radio = rc_input_read(&radio);
+    ia_out_t o;
+    ia_step(now, s_armed, &s_app, &radio, &o);
+    if (o.took_control) event(PV2_EV_WARN, PV2_E_RADIO_OVERRIDE, 0);
+    s_radio_ctrl = o.radio;
+    s_rc = o.sticks;
+    s_radio_sil = have_radio ? age_ms(now, radio.t_ms) : UINT32_MAX;
+}
+
+static void update_sticks(uint32_t now)
+{
+    read_app_rc();
+    arbitrate(now);
+    s_rc_stale = (uint8_t)(!s_rc.have || age_ms(now, s_rc.t_ms) > FC_RC_STALE_MS);
     if (!s_rc_stale) {
         s_stick[0] = (float)s_rc.thr   / 1000.0f;
         s_stick[1] = (float)s_rc.yaw   / 1000.0f;
@@ -451,6 +482,7 @@ static void app_link_failsafe(uint32_t now)
     const uint32_t sil = appl_silence_ms(now, FC_FS_SHORT_MS + 1u);
     s_silence = sil;
     if (!s_armed) return;
+    if (s_radio_ctrl) { s_failsafe &= (uint8_t)~PV2_FS_APP_LINK; return; }   /* the radio flies: the app link does not matter */
 
     if (!s_in_air) {
         /* armed on the ground: disarm after 3 s of silence */
@@ -481,6 +513,37 @@ static void app_link_failsafe(uint32_t now)
         if (!s_fs_long && s_fs_short_hold && s_auto == PV2_AUTO_HOLD) s_auto = PV2_AUTO_NONE;
         s_fs_short_hold = 0u;
     }
+}
+
+/* ---- radio failsafe (§6, fsRadio): radio_fs.c decides, this applies ---- */
+static void radio_failsafe(void)
+{
+    switch (rfs_step(s_radio_ctrl, s_radio_sil, s_armed, s_in_air)) {
+    case RFS_TRIGGER:
+        s_failsafe |= PV2_FS_RADIO;
+        if (!batt_owns_auto()) s_auto = fs_action(P_FS_RADIO);    /* RTH without GNSS + home -> land */
+        s_rfs_hold = (uint8_t)(s_auto == PV2_AUTO_HOLD);
+        event(PV2_EV_ERROR, PV2_E_FAILSAFE_RADIO, s_auto);
+        break;
+    case RFS_BACK:
+        s_failsafe &= (uint8_t)~PV2_FS_RADIO;
+        if (s_rfs_hold && s_auto == PV2_AUTO_HOLD) s_auto = PV2_AUTO_NONE;   /* hover only: control back */
+        s_rfs_hold = 0u;
+        break;
+    case RFS_DISARM:
+        disarm();
+        break;
+    default:
+        if (!rfs_active()) s_failsafe &= (uint8_t)~PV2_FS_RADIO;
+        break;
+    }
+}
+
+/* the pilot in control is connected (stick-cancel of HOLD / RTH) */
+static uint8_t pilot_link_ok(void)
+{
+    if (s_radio_ctrl) return (uint8_t)(!rfs_active() && !s_rc_stale);
+    return (uint8_t)(s_silence < FC_LINK_BACK_MS && !(s_failsafe & PV2_FS_APP_LINK));
 }
 
 /* ---- battery (§6): signals from the BattTask, failsafes ---- */
@@ -813,7 +876,7 @@ static void publish(void)
     SPSC_BARRIER();
     s_snap.armed = s_armed; s_snap.mode = s_mode; s_snap.autom = s_auto;
     s_snap.failsafe = s_failsafe; s_snap.in_air = s_in_air;
-    s_snap.input = (s_silence < FC_FS_SHORT_MS) ? PV2_INPUT_APP : PV2_INPUT_NONE;
+    s_snap.input = s_radio_ctrl ? PV2_INPUT_ELRS : ((s_silence < FC_FS_SHORT_MS) ? PV2_INPUT_APP : PV2_INPUT_NONE);
     s_snap.rc_stale = s_rc_stale;
     s_snap.fs_long = s_fs_long;
     s_snap.flight_time_s = (uint16_t)((s_flight_ms / 1000u > 0xFFFFu) ? 0xFFFFu : s_flight_ms / 1000u);
@@ -858,6 +921,7 @@ void fc_service(uint32_t now, uint8_t est_running, const fc_vert_t *v)
     air_ground(now, dt);
 
     app_link_failsafe(now);
+    radio_failsafe();
     flow_failsafe(dt);
     battery(now);
 
@@ -866,7 +930,7 @@ void fc_service(uint32_t now, uint8_t est_running, const fc_vert_t *v)
     s_hold_prev = (uint8_t)(s_auto == PV2_AUTO_HOLD);
 
     /* ---- pilot cancels HOLD (and RTH, if allowed) with the sticks ---- */
-    if (s_armed && s_in_air && s_silence < FC_LINK_BACK_MS && !(s_failsafe & PV2_FS_APP_LINK)) {
+    if (s_armed && s_in_air && pilot_link_ok()) {
         if (s_auto == PV2_AUTO_HOLD && stick_moved()) s_auto = PV2_AUTO_NONE;
         if (s_auto == PV2_AUTO_RTH && PARAM(P_RTH_STICK_CANCEL) > 0.5f &&
             !s_rc_stale && (s_rc.pitch > FC_STICK_CANCEL || s_rc.pitch < -FC_STICK_CANCEL ||

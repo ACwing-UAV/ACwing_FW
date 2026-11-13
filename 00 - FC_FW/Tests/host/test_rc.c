@@ -8,6 +8,8 @@
 #include "rc_sbus.h"
 #include "rc_ibus.h"
 #include "rc_dsm.h"
+#include "input_arb.h"
+#include "radio_fs.h"
 #include <stdio.h>
 #include <string.h>
 
@@ -185,6 +187,47 @@ static void test_input(void)
     CHECK(rc_throttle_from_us(1000) == -1000 && rc_throttle_from_us(2000) == 1000 && rc_stick_from_us(1500) == 0, "scales");
 }
 
+
+static void test_arbitration(void)
+{
+    ia_init();
+    ia_sticks_t app = { 1, -1000, 0, 0, 300, 10 };
+    rc_state_t r; memset(&r, 0, sizeof r);
+    ia_out_t o;
+    ia_step(100, 0, &app, &r, &o);
+    CHECK(!o.radio && o.sticks.roll == 300, "no receiver: the app's sticks");
+    r.ever = 1; r.valid = 1; r.thr = -1000; r.aux_us[0] = 1000; r.t_ms = 100;
+    ia_step(110, 0, &app, &r, &o);
+    CHECK(!o.radio, "radio at rest: still the app");
+    r.yaw = 200;                                                  /* 20 % yaw */
+    ia_step(120, 0, &app, &r, &o);
+    CHECK(o.radio && o.took_control && o.sticks.yaw == 200, "a stick beyond 15 %%: the radio takes control");
+    ia_step(130, 0, &app, &r, &o);
+    CHECK(o.radio && !o.took_control, "took_control only once");
+    r.yaw = 0;
+    ia_step(140, 1, &app, &r, &o);
+    ia_step(5000, 1, &app, &r, &o);
+    CHECK(o.radio, "armed: the radio keeps control even idle");
+    ia_step(5100, 0, &app, &r, &o);
+    ia_step(6050, 0, &app, &r, &o);
+    CHECK(o.radio, "disarmed, idle 0.95 s: not yet released");
+    ia_step(6150, 0, &app, &r, &o);
+    CHECK(!o.radio, "disarmed, idle 1 s: back to the app");
+    r.aux_us[0] = 1800;
+    ia_step(6200, 0, &app, &r, &o);
+    CHECK(o.radio && o.arm_sw, "arm switch on: radio control, arm_sw");
+    r.valid = 0;
+    ia_step(6210, 0, &app, &r, &o);
+    CHECK(!o.radio && !o.arm_sw, "disarmed and the link lost: back to the app");
+
+    rfs_init();
+    CHECK(rfs_step(1, 900, 1, 1) == RFS_NONE && rfs_step(1, 1100, 1, 1) == RFS_TRIGGER && rfs_active(), "radio failsafe after 1 s in the air");
+    CHECK(rfs_step(1, 2000, 1, 1) == RFS_NONE, "triggered once");
+    CHECK(rfs_step(1, 100, 1, 1) == RFS_BACK && !rfs_active(), "link back");
+    CHECK(rfs_step(0, 5000, 1, 1) == RFS_NONE, "the app flies: no radio failsafe");
+    CHECK(rfs_step(1, 2900, 1, 0) == RFS_NONE && rfs_step(1, 3100, 1, 0) == RFS_DISARM, "on the ground: disarm after 3 s");
+}
+
 int main(void)
 {
     test_crsf();
@@ -192,6 +235,7 @@ int main(void)
     test_ibus();
     test_dsm();
     test_input();
+    test_arbitration();
     printf("rc: %d passed, %d failed\n", s_pass, s_fail);
     return s_fail ? 1 : 0;
 }
