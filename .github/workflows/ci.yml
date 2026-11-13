@@ -1,6 +1,9 @@
 # Continuous integration: the test suites that keep firmware, app and PC tools
 # in agreement on the protocol and on the flight behaviour.
-#   firmware  host tests of 00 - FC_FW (flight core, AppTask, links, battery, log, IEKF), ASan/UBSan
+#   firmware  host tests of 00 - FC_FW (flight core, AppTask, links, battery, log, IEKF, control loops, hover
+#             estimate, RC input, position hold), ASan/UBSan
+#   firmware-target  cross-build of the STM32WB55 firmware with arm-none-eabi-gcc from the CubeIDE project
+#             (.cproject include paths, defines and sources), Debug and Release, with the memory report
 #   app       ACwing Pilot: typecheck, unit tests (protocol, simulator, log decoder), production build
 #   python    acwing_tools: log decoder (the reference of the app's), telemetry, filters
 #   matlab    flight-log decoder and download client in GNU Octave (same tests as Python)
@@ -30,6 +33,21 @@ jobs:
       - name: Build and run (gcc, AddressSanitizer + UBSan)
         working-directory: "00 - FC_FW/Tests/host"
         run: make
+
+  firmware-target:
+    name: firmware target build (arm-none-eabi)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+      - name: Install the ARM toolchain
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq --no-install-recommends gcc-arm-none-eabi libnewlib-arm-none-eabi
+      - name: Debug (as STM32CubeIDE)
+        working-directory: "00 - FC_FW"
+        run: python3 Tests/target/build_fw.py --config Debug
+      - name: Release
+        working-directory: "00 - FC_FW"
+        run: python3 Tests/target/build_fw.py --config Release
 
   app:
     name: app (typecheck, tests, build)

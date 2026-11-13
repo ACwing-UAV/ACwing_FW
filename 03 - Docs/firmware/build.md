@@ -11,10 +11,19 @@
    CMSIS_V2, 1 kHz tick, 52 KB heap; HAL timebase on a TIM; Serial Wire debug;
    STM32_WPAN (BLE) with HSEM, IPCC, RTC, RNG, RF ([CubeMX configuration](ble.md#cubemx-configuration)).
    Interrupts that call RTOS functions need priority ≥ 5.
-2. Include paths (all configurations): `App/app`, `App/filters/iekf`, `App/telemetry`,
-   `App/bsp`, `App/control`, `App/drivers/common`,
-   `App/drivers/imu_lsm6dsv16x`, `App/third_party/st_lsm6dsv16x`,
-   `App/third_party/cmsis_dsp/Include`.
+2. Include paths: they are in `.cproject` (Debug and Release), among them `App/app`, `App/control`,
+   `App/filters/iekf`, `App/filters/altitude_kf`, `App/filters/hover_est`, `App/telemetry`, `App/bsp`, `App/log`,
+   the drivers and the third-party folders. A new source folder with headers must be added to **both**
+   configurations: the CI job `firmware-target` builds the project from `.cproject` and fails otherwise.
+   Locally, with `arm-none-eabi-gcc` installed:
+
+   ```bash
+   python3 "00 - FC_FW/Tests/target/build_fw.py" --config Debug
+   ```
+
+   It compiles every source folder of the configuration with the same paths and defines (at `-O2`), links with
+   `STM32WB55RGVX_FLASH.ld` and prints the memory usage. It does not replace the IDE build (optimisation and
+   warning flags may differ), it catches missing paths, missing files and link errors.
 3. Linker: library `arm_cortexM4lf_math` from `App/third_party/cmsis_dsp/Lib`
    (the **GCC** `.a`, not the Keil `.lib`). FPU: FPv4-SP-D16, hard ABI.
 4. `main.c` already calls `app_start()` and forwards the HAL callbacks
