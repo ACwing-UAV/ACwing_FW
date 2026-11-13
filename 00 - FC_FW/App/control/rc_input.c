@@ -62,9 +62,9 @@ int16_t rc_throttle_cal(uint16_t us, uint16_t mn, uint16_t mx)
 uint8_t rc_cal_valid(const rc_cal_t *c)
 {
     /* the same rule as cal_sticks: throttle by its range (its "centre" is the rest position, at the bottom) */
-    if (!(c->min[0] + 300u < c->max[0])) return 0u;
+    if (!(c->min[0] + 2u * RC_CAL_MIN_SPAN < c->max[0])) return 0u;
     for (int i = 1; i < 4; ++i)
-        if (!(c->min[i] + 150u < c->centre[i] && c->centre[i] + 150u < c->max[i])) return 0u;
+        if (!(c->min[i] + RC_CAL_MIN_SPAN < c->centre[i] && c->centre[i] + RC_CAL_MIN_SPAN < c->max[i])) return 0u;
     return 1u;
 }
 

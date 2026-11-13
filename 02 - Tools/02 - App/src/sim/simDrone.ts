@@ -539,7 +539,12 @@ export class SimDrone {
       c.step = 3;
     } else if (d.kind === "sticks") {
       if (c.step === 1) { c.step = 2; c.state = CalState.RUNNING; c.t = 0; }
-      else { c.step = 3; c.state = CalState.DONE; d.auxPos = [2, 3, 2, 0]; c.quality = 100; }
+      else {
+        // as the firmware (control/cal_sticks.c): 350 us each side of the centre, the throttle 700 us over its range
+        const ok = d.max[0] - d.min[0] > 700 && [1, 2, 3].every((i) => d.min[i] < d.centre[i] - 350 && d.max[i] > d.centre[i] + 350);
+        if (!ok) return [AckResult.REJECTED, Reason.OUT_OF_RANGE];
+        c.step = 3; c.state = CalState.DONE; d.auxPos = [2, 3, 2, 0]; c.quality = 100;
+      }
     } else return [AckResult.INVALID, Reason.NONE];
     this.emitCal();
     return [AckResult.OK, Reason.NONE];

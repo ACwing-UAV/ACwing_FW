@@ -64,6 +64,9 @@ typedef struct {
     uint32_t     crc;
 } cfg_image_v2_t;
 
+/* every parameter must have a slot, or cfg_params_put() drops the last ones without a word */
+_Static_assert(PARAM_COUNT <= CFG_PARAM_SLOTS, "more parameters than image slots: raise CFG_PARAM_SLOTS (new version)");
+
 /* 0 = not valid, else the version */
 static int valid_version(const void *page)
 {

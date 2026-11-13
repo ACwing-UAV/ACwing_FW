@@ -130,6 +130,7 @@ static const char *ev_text(uint16_t code)
     case PV2_E_RTH_STARTED:        return "Return to home";
     case PV2_E_HOME_SET:           return "Home set";
     case PV2_E_TAKEOFF_ABORTED:    return "Takeoff aborted: no lift-off";
+    case PV2_E_RADIO_REFUSED:      return "Radio switch refused";
     case PV2_E_FAILSAFE_APP_LINK:  return "App link lost: failsafe";
     case PV2_E_FAILSAFE_RADIO:     return "Radio lost: failsafe";
     case PV2_E_FAILSAFE_BATTERY:   return "Battery failsafe";
@@ -144,6 +145,7 @@ static const char *ev_text(uint16_t code)
     case PV2_E_HIGH_VIBRATION:     return "High vibration";
     case PV2_E_MOTOR_HOT:          return "Motor hot";
     case PV2_E_RADIO_OVERRIDE:     return "Radio took control";
+    case PV2_E_HOVER_THRUST:       return "Hover thrust abnormal";
     case PV2_E_CALIB_DONE:         return "Calibration saved";
     case PV2_E_CALIB_FAILED:       return "Calibration failed";
     case PV2_E_PARAMS_SAVED:       return "Settings saved";

@@ -91,6 +91,8 @@ export function Controls() {
           <Row label={t("controls.elrs")} badge={<b className="num muted" style={{ width: 18 }}>1</b>}><span className="small" style={{ color: elrs ? "var(--ok)" : "var(--muted)" }}>{elrs ? t("controls.linked") : t("controls.notLinked")}</span></Row>
           <ParamSelect k="rcProtocol" hint={t("controls.rcProtocolHint")} />
           <ParamSelect k="rcMap" hint={t("controls.rcMapHint")} />
+          <ParamSelect k="rcArmSwKill" hint={t("controls.rcArmSwKillHint")} />
+          <ParamSelect k="rcModeMap" hint={t("controls.rcModeMapHint")} />
           <div className="small muted" style={{ padding: "4px 0 10px" }}>
             <b>{t("controls.rcCompatible")}</b>
             <ul style={{ margin: "4px 0 0", paddingLeft: 18 }}>

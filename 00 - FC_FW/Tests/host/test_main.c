@@ -628,13 +628,14 @@ static void test_ctrl_loop(void)
 
 
 /* ------------------------------------------------------------ RC radio: arbitration and failsafe (input_arb.c, radio_fs.c) */
+static uint16_t s_aux2 = 1500;      /* AUX2 (mode switch) sent by radio_send() */
 static void radio_send(int16_t thr, int16_t yaw, int16_t pitch, int16_t roll, uint16_t aux1)
 {
     /* AETR: ch1 roll, ch2 pitch, ch3 throttle, ch4 yaw, ch5 AUX1; us -> CRSF 11-bit (us = v * 5/8 + 880) */
     uint16_t us[16];
     for (int c = 0; c < 16; ++c) us[c] = 1500;
     us[0] = (uint16_t)(1500 + roll / 2); us[1] = (uint16_t)(1500 + pitch / 2);
-    us[2] = (uint16_t)(1000 + (thr + 1000) / 2); us[3] = (uint16_t)(1500 + yaw / 2); us[4] = aux1;
+    us[2] = (uint16_t)(1000 + (thr + 1000) / 2); us[3] = (uint16_t)(1500 + yaw / 2); us[4] = aux1; us[5] = s_aux2;
     uint8_t f[26] = { CRSF_ADDR_FC, 24, CRSF_T_RC_CHANNELS };
     memset(&f[3], 0, 22);
     uint32_t bit = 0;
@@ -723,6 +724,80 @@ static void test_radio(void)
     { uint8_t why; (void)params_set(12, 2.0f, &why); }
     rc_input_init();
     (void)v;
+}
+
+/* the radio switches: arm, disarm, kill, modes; no ACK, a refusal is EVENT 9 */
+static int count_event_arg(uint16_t code, int32_t *arg)
+{
+    fc_event_t e; int n = 0;
+    while (fc_take_event(&e)) if (e.code == code) { n++; if (arg) *arg = e.arg; }
+    return n;
+}
+static void test_radio_switches(void)
+{
+    fc_state_t s; fc_res_t r; int32_t arg = -1;
+    fc_setup(PV2_S_IMU);
+    rc_input_init(); (void)rc_input_configure(RC_PROTO_CRSF, RC_MAP_AETR);
+    now = 1000;
+    radio_run(300, -1000, 0, 1000, 1, NULL);                  /* switch seen off */
+    radio_run(100, -1000, 0, 1900, 1, NULL);
+    fc_snapshot(&s);
+    CHECK(s.armed && s.input == PV2_INPUT_ELRS, "arm switch on: radio in control, armed");
+    CHECK(!fc_take_result(&r), "no ACK for a radio command");
+    radio_run(100, -1000, 0, 1000, 1, NULL);
+    fc_snapshot(&s);
+    CHECK(!s.armed, "arm switch off on the ground: disarmed");
+    (void)count_event_arg(0, NULL);
+    /* throttle up: refused, EVENT 9 with the op and the reason */
+    radio_run(100, -200, 0, 1900, 1, NULL);
+    fc_snapshot(&s);
+    CHECK(!s.armed && count_event_arg(PV2_E_RADIO_REFUSED, &arg) == 1 &&
+          arg == (int32_t)((PV2_OP_ARM << 8) | PV2_R_THROTTLE_NOT_LOW), "throttle up: ARM refused, EVENT 9 (arg %04X)", (unsigned)arg);
+    /* in the air: switch off = KILL */
+    radio_run(100, -1000, 0, 1000, 1, NULL);
+    radio_run(100, -1000, 0, 1900, 1, NULL);
+    g_fc_dbg_in_air = 1;
+    radio_run(100, -200, 0, 1900, 1, NULL);
+    (void)count_event_arg(0, NULL);
+    radio_run(20, -200, 0, 1000, 1, NULL);
+    fc_snapshot(&s);
+    CHECK(!s.armed && count_event_arg(PV2_E_MOTOR_KILLED, NULL) == 1, "switch off in the air: KILL");
+    g_fc_dbg_in_air = 0;
+    /* rcArmSwKill 0: refused in the air */
+    { uint8_t why; (void)params_set(102, 0.0f, &why); }
+    radio_run(100, -1000, 0, 1900, 1, NULL);
+    g_fc_dbg_in_air = 1;
+    radio_run(100, -200, 0, 1900, 1, NULL);
+    (void)count_event_arg(0, NULL);
+    radio_run(20, -200, 0, 1000, 1, NULL);
+    fc_snapshot(&s);
+    CHECK(s.armed && count_event_arg(PV2_E_RADIO_REFUSED, &arg) == 1 && arg == (int32_t)((PV2_OP_DISARM << 8) | PV2_R_NOT_LANDED),
+          "rcArmSwKill 0: switch off in the air refused (NOT_LANDED)");
+    g_fc_dbg_in_air = 0;
+    radio_run(100, -1000, 0, 1900, 1, NULL);
+    radio_run(100, -1000, 0, 1000, 1, NULL);
+    fc_snapshot(&s);
+    CHECK(!s.armed, "landed: the next switch off disarms");
+    { uint8_t why; (void)params_set(102, 1.0f, &why); }
+    /* mode switch: off by default (a channel at 1500 us is no switch) */
+    fc_snapshot(&s);
+    const uint8_t m0 = s.mode;
+    s_aux2 = 1000; radio_run(100, -1000, 0, 1000, 1, NULL);
+    fc_snapshot(&s);
+    CHECK(s.mode == m0, "rcModeMap 0: AUX2 ignored");
+    { uint8_t why; (void)params_set(103, 1.0f, &why); }
+    s_aux2 = 2000; radio_run(100, -1000, 0, 1000, 1, NULL);
+    (void)count_event_arg(0, NULL);
+    s_aux2 = 1000; radio_run(100, -1000, 0, 1000, 1, NULL);
+    fc_snapshot(&s);
+    CHECK(s.mode == PV2_MODE_ANGLE, "map 1 low: ANGLE (mode %u)", s.mode);
+    s_aux2 = 2000; radio_run(100, -1000, 0, 1000, 1, NULL);
+    fc_snapshot(&s);
+    CHECK(s.mode == PV2_MODE_ANGLE && count_event_arg(PV2_E_RADIO_REFUSED, &arg) == 1 &&
+          arg == (int32_t)((PV2_OP_SET_MODE << 8) | PV2_R_SENSOR_MISSING), "map 1 high: POS_HOLD without sensors refused");
+    { uint8_t why; (void)params_set(103, 0.0f, &why); }
+    s_aux2 = 1500;
+    rc_input_init();
 }
 
 static void test_alt_est(void)
@@ -1082,6 +1157,7 @@ int main(void)
     test_no_alt_estimate();
     test_ctrl_loop();
     test_radio();
+    test_radio_switches();
     test_alt_est();
     test_drivers();
     test_checks_flow();
