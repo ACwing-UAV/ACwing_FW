@@ -3,7 +3,7 @@
 #   firmware  host tests of 00 - FC_FW (flight core, AppTask, links, battery, log, IEKF, control loops, hover
 #             estimate, RC input, position hold), ASan/UBSan
 #   firmware-target  cross-build of the STM32WB55 firmware with arm-none-eabi-gcc from the CubeIDE project
-#             (.cproject include paths, defines and sources), Debug and Release, with the memory report
+#             (.cproject include paths, defines and sources), Debug and Release; fails above 90 % of RAM or FLASH
 #   app       ACwing Pilot: typecheck, unit tests (protocol, simulator, log decoder), production build
 #   python    acwing_tools: log decoder (the reference of the app's), telemetry, filters
 #   matlab    flight-log decoder and download client in GNU Octave (same tests as Python)

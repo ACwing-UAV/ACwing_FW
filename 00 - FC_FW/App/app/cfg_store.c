@@ -39,7 +39,8 @@ typedef struct {
     uint32_t     crc;
 } cfg_image_v1_t;
 
-/* ---- version 2 layout (firmware 0.5-0.6): cal_set_t without the sticks ---- */
+/* ---- version 2 layout (firmware 0.5-0.6): cal_set_t without the sticks, 48 parameter slots ---- */
+#define V2_PARAM_SLOTS 48u
 typedef struct {
     cal_accel_t   accel;
     cal_level_t   level;
@@ -54,7 +55,7 @@ typedef struct {
     uint16_t     version;
     uint16_t     size;
     uint32_t     seq;
-    cfg_param_t  params[CFG_PARAM_SLOTS];
+    cfg_param_t  params[V2_PARAM_SLOTS];    /* frozen: never CFG_PARAM_SLOTS, which changes with the version */
     char         name[16];
     cal_set_v2_t cal, bak;
     uint32_t     bak_mask;
@@ -67,6 +68,23 @@ typedef struct {
 /* every parameter must have a slot, or cfg_params_put() drops the last ones without a word */
 _Static_assert(PARAM_COUNT <= CFG_PARAM_SLOTS, "more parameters than image slots: raise CFG_PARAM_SLOTS (new version)");
 
+/* ---- version 3 layout (firmware 0.8-0.9): 48 parameter slots, 56 reserved bytes ---- */
+#define V3_PARAM_SLOTS 48u
+typedef struct {
+    uint32_t     magic;
+    uint16_t     version;
+    uint16_t     size;
+    uint32_t     seq;
+    cfg_param_t  params[V3_PARAM_SLOTS];
+    char         name[16];
+    cal_set_t    cal, bak;
+    uint32_t     bak_mask;
+    float        batt_used_mah;
+    float        batt_used_scale_i;
+    uint8_t      reserved[56];
+    uint32_t     crc;
+} cfg_image_v3_t;
+
 /* 0 = not valid, else the version */
 static int valid_version(const void *page)
 {
@@ -74,6 +92,9 @@ static int valid_version(const void *page)
     if (!im || im->magic != CFG_MAGIC) return 0;
     if (im->version == CFG_VERSION && im->size == sizeof(cfg_image_t) &&
         im->crc == cfg_crc32(im, offsetof(cfg_image_t, crc))) return CFG_VERSION;
+    const cfg_image_v3_t *v3 = (const cfg_image_v3_t *)page;
+    if (v3->version == 3u && v3->size == sizeof(cfg_image_v3_t) &&
+        v3->crc == cfg_crc32(v3, offsetof(cfg_image_v3_t, crc))) return 3;
     const cfg_image_v2_t *v2 = (const cfg_image_v2_t *)page;
     if (v2->version == 2u && v2->size == sizeof(cfg_image_v2_t) &&
         v2->crc == cfg_crc32(v2, offsetof(cfg_image_v2_t, crc))) return 2;
@@ -137,12 +158,26 @@ int cfg_load(cfg_image_t *out)
     const void *pg = cfg_flash_page(p);
     const int ver = valid_version(pg);
     if (ver == CFG_VERSION) { memcpy(out, pg, sizeof *out); return 0; }
+    if (ver == 3) {
+        /* version 3 -> 4: the same fields, more parameter slots (the new ones empty) */
+        const cfg_image_v3_t *v3 = (const cfg_image_v3_t *)pg;
+        memset(out, 0, sizeof *out);
+        out->magic = CFG_MAGIC; out->version = 3u; out->size = sizeof *out; out->seq = v3->seq;
+        memcpy(out->params, v3->params, sizeof v3->params);
+        memcpy(out->name, v3->name, sizeof out->name);
+        out->cal = v3->cal;
+        out->bak = v3->bak;
+        out->bak_mask = v3->bak_mask;
+        out->batt_used_mah = v3->batt_used_mah;
+        out->batt_used_scale_i = v3->batt_used_scale_i;
+        return 0;
+    }
     if (ver == 2) {
         /* version 2 -> 3: the same fields, the calibration sets gain the sticks */
         const cfg_image_v2_t *v2 = (const cfg_image_v2_t *)pg;
         memset(out, 0, sizeof *out);
         out->magic = CFG_MAGIC; out->version = 2u; out->size = sizeof *out; out->seq = v2->seq;
-        memcpy(out->params, v2->params, sizeof out->params);
+        memcpy(out->params, v2->params, sizeof v2->params);    /* the source size: v2 has fewer slots */
         memcpy(out->name, v2->name, sizeof out->name);
         cal_from_v2(&out->cal, &v2->cal);
         cal_from_v2(&out->bak, &v2->bak);
@@ -184,4 +219,9 @@ int cfg_save(cfg_image_t *img)
 }
 
 _Static_assert(sizeof(cfg_image_t) <= 4096u, "configuration image must fit one flash page");
+/* the layouts of the older versions are frozen: a change here would make their images unreadable (calibrations lost) */
+_Static_assert(sizeof(cfg_image_v1_t) == 284u, "version 1 layout changed");
+_Static_assert(sizeof(cfg_image_v2_t) == 652u, "version 2 layout changed");
+_Static_assert(sizeof(cfg_image_v3_t) == 708u, "version 3 layout changed");
+_Static_assert(sizeof(cfg_image_t) == 1420u, "version 4 layout changed: raise CFG_VERSION and migrate");
 _Static_assert(P_COMPASS_PRIMARY == V1_PARAMS - 1, "version 1 parameters are the first 24 of the table");

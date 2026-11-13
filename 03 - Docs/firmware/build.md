@@ -22,7 +22,9 @@
    ```
 
    It compiles every source folder of the configuration with the same paths and defines (at `-O2`), links with
-   `STM32WB55RGVX_FLASH.ld` and prints the memory usage. It does not replace the IDE build (optimisation and
+   `STM32WB55RGVX_FLASH.ld` and prints the memory usage. It fails above 90 % of the static RAM or of the flash
+   (`--max-ram-pct`, `--max-flash-pct`): the RAM left is the boot stack, which the interrupts use after the kernel
+   starts, and the margin for growth (83 % in firmware 0.10). It does not replace the IDE build (optimisation and
    warning flags may differ), it catches missing paths, missing files and link errors.
 3. Linker: library `arm_cortexM4lf_math` from `App/third_party/cmsis_dsp/Lib`
    (the **GCC** `.a`, not the Keil `.lib`). FPU: FPv4-SP-D16, hard ABI.

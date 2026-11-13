@@ -47,6 +47,8 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--config", default="Debug")
     ap.add_argument("-j", type=int, default=os.cpu_count() or 2)
+    ap.add_argument("--max-ram-pct", type=float, default=90.0, help="fail above this RAM use (static), %%")
+    ap.add_argument("--max-flash-pct", type=float, default=90.0, help="fail above this FLASH use, %%")
     a = ap.parse_args()
     cfg = config(a.config)
 
@@ -111,6 +113,18 @@ def main():
         sys.stderr.write(r.stderr)
         sys.exit("link failed")
     subprocess.run(["arm-none-eabi-size", elf])
+    # memory budget: the static RAM leaves the boot stack (also the interrupt stack) and the heap headroom
+    over = []
+    for region, limit in (("RAM", a.max_ram_pct), ("FLASH", a.max_flash_pct)):
+        m = re.search(rf"^\s*{region}:\s+\d+ \w+\s+\d+ \w+\s+([\d.]+)%", r.stdout, re.M)
+        if not m:
+            sys.exit(f"no {region} line in the memory report")
+        pct = float(m.group(1))
+        print(f"{region} {pct:.2f} % (budget {limit:.0f} %)")
+        if pct > limit:
+            over.append(f"{region} {pct:.2f} % > {limit:.0f} %")
+    if over:
+        sys.exit("memory budget exceeded: " + ", ".join(over))
 
 
 if __name__ == "__main__":

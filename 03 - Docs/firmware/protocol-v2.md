@@ -139,9 +139,20 @@ than 256 bytes are free in the HI ring, so a list never pushes out an ACK.
   (`App/app/cfg_store.c`): parameters, name, calibrations, one backup per
   calibration type, and the charge of the last flight (for the BATTERY
   calibration, written at disarm). Since firmware 0.5.0 (image version 2) the
-  parameters are stored **by id**, with room for 48: new parameters need no
-  migration. A version-1 image (0.4.x) is converted at boot, keeping the
-  parameters, the name and every calibration. There are two pages used alternately (A/B), each image
+  parameters are stored **by id**, so a new parameter needs no migration while
+  there is a free slot. Image versions:
+
+  | Version | Firmware | Change | Size |
+  |---|---|---|---|
+  | 1 | 0.4.x | 24 positional parameters, no battery | 284 B |
+  | 2 | 0.5–0.6 | parameters by id (48 slots), battery scales, last flight | 652 B |
+  | 3 | 0.7–0.9 | STICKS calibration in the calibration sets | 708 B |
+  | 4 | 0.10 | **128** parameter slots (43 used), 128 reserved bytes | 1420 B |
+
+  An older image is converted at boot, keeping the parameters, the name and
+  every calibration; the next save writes version 4. The old layouts are frozen
+  by compile-time checks of their sizes, and `power_test` migrates an image of
+  each version. There are two pages used alternately (A/B), each image
   with a sequence number and a CRC32, so a reset during a write leaves the
   previous image valid. All of these are refused while armed.
 - On the WB55 the write is coordinated with CPU2 (`bsp/cfg_flash_wb.c`): the
