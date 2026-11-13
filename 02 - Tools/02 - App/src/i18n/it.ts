@@ -107,6 +107,8 @@ const it: Translation = {
     units: "Unità", metric: "Metriche", imperial: "Imperiali", theme: "Tema", dark: "Scuro", daylight: "Luce diurna", droneName: "Nome del drone",
   },
   controls: {
+    tuning: "Taratura del volo (avanzata)", tuningHint: "Guadagni e filtri dei loop del controllore di volo. Cambia un valore alla volta, prima senza eliche; Salva li scrive sul drone.", notchHint: "0 = spento. Impostalo sul picco di rumore dei motori visto nel log di volo.",
+    idleHint: "Spinta di ogni motore da armato, come frazione della massima.", curveHint: "1 = spinta quadratica nel duty (motori a spazzole), 0 = lineare. Si misura al banco di spinta.",
     sticks: "Stick", stickMode: "Modo stick", mode1: "Modo 1", mode2: "Modo 2", sensitivity: "Sensibilità", expo: "Expo",
     deadband: "Zona morta", haptics: "Feedback aptico", hapticsHint: "Scatto al centro e ai fine corsa degli stick (telefoni)",
     inputs: "Sorgenti di comando", inputsHint: "Vince la priorità più alta. La radio ELRS ha sempre la precedenza sull'app.", elrs: "Radio ELRS",
@@ -119,6 +121,7 @@ const it: Translation = {
     elrsHelp: "Priorità massima: quando è attiva, l'app passa alla sola telemetria",
   },
   params: {
+    rateP: "P rate rollio/beccheggio", rateI: "I rate rollio/beccheggio", rateD: "D rate rollio/beccheggio", yawP: "P rate imbardata", yawI: "I rate imbardata", attP: "P angolo", gyroLpf: "Passa-basso giroscopio", dtermLpf: "Passa-basso termine D", gyroNotch: "Notch giroscopio", motorIdle: "Minimo motori", thrCurve: "Curva di spinta",
     battCapacity: "Capacità", battCells: "Celle", logMode: "Log di volo",
     takeoffAlt: "Quota di decollo", landSpeed: "Velocità di atterraggio", autoDisarm: "Disarmo automatico dopo l'atterraggio", maxTilt: "Inclinazione max",
     maxYawRate: "Velocità di imbardata max", maxClimb: "Salita / discesa max", maxHSpeed: "Velocità orizzontale max", beginner: "Modalità principiante",

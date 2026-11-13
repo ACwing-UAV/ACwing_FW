@@ -920,7 +920,7 @@ export class SimDrone {
 
   private emitCaps() {
     this.emit(FT.CAPS, M.encodeCaps({
-      proto: 2, fw: [0, 6, 1], hwRev: "H", model: this.outdoor ? Model.OUTDOOR : Model.INDOOR, sensors: this.sensors,
+      proto: 2, fw: [0, 7, 0], hwRev: "H", model: this.outdoor ? Model.OUTDOOR : Model.INDOOR, sensors: this.sensors,
       nMotors: this.nMotors, frame: FrameType.QUAD_X, cells: this.cells, name: this.name, serial: this.outdoor ? "ACW-0001" : "ACW-0002",
     }));
   }

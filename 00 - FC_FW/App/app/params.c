@@ -37,6 +37,18 @@ const param_def_t g_param_def[PARAM_COUNT] = {
     [P_BATT_CAPACITY]      = { 23, 0.0f,   0.0f, 20000.0f, PV2_S_CURRENT },   /* mAh, 0 = unknown */
     [P_BATT_CELLS]         = { 24, 0.0f,   0.0f,   6.0f,   0 },               /* 0 = detect */
     [P_LOG_MODE]           = { 70, 1.0f,   0.0f,   2.0f,   PV2_S_FLASH_LOG }, /* 0 off, 1 armed, 2 always */
+    /* phase 3: mixer and loops (att_ctrl.c, mixer.c, ADR 0010); torque in normalised thrust per motor */
+    [P_THR_CURVE]          = { 81, 1.0f,    0.0f,    1.0f,    0 },   /* thrust curve theta: 1 quadratic, 0 linear */
+    [P_RATE_P]             = { 90, 0.020f,  0.002f,  0.100f,  0 },   /* roll/pitch rate P, per rad/s   */
+    [P_RATE_I]             = { 91, 0.20f,   0.0f,    2.0f,    0 },   /* roll/pitch rate I, per rad     */
+    [P_RATE_D]             = { 92, 0.0004f, 0.0f,    0.004f,  0 },   /* roll/pitch rate D, per rad/s^2 */
+    [P_YAW_P]              = { 93, 0.040f,  0.002f,  0.200f,  0 },   /* yaw rate P                     */
+    [P_YAW_I]              = { 94, 0.20f,   0.0f,    2.0f,    0 },   /* yaw rate I                     */
+    [P_ATT_P]              = { 95, 6.0f,    1.0f,   15.0f,    0 },   /* tilt P, 1/s                    */
+    [P_GYRO_LPF]           = { 96, 90.0f,  20.0f,  250.0f,    0 },   /* Hz                             */
+    [P_DTERM_LPF]          = { 97, 70.0f,  20.0f,  250.0f,    0 },   /* Hz                             */
+    [P_GYRO_NOTCH]         = { 98, 0.0f,    0.0f,  400.0f,    0 },   /* Hz, 0 = off                    */
+    [P_MOTOR_IDLE]         = { 99, 0.05f,   0.0f,    0.15f,   0 },   /* normalised thrust when armed   */
 };
 
 static volatile float s_val[PARAM_COUNT];

@@ -136,9 +136,10 @@ typedef struct {
     uint8_t alt_ctrl;                /**< 1: thrust from the altitude loop         */
     float   thrust;                  /**< collective 0..1                          */
     float   roll, pitch;             /**< rad (ANGLE-type modes)                   */
-    float   roll_rate, pitch_rate;   /**< rad/s (ACRO)                             */
-    float   yaw_rate;                /**< rad/s                                    */
+    float   roll_rate, pitch_rate;   /**< rad/s (ACRO), FLU: + = right wing down / nose down */
+    float   yaw_rate;                /**< rad/s, FLU: + = counter-clockwise from above (stick right = negative) */
     float   h_sp, vz_sp;             /**< m, m/s (when alt_ctrl)                   */
+    uint8_t in_air;                  /**< airborne: the rate loop may integrate      */
     uint8_t pos_hold;                /* hold the horizontal position (POS_HOLD or HOLD with
                                         a usable position source); 0 near the floor, where
                                         the flow is below its minimum height: level attitude */

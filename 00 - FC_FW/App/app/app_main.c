@@ -104,7 +104,6 @@ volatile uint16_t        g_initLen;
 /* ---- calibration in effect (ImuTask copy, applied at event level) ---- */
 static cal_set_t      s_calset;
 static est_config_t   s_ec;                  /* estimator config (restart after a calibration) */
-static volatile float g_level_trim_deg[2];   /* LEVEL: roll, pitch trim for the attitude loop */
 static volatile uint8_t s_est_restart;
 
 /* ---- vertical estimate, flow, statistics ---- */
@@ -275,8 +274,7 @@ static void take_calibrations(void)
             break;
         case PV2_CAL_LEVEL:
             s_calset.level = a.set.level;
-            g_level_trim_deg[0] = a.set.level.roll_deg;
-            g_level_trim_deg[1] = a.set.level.pitch_deg;
+            ctrl_set_level_trim(a.set.level.roll_deg, a.set.level.pitch_deg);
             break;
         default:
             cal_copy_type(&s_calset, &a.set, a.type);
@@ -439,13 +437,14 @@ static void flight_service(uint32_t *lastSvc)
     v.flow_q = s_flow_q;
     v.flow_usable = s_flow_usable;
     fc_service(now, est_ok, &v);
+    (void)ctrl_service(now);              /* rate loop stalled while armed: motors off */
     {
         static uint8_t wasArmed;
         fc_setpoint_t sp;
         fc_setpoint(&sp);
         if (sp.armed && !wasArmed) s_acc_clip = 0u;     /* SYSTEM.accClip counts since arm */
         wasArmed = sp.armed;
-        /* sp goes to the attitude / rate loops and the mixer in phase 3 */
+        /* the attitude / rate loops and the mixer read sp in ctrl_loop.c (same task) */
         log_records(now, q, &v, &sp);
     }
     publish_est(now);
@@ -491,8 +490,7 @@ static void ImuTask(void *arg)
     {
         fsh_apply_t a;
         while (fsh_apply_take(&a)) cal_copy_type(&s_calset, &a.set, a.type);
-        g_level_trim_deg[0] = s_calset.level.roll_deg;
-        g_level_trim_deg[1] = s_calset.level.pitch_deg;
+        ctrl_set_level_trim(s_calset.level.roll_deg, s_calset.level.pitch_deg);
     }
     memcpy(ec.mag_hard_iron, s_calset.compass.hi, sizeof ec.mag_hard_iron);
     memcpy(ec.mag_scale, s_calset.compass.scale, sizeof ec.mag_scale);

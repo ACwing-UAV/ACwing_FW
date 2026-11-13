@@ -71,10 +71,14 @@ When the first boards are built:
 
 ## Phase 3: control
 
-- Rate PID at 960 Hz with a notch-filtered gyro, attitude loop at 240 Hz, both
-  in the existing hooks (`ctrl_rate_step`, `ctrl_attitude_step`), fed by
-  `fc_setpoint()`.
-- Motor power stage and mixer; DShot on the ACwing FC.
+- **Done in firmware 0.7.0** ([Attitude control and mixer](../firmware/control.md)):
+  rate PID at 960 Hz with a filtered (and optionally notched) gyro, tilt loop
+  at 240 Hz, quad-X mixer with airmode, thrust curve and battery compensation
+  (ADR 0010 §1), stall watchdog, tuning parameters in the app. Host-tested in
+  closed loop (`ctrl_test`); to be tuned on the bench and the first flights.
+- Next: the hover-thrust estimate of ADR 0010 §2–5 (once accepted, #40); the
+  motor power stage on the bench (`MOTORS_ENABLE`); DShot is not needed for the
+  brushed 8520 motors of the indoor frames.
 - A **thrust model** in the estimators: rejecting sustained accelerations in
   the IEKF acc update, and as an input of the altitude filter.
 - On the first flight logs (c4dynamics review, 2026-11), compare for the IEKF

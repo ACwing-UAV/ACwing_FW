@@ -20,6 +20,8 @@
 #include "vl53l1x.h"
 #include "flow_bridge.h"
 #include "checks.h"
+#include "control_hooks.h"
+#include "mixer.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -565,6 +567,60 @@ static void test_no_alt_estimate(void)
     CHECK(!s.in_air && s.landed, "manual touchdown without an altitude estimate");
 }
 
+
+/* ------------------------------------------------------------ phase 3 glue: ctrl_loop.c with the flight core */
+static void ctrl_steps(int n960, const float q[4], const float gyro[3])
+{
+    for (int k = 0; k < n960; ++k) {
+        if (k % 4 == 0) { ctrl_att_in_t a; memcpy(a.q, q, sizeof a.q); a.dt = 1.0f / 240.0f; a.step = (uint32_t)k; ctrl_attitude_step(&a); }
+        ctrl_rate_in_t r; memcpy(r.gyro, gyro, sizeof r.gyro); r.dt = 1.0f / 960.0f; r.step = (uint32_t)k; ctrl_rate_step(&r);
+    }
+}
+
+static void test_ctrl_loop(void)
+{
+    const uint8_t arm[2] = { 0xA5, 0x5A };
+    const float q0[4] = { 1, 0, 0, 0 }, g0[3] = { 0, 0, 0 };
+    fc_setup(PV2_S_IMU | PV2_S_BARO);
+    ctrl_init();
+    now = 1000;
+    fc_vert_t v = { 1, 0, 0, 0, 0, 0, 1.0f, 0xFF, 0 };
+    run_plant(NULL, &v, 100, -1000);
+    ctrl_steps(48, q0, g0);
+    CHECK(ctrl_motor_pct(0) == 0 && !ctrl_service(now), "disarmed: no motor output");
+    fc_res_t r = post(PV2_OP_ARM, 1, arm, 2, &v);
+    CHECK(r.result == PV2_ACK_OK, "arm");
+    ctrl_steps(48, q0, g0);
+    const uint8_t idle = (uint8_t)(mixer_curve_inv(0.05f, 1.0f) * 100.0f + 0.5f);
+    int same = 1;
+    for (uint8_t i = 0; i < 4; ++i) same &= (ctrl_motor_pct(i) == idle);
+    CHECK(same, "armed on the ground: every motor at idle (%u %%, expected %u %%)", ctrl_motor_pct(0), idle);
+    /* tilted on the ground at idle: no torque, the motors stay equal */
+    const float qt[4] = { 0.9962f, 0.0872f, 0, 0 };          /* 10 deg roll */
+    ctrl_steps(480, qt, g0);
+    same = 1;
+    for (uint8_t i = 0; i < 4; ++i) same &= (ctrl_motor_pct(i) == idle);
+    CHECK(same, "armed on a slope at idle: no differential thrust");
+    /* the rate loop stops (IMU / estimator stalled) while armed: motors off after CTRL_STALL_MS */
+    uint8_t st = 0;
+    for (int k = 0; k < 20; ++k) { now += 4; fc_service(now, 1, &v); st = ctrl_service(now); }
+    CHECK(st && ctrl_motor_pct(0) == 0, "rate loop stalled 80 ms while armed: motors off");
+    ctrl_steps(4, q0, g0);
+    now += 4;
+    CHECK(!ctrl_service(now), "rate loop back: no longer stalled");
+    /* disarm: outputs back to 0 */
+    (void)post(PV2_OP_DISARM, 2, NULL, 0, &v);
+    ctrl_steps(8, q0, g0);
+    CHECK(ctrl_motor_pct(0) == 0, "disarmed: outputs 0");
+    /* yaw stick right = clockwise = negative FLU rate */
+    fc_setpoint_t sp;
+    (void)post(PV2_OP_ARM, 3, arm, 2, &v);
+    rc(-1000, 500, 0, 0); now += 4; fc_service(now, 1, &v);
+    fc_setpoint(&sp);
+    CHECK(sp.yaw_rate < 0.0f, "yaw stick right -> negative (clockwise) FLU yaw rate (%.3f)", sp.yaw_rate);
+    (void)post(PV2_OP_DISARM, 4, NULL, 0, &v);
+}
+
 static void test_alt_est(void)
 {
     alt_est_cfg_t c; alt_est_default_cfg(&c);
@@ -888,6 +944,7 @@ int main(void)
     test_app_link_failsafe();
     test_manual_collective();
     test_no_alt_estimate();
+    test_ctrl_loop();
     test_alt_est();
     test_drivers();
     test_checks_flow();

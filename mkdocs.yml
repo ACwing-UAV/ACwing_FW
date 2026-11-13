@@ -57,6 +57,7 @@ nav:
   - Firmware:
       - Architecture: firmware/architecture.md
       - Flight core: firmware/flight-core.md
+      - Attitude control and mixer: firmware/control.md
       - Sensors and expansion boards: firmware/sensors.md
       - Telemetry protocol: firmware/telemetry.md
       - Building and flashing: firmware/build.md

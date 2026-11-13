@@ -107,6 +107,8 @@ const fr: Translation = {
     units: "Unités", metric: "Métriques", imperial: "Impériales", theme: "Thème", dark: "Sombre", daylight: "Plein jour", droneName: "Nom du drone",
   },
   controls: {
+    tuning: "Réglage du vol (avancé)", tuningHint: "Gains et filtres des boucles du contrôleur de vol. Changez une valeur à la fois, d'abord sans hélices ; Enregistrer les écrit dans le drone.", notchHint: "0 = désactivé. Réglez-le sur le pic de bruit des moteurs visible dans le journal de vol.",
+    idleHint: "Poussée de chaque moteur une fois armé, en fraction du maximum.", curveHint: "1 = poussée quadratique en rapport cyclique (moteurs à balais), 0 = linéaire. Mesurée au banc de poussée.",
     sticks: "Manches", stickMode: "Mode des manches", mode1: "Mode 1", mode2: "Mode 2", sensitivity: "Sensibilité", expo: "Expo",
     deadband: "Zone morte", haptics: "Retour haptique", hapticsHint: "Clic au centre et en butée des manches (téléphones)",
     inputs: "Sources de commande", inputsHint: "La priorité la plus haute l'emporte. La radio ELRS passe toujours avant l'app.", elrs: "Radio ELRS",
@@ -119,6 +121,7 @@ const fr: Translation = {
     elrsHelp: "Priorité maximale : quand elle est active, l'app passe en télémétrie seule",
   },
   params: {
+    rateP: "P vitesse roulis/tangage", rateI: "I vitesse roulis/tangage", rateD: "D vitesse roulis/tangage", yawP: "P vitesse lacet", yawI: "I vitesse lacet", attP: "P angle", gyroLpf: "Passe-bas gyroscope", dtermLpf: "Passe-bas terme D", gyroNotch: "Coupe-bande gyroscope", motorIdle: "Ralenti moteurs", thrCurve: "Courbe de poussée",
     battCapacity: "Capacité", battCells: "Éléments", logMode: "Journal de vol",
     takeoffAlt: "Altitude de décollage", landSpeed: "Vitesse d'atterrissage", autoDisarm: "Désarmement auto après l'atterrissage", maxTilt: "Inclinaison max",
     maxYawRate: "Vitesse de lacet max", maxClimb: "Montée / descente max", maxHSpeed: "Vitesse horizontale max", beginner: "Mode débutant",

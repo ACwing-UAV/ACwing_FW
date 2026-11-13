@@ -105,6 +105,8 @@ const en = {
     units: "Units", metric: "Metric", imperial: "Imperial", theme: "Theme", dark: "Dark", daylight: "Daylight", droneName: "Drone name",
   },
   controls: {
+    tuning: "Flight tuning (advanced)", tuningHint: "Loop gains and filters of the flight controller. Change one value at a time, props off first; Save writes them to the drone.", notchHint: "0 = off. Set it to the motor noise peak seen in the flight log.",
+    idleHint: "Thrust of each motor when armed, as a fraction of the maximum.", curveHint: "1 = thrust quadratic in the duty (brushed motors), 0 = linear. Measured on the thrust stand.",
     sticks: "Sticks", stickMode: "Stick mode", mode1: "Mode 1", mode2: "Mode 2", sensitivity: "Sensitivity", expo: "Expo",
     deadband: "Deadband", haptics: "Haptic feedback", hapticsHint: "Tick at stick centre and end stops (phones)",
     inputs: "Input sources", inputsHint: "Highest priority wins. The ELRS radio always overrides the app.", elrs: "ELRS radio",
@@ -117,6 +119,7 @@ const en = {
     elrsHelp: "Top priority: when active, the app switches to telemetry only",
   },
   params: {
+    rateP: "Roll/pitch rate P", rateI: "Roll/pitch rate I", rateD: "Roll/pitch rate D", yawP: "Yaw rate P", yawI: "Yaw rate I", attP: "Angle P", gyroLpf: "Gyro low-pass", dtermLpf: "D-term low-pass", gyroNotch: "Gyro notch", motorIdle: "Motor idle", thrCurve: "Thrust curve",
     battCapacity: "Capacity", battCells: "Cells", logMode: "Flight log",
     takeoffAlt: "Takeoff altitude", landSpeed: "Landing speed", autoDisarm: "Auto‑disarm after landing", maxTilt: "Max tilt",
     maxYawRate: "Max yaw rate", maxClimb: "Max climb / descent", maxHSpeed: "Max horizontal speed", beginner: "Beginner mode",
