@@ -390,6 +390,7 @@ static void build_checks(pv2_check_t *it, uint8_t *n)
         in.batt_crit = PARAM(P_BATT_CRIT);
     }
     in.usb_host = usbl_host();
+    in.hover = f.hover;
     *n = checks_build(&in, it, &s_ready, &s_batt_fail);
 }
 

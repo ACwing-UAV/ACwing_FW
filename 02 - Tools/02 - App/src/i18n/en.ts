@@ -25,9 +25,9 @@ const en = {
     battMonitorLost: "Battery monitor stopped: the battery level is unknown and arming is blocked. Restart the drone.",
   },
   checks: {
-    noBattery: "No battery (USB power)", battMonitor: "Battery monitor stopped",
+    noBattery: "No battery (USB power)", battMonitor: "Battery monitor stopped", thrustNeeded: "{p}% of the thrust to hover",
     1: "Battery", 2: "IMU & level", 3: "Compass", 4: "GNSS", 5: "Home set", 6: "ELRS radio", 7: "EKF status",
-    8: "Geofence · failsafe", 9: "Optical flow", 10: "Throttle low", 11: "Calibration", 12: "USB unplugged",
+    8: "Geofence · failsafe", 9: "Optical flow", 10: "Throttle low", 11: "Calibration", 12: "USB unplugged", 13: "Thrust margin",
     state: { 0: "OK", 1: "Check", 2: "Not ready", 3: "n/a" },
   },
   cockpit: {
@@ -80,7 +80,7 @@ const en = {
     1: "Armed", 2: "Disarmed", 3: "Takeoff", 4: "Landed", 5: "Flight mode changed", 6: "Returning to home", 7: "Home set",
     20: "App link lost: failsafe", 21: "Radio link lost: failsafe", 22: "Battery failsafe", 23: "Geofence reached",
     24: "GPS lost", 25: "Optical flow lost", 30: "Battery low", 31: "Battery critical", 32: "Battery empty: landing",
-    40: "Compass interference", 41: "High vibration", 42: "Motor or ESC hot", 43: "ELRS radio has control",
+    40: "Compass interference", 41: "High vibration", 42: "Motor or ESC hot", 43: "ELRS radio has control", 44: "Hover thrust abnormal",
     50: "Calibration saved", 51: "Calibration failed", 60: "Settings saved", 70: "Motors stopped",
   },
   reasons: {
@@ -106,6 +106,7 @@ const en = {
     units: "Units", metric: "Metric", imperial: "Imperial", theme: "Theme", dark: "Dark", daylight: "Daylight", droneName: "Drone name",
   },
   controls: {
+    hoverHint: "Hover thrust of the frame, the starting value of the in-flight estimate: T400 0.51, T800 0.58, T1200 0.65, +0.04 with the GPS board.",
     tuning: "Flight tuning (advanced)", tuningHint: "Loop gains and filters of the flight controller. Change one value at a time, props off first; Save writes them to the drone.", notchHint: "0 = off. Set it to the motor noise peak seen in the flight log.",
     idleHint: "Thrust of each motor when armed, as a fraction of the maximum.", curveHint: "1 = thrust quadratic in the duty (brushed motors), 0 = linear. Measured on the thrust stand.",
     sticks: "Sticks", stickMode: "Stick mode", mode1: "Mode 1", mode2: "Mode 2", sensitivity: "Sensitivity", expo: "Expo",
@@ -120,6 +121,7 @@ const en = {
     elrsHelp: "Top priority: when active, the app switches to telemetry only",
   },
   params: {
+    hoverThr: "Hover thrust",
     rateP: "Roll/pitch rate P", rateI: "Roll/pitch rate I", rateD: "Roll/pitch rate D", yawP: "Yaw rate P", yawI: "Yaw rate I", attP: "Angle P", gyroLpf: "Gyro low-pass", dtermLpf: "D-term low-pass", gyroNotch: "Gyro notch", motorIdle: "Motor idle", thrCurve: "Thrust curve",
     battCapacity: "Capacity", battCells: "Cells", logMode: "Flight log",
     takeoffAlt: "Takeoff altitude", landSpeed: "Landing speed", autoDisarm: "Auto‑disarm after landing", maxTilt: "Max tilt",

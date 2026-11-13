@@ -116,6 +116,7 @@ static uint8_t   s_flow_usable;              /* above the PMW3901 minimum height
 static uint16_t  s_tof_mm = 0xFFFFu;
 static uint32_t  s_tof_ms;
 static float     s_vib2;                     /* EMA of (|a| - 1 g)^2, g^2 */
+static float     s_a_up_lp;                  /* vertical acceleration, ~10 Hz low-pass (hover estimate) */
 static uint16_t  s_acc_clip;
 static float     s_loop_hz, s_jitter_us, s_cpu_pct;
 static uint32_t  s_cpu_cyc;
@@ -162,7 +163,9 @@ static void on_state(const est_t *e, void *user)
         float q[4];
         iekf_get_quat(&e->f, q);
         const float hwin = (float)APP_STEPS_PER_ACC / (float)APP_STEP_HZ;
-        alt_est_predict(&s_alt, alt_est_accel_up(q, e->acc_mean, e->f.nom_acc), hwin);
+        const float a_up = alt_est_accel_up(q, e->acc_mean, e->f.nom_acc);
+        alt_est_predict(&s_alt, a_up, hwin);
+        s_a_up_lp += 0.207f * (a_up - s_a_up_lp);     /* 240 Hz, fc ~ 10 Hz: alpha = dt / (1/(2 pi 10) + dt) */
         const float am = sqrtf(e->acc_mean[0]*e->acc_mean[0] + e->acc_mean[1]*e->acc_mean[1] +
                                e->acc_mean[2]*e->acc_mean[2]);
         const float d = am - (e->f.nom_acc > 0.5f ? e->f.nom_acc : 1.0f);
@@ -436,6 +439,7 @@ static void flight_service(uint32_t *lastSvc)
     v.cos_tilt = ct;
     v.flow_q = s_flow_q;
     v.flow_usable = s_flow_usable;
+    v.a_up = s_a_up_lp - s_alt.x[3];                /* accelerometer bias of the altitude filter removed */
     fc_service(now, est_ok, &v);
     (void)ctrl_service(now);              /* rate loop stalled while armed: motors off */
     {

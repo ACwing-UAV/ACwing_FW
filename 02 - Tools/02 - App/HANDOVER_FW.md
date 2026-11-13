@@ -635,6 +635,7 @@ reuse). Stored in flash with a version/CRC; on a bad CRC load defaults.
 | 50 | armRequireChecks | 1 | 0 | 1 | bool | |
 | 60 | compassPrimary | 1 | 0 | 1 | enum | 0 FC compass, 1 GPS compass (MAG_GPS models) |
 | 70 | logMode | 1 | 0 | 2 | enum | flight log: 0 off, 1 each flight (arm → 1 s after disarm), 2 always (FLASH_LOG models) — firmware 0.5.0 |
+| 80 | hoverThr | 0.51 | 0.25 | 0.85 | – | hover thrust of the frame (normalised): the seed of the in-flight estimate at every arm; T400 0.51, T800 0.58, T1200 0.65, +0.04 with the GPS board (ADR 0010) — firmware 0.7.0 |
 | 81 | thrCurve | 1.0 | 0 | 1 | – | thrust curve θ of the mixer, f(u) = θu² + (1−θ)u: 1 quadratic (brushed motors), 0 linear; from the thrust stand (ADR 0010) — firmware 0.7.0 |
 | 90 | rateP | 0.020 | 0.002 | 0.1 | per rad/s | roll/pitch rate loop P — firmware 0.7.0 |
 | 91 | rateI | 0.20 | 0 | 2 | per rad | roll/pitch rate loop I |
@@ -681,6 +682,7 @@ no item in FAIL.
 | 10 | Throttle low | 0 | FAIL if the active input throttle is not low (§7.1) |
 | 11 | Calibration | **low byte = required** calibrations, **high byte = recommended** (bit = CalType − 1) | FAIL if any required, WARN if any recommended |
 | 12 | USB | 0 | FAIL while a USB host (a computer) is connected: ARM refused with `USB_CONNECTED` (§5.2) — firmware 0.6.0 |
+| 13 | Thrust margin | hover thrust needed at the present cell voltage, % of the maximum ($\hat t_h (4.2/V_{cell})^2$) | N/A without a battery measurement; WARN above 80 % (less than 20 % of the thrust left for control); never FAIL — firmware 0.7.0 (ADR 0010) |
 
 Item 11 drives the badges in Settings › Calibration and the "Calibrate"
 shortcut on the pre-flight screen. Suggested logic: ACCEL required if never
@@ -818,6 +820,7 @@ CAL_SAVE.
 | 41 | WARN | HIGH_VIBRATION | mg | rate-limited |
 | 42 | WARN | MOTOR_HOT | motor | > 80 °C |
 | 43 | WARN | RADIO_OVERRIDE | – | ELRS takes control |
+| 44 | WARN | HOVER_THRUST | hover thrust × 1000 | the in-flight hover estimate left 0.35…0.75 (wrong `hoverThr`, lost propeller, damaged motor); once per flight — firmware 0.7.0 |
 | 50 | INFO | CALIB_DONE | type | after CAL_SAVE |
 | 51 | ERROR | CALIB_FAILED | type | |
 | 60 | INFO | PARAMS_SAVED | – | |
@@ -875,7 +878,7 @@ With 6 bytes of framing per frame, at the default rates:
 | FLIGHT | 31 × 10 | 310 |
 | NAV | 37 × 5 | 185 |
 | MOTORS (quad) | 23 × 5 | 115 |
-| CHECKS (12 items, disarmed) | 56 × 2 | 112 |
+| CHECKS (13 items, disarmed) | 60 × 2 | 120 |
 | POWER | 19 × 5 | 95 |
 | SYSTEM | 29 × 2 | 58 |
 | CAPS | 45 × 0.2 | 9 |

@@ -27,9 +27,9 @@ const es: Translation = {
     battMonitorLost: "Monitor de batería detenido: nivel de batería desconocido y armado bloqueado. Reinicia el dron.",
   },
   checks: {
-    noBattery: "Sin batería (alimentación USB)", battMonitor: "Monitor de batería detenido",
+    noBattery: "Sin batería (alimentación USB)", battMonitor: "Monitor de batería detenido", thrustNeeded: "{p} % del empuje para el vuelo estacionario",
     1: "Batería", 2: "IMU y nivel", 3: "Brújula", 4: "GNSS", 5: "Home fijado", 6: "Radio ELRS", 7: "Estado EKF",
-    8: "Geovalla · failsafe", 9: "Flujo óptico", 10: "Acelerador al mínimo", 11: "Calibración", 12: "USB desconectado",
+    8: "Geovalla · failsafe", 9: "Flujo óptico", 10: "Acelerador al mínimo", 11: "Calibración", 12: "USB desconectado", 13: "Margen de empuje",
     state: { 0: "OK", 1: "Revisar", 2: "No listo", 3: "n/d" },
   },
   cockpit: {
@@ -82,7 +82,7 @@ const es: Translation = {
     1: "Armado", 2: "Desarmado", 3: "Despegue", 4: "Aterrizado", 5: "Modo de vuelo cambiado", 6: "Volviendo a casa", 7: "Home fijado",
     20: "Enlace de la app perdido: failsafe", 21: "Enlace de radio perdido: failsafe", 22: "Failsafe de batería", 23: "Geovalla alcanzada",
     24: "GPS perdido", 25: "Flujo óptico perdido", 30: "Batería baja", 31: "Batería crítica", 32: "Batería agotada: aterrizando",
-    40: "Interferencia de brújula", 41: "Vibración alta", 42: "Motor o ESC caliente", 43: "La radio ELRS tiene el control",
+    40: "Interferencia de brújula", 41: "Vibración alta", 42: "Motor o ESC caliente", 43: "La radio ELRS tiene el control", 44: "Empuje de estacionario anómalo",
     50: "Calibración guardada", 51: "Calibración fallida", 60: "Ajustes guardados", 70: "Motores parados",
   },
   reasons: {
@@ -108,6 +108,7 @@ const es: Translation = {
     units: "Unidades", metric: "Métricas", imperial: "Imperiales", theme: "Tema", dark: "Oscuro", daylight: "Luz diurna", droneName: "Nombre del dron",
   },
   controls: {
+    hoverHint: "Empuje de estacionario del chasis, valor inicial de la estimación en vuelo: T400 0,51, T800 0,58, T1200 0,65, +0,04 con la placa GPS.",
     tuning: "Ajuste de vuelo (avanzado)", tuningHint: "Ganancias y filtros de los lazos del controlador de vuelo. Cambia un valor cada vez, primero sin hélices; Guardar los escribe en el dron.", notchHint: "0 = apagado. Ajústalo al pico de ruido de los motores visto en el registro de vuelo.",
     idleHint: "Empuje de cada motor armado, como fracción del máximo.", curveHint: "1 = empuje cuadrático en el ciclo de trabajo (motores con escobillas), 0 = lineal. Se mide en el banco de empuje.",
     sticks: "Sticks", stickMode: "Modo de sticks", mode1: "Modo 1", mode2: "Modo 2", sensitivity: "Sensibilidad", expo: "Expo",
@@ -122,6 +123,7 @@ const es: Translation = {
     elrsHelp: "Máxima prioridad: cuando está activa, la app pasa a solo telemetría",
   },
   params: {
+    hoverThr: "Empuje de estacionario",
     rateP: "P velocidad alabeo/cabeceo", rateI: "I velocidad alabeo/cabeceo", rateD: "D velocidad alabeo/cabeceo", yawP: "P velocidad guiñada", yawI: "I velocidad guiñada", attP: "P ángulo", gyroLpf: "Paso bajo giroscopio", dtermLpf: "Paso bajo término D", gyroNotch: "Notch giroscopio", motorIdle: "Ralentí motores", thrCurve: "Curva de empuje",
     battCapacity: "Capacidad", battCells: "Celdas", logMode: "Registro de vuelo",
     takeoffAlt: "Altitud de despegue", landSpeed: "Velocidad de aterrizaje", autoDisarm: "Desarmado automático tras aterrizar", maxTilt: "Inclinación máx.",
