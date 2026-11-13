@@ -9,6 +9,10 @@ the flight core, so there are no locks between them.
 | `App/control/att_ctrl.c` | 240 Hz / 960 Hz | tilt loop (P) and body-rate loops (PID), gyro filters |
 | `App/control/mixer.c` | 960 Hz | quad-X mixer: priorities, airmode, thrust curve, battery compensation |
 | `App/app/ctrl_loop.c` | 240 / 960 / 250 Hz | glue: setpoints from `fc_setpoint()`, gains from the parameters, `motors_set()`, stall watchdog |
+| `App/control/pos_ctrl.c` | 250 Hz (fc_core) | horizontal position hold from the optical flow: roll / pitch setpoints when `pos_hold` |
+
+The theory, the design numbers and the block diagrams of every loop and flight condition are in
+[Control loops](../theory/control-loops.md).
 
 ```mermaid
 flowchart LR

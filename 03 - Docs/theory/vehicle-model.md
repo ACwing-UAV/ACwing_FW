@@ -78,38 +78,48 @@ $$
 T_i = k_T\,\Omega_i^2, \qquad Q_i = k_Q\,\Omega_i^2 = \kappa\,T_i,\quad \kappa = k_Q/k_T .
 $$
 
-The rotor sits at $r_i = d\,[\cos\psi_i\;\sin\psi_i\;0]^\top$, at distance $d$
-from the centre and azimuth $\psi_i$. Let $\sigma_i = +1$ if the propeller
-turns counter-clockwise seen from above (the reaction on the frame is
-clockwise), $-1$ otherwise. Then
+The firmware uses the Betaflight quad-X numbering, the same as the app
+(HANDOVER_FW §10.7). With $\ell = d/\sqrt2$ the lever of each rotor about the
+$x$ and $y$ axes:
 
-$$
-T = \sum_i T_i, \qquad
-\tau = \sum_i r_i \times \begin{bmatrix}0\\0\\T_i\end{bmatrix}
-
-      - \kappa\sum_i \sigma_i T_i\,e_3 .
-$$
-
-For the X configuration, take rotors at $\psi = 45°, 135°, 225°, 315°$
-(front-left, rear-left, rear-right, front-right in FLU), with diagonal rotors
-turning the same way, $\sigma = (+1, -1, +1, -1)$:
+| Motor | Position (FLU) | Turns (seen from above) | Reaction on the frame |
+|---|---|---|---|
+| M1 | rear right $(-\ell, -\ell)$ | CW | CCW (+z) |
+| M2 | front right $(+\ell, -\ell)$ | CCW | CW (−z) |
+| M3 | rear left $(-\ell, +\ell)$ | CCW | CW (−z) |
+| M4 | front left $(+\ell, +\ell)$ | CW | CCW (+z) |
 
 $$
 \begin{bmatrix}T\\ \tau_x\\ \tau_y\\ \tau_z\end{bmatrix} =
 \underbrace{\begin{bmatrix}
 1 & 1 & 1 & 1\\
-\tfrac{d}{\sqrt2} & \tfrac{d}{\sqrt2} & -\tfrac{d}{\sqrt2} & -\tfrac{d}{\sqrt2}\\
--\tfrac{d}{\sqrt2} & \tfrac{d}{\sqrt2} & \tfrac{d}{\sqrt2} & -\tfrac{d}{\sqrt2}\\
--\kappa & \kappa & -\kappa & \kappa
+-\ell & -\ell & \ell & \ell\\
+\ell & -\ell & \ell & -\ell\\
+\kappa & -\kappa & -\kappa & \kappa
 \end{bmatrix}}_{M}
-\begin{bmatrix}T_1\\T_2\\T_3\\T_4\end{bmatrix}.
+\begin{bmatrix}T_1\\T_2\\T_3\\T_4\end{bmatrix}
 $$
 
-The **mixer** of the controller is $M^{-1}$: from the demanded $(T, \tau)$ to
-the per-rotor thrusts, which are then saturated and converted to PWM. The rotor
-numbering and the turning directions are a convention to be fixed when the
-frame is assembled. The formula above holds for any choice once $\psi_i$ and
-$\sigma_i$ are set.
+with the FLU signs of the controller: $\tau_x > 0$ rolls right wing down
+(left motors up), $\tau_y > 0$ pitches nose down (rear motors up), $\tau_z > 0$
+yaws counter-clockwise (the CW propellers M1, M4 up).
+
+**Normalised form (firmware).** The controller does not work in newtons. It
+commands a collective $t$ and torques $u_{x,y,z}$ in **normalised thrust per
+motor** (fraction of the maximum thrust $T_{max}$ of one motor at 4.2 V per
+cell, ADR 0010 §1):
+
+$$
+t_i = t + \begin{bmatrix}-1 & -1 & 1 & 1\end{bmatrix}_i u_x
+        + \begin{bmatrix}1 & -1 & 1 & -1\end{bmatrix}_i u_y
+        + \begin{bmatrix}1 & -1 & -1 & 1\end{bmatrix}_i u_z
+$$
+
+so a unit of torque command produces $\tau_x = 4\ell T_{max} u_x$ and
+$\tau_z = 4\kappa T_{max} u_z$. The gains of the rate loop are therefore
+independent of the battery and of the motor curve, which the mixer removes
+([Attitude control and mixer](../firmware/control.md)). Saturation keeps the attitude first: roll/pitch,
+then yaw, then the collective is moved (airmode).
 
 ## Brushed motor dynamics
 
@@ -125,14 +135,59 @@ The 8520 coreless motors are driven by low-side PWM: duty $u \in [0,1]$ on a
 - The steady-state speed grows roughly linearly with the applied voltage
   $u V_{bat}$, so thrust grows roughly with $(u V_{bat})^2$.
 
-Two consequences shape the control design of phase 3:
+**Thrust model used by the firmware (ADR 0010 §1).** With $u' = u\,V_{cell}/4.2$
+the duty referred to a full cell,
 
-- the actuator lag $\tau_m$ limits the useful bandwidth of the rate loop;
-- the same duty gives less thrust as the battery discharges, so the mixer
-  output should be compensated with the measured $V_{bat}$.
+$$
+\frac{T_i}{T_{max}} = f(u') = \theta\,u'^2 + (1-\theta)\,u',
+$$
 
-$k_T$, $k_Q$, $\tau_m$ and the speed curve have to be **identified on a thrust
-stand** with the actual propellers. No values are assumed here.
+$\theta$ = `thrCurve` (1 = purely quadratic). The mixer inverts it:
+$u_i = f^{-1}(t_i)\cdot 4.2/V_{cell}$, with $V_{cell}$ the sagged cell voltage
+of the BattTask. The model neglects the rotor-speed dependence of the
+efficiency and the change of $T_{max}$ with temperature; what is left is
+absorbed by the hover-thrust estimate ([Hover-thrust Kalman filter](hover-kf.md)) and the
+integrators.
+
+Two consequences shape the control design:
+
+- the actuator lag $\tau_m$ limits the useful bandwidth of the rate loop: the
+  rate loop crosses over below $1/\tau_m$;
+- the same duty gives less thrust as the battery discharges: compensated in
+  the mixer, so the hover thrust stays constant over the pack.
+
+## Design numbers (assumed)
+
+The controllers and the host tests use the numbers below. They are **estimates
+from similar 1S micro quads**, not measurements. $k_T$, $\kappa$, $\tau_m$,
+$\theta$ and $T_{max}$ have to be identified on a thrust stand with the actual
+propellers, and the gains re-tuned from flight logs (issue #42: calibration /
+auto-calibration of every tunable parameter).
+
+| Quantity | Value | Used in |
+|---|---|---|
+| mass $m$ | 71 / 82 / 90 g (T400 / T800 / T1200, ADR 0010); 75 g in the host tests | hover thrust |
+| inertia $J_{xx}, J_{yy}, J_{zz}$ | 3.5e-5, 3.5e-5, 6e-5 kg m² | rate-loop gains, `test_ctrl.c` |
+| lever per axis $\ell$ | 28 mm (40 mm arm / √2) | torque per unit command |
+| yaw torque ratio $\kappa$ | 12 mm | yaw authority |
+| maximum thrust per motor $T_{max}$ | 0.343 N at 4.2 V (thrust-to-weight ≈ 1.9) | hover thrust $mg/4T_{max}$ ≈ 0.54 in the test plant (seed 0.51, ADR 0010) |
+| motor lag $\tau_m$ | 35 ms (pole ≈ 28 rad/s) | rate-loop crossover |
+| thrust curve $\theta$ | 1 (quadratic) | mixer |
+| roll/pitch acceleration per unit torque | $4\ell T_{max}/J_{xx}$ ≈ 1100 rad/s² | rate P |
+| yaw acceleration per unit torque | $4\kappa T_{max}/J_{zz}$ ≈ 270 rad/s² | yaw P |
+| vertical acceleration per unit collective | $g/t_h$ ≈ 19 m/s² | vertical-loop gains |
+| hover thrust $t_h$ | 0.51 (T400), 0.58 (T800), 0.65 (T1200), +0.04 with GPS | `hoverThr` seed |
+
+**Simplifications made in the controllers** (kept in the plant of the tests
+where noted):
+
+- rigid body; $\omega\times J\omega$ neglected in the design (in the test plant);
+- rotor gyroscopic torques and blade flapping neglected;
+- rotor drag $\approx -\mu v$ neglected in the controllers; it biases the
+  hover-thrust model in fast climbs, hence its $|v_z| < 0.5$ m/s gate;
+- ground effect neglected: the hover estimate is not updated below 0.15 m;
+- thrust independent of the airspeed (no inflow model): valid at the low
+  speeds of the indoor models.
 
 ## Sensor models
 

@@ -50,10 +50,13 @@ nav:
   - Overview:
       - Repository structure: overview/repository.md
   - Theory:
+      - State estimation overview: theory/estimation.md
       - Vehicle model and dynamics: theory/vehicle-model.md
       - Attitude IEKF: theory/iekf.md
       - IEKF on the microcontroller: theory/iekf-embedded.md
       - Altitude Kalman filter: theory/altitude-kf.md
+      - Hover-thrust Kalman filter: theory/hover-kf.md
+      - Control loops: theory/control-loops.md
   - Firmware:
       - Architecture: firmware/architecture.md
       - Flight core: firmware/flight-core.md
