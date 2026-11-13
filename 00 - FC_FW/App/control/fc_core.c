@@ -673,7 +673,7 @@ static void setpoints(uint32_t now, uint32_t dt_ms)
     const float beg = (PARAM(P_BEGINNER) > 0.5f) ? 0.5f : 1.0f;
     fc_setpoint_t sp;
     memset(&sp, 0, sizeof sp);
-    sp.armed = s_armed; sp.mode = s_mode; sp.autom = s_auto;
+    sp.armed = s_armed; sp.mode = s_mode; sp.autom = s_auto; sp.in_air = s_in_air;
 
     /* entering HOLD / failsafe HOLD: hold the current height */
     if (s_auto != s_prev_auto && (s_auto == PV2_AUTO_HOLD || s_auto == PV2_AUTO_FAILSAFE)) s_h_sp = s_v.h;
@@ -686,7 +686,7 @@ static void setpoints(uint32_t now, uint32_t dt_ms)
     sp.pitch = s_stick[2] * tilt;
     sp.roll_rate  = s_stick[3] * 4.0f * yawr;           /* ACRO: 4x the yaw rate scale */
     sp.pitch_rate = s_stick[2] * 4.0f * yawr;
-    sp.yaw_rate   = s_stick[1] * yawr;
+    sp.yaw_rate   = -s_stick[1] * yawr;                  /* stick right = clockwise = -z (FLU) */
 
     if (!s_armed) { s_prev_vert = 0u; s_sp = sp; return; }
     sp.pos_hold = (uint8_t)(s_in_air && (s_mode == PV2_MODE_POS_HOLD || s_auto == PV2_AUTO_HOLD) &&

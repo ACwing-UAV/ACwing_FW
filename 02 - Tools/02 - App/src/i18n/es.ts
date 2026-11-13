@@ -108,6 +108,8 @@ const es: Translation = {
     units: "Unidades", metric: "Métricas", imperial: "Imperiales", theme: "Tema", dark: "Oscuro", daylight: "Luz diurna", droneName: "Nombre del dron",
   },
   controls: {
+    tuning: "Ajuste de vuelo (avanzado)", tuningHint: "Ganancias y filtros de los lazos del controlador de vuelo. Cambia un valor cada vez, primero sin hélices; Guardar los escribe en el dron.", notchHint: "0 = apagado. Ajústalo al pico de ruido de los motores visto en el registro de vuelo.",
+    idleHint: "Empuje de cada motor armado, como fracción del máximo.", curveHint: "1 = empuje cuadrático en el ciclo de trabajo (motores con escobillas), 0 = lineal. Se mide en el banco de empuje.",
     sticks: "Sticks", stickMode: "Modo de sticks", mode1: "Modo 1", mode2: "Modo 2", sensitivity: "Sensibilidad", expo: "Expo",
     deadband: "Zona muerta", haptics: "Respuesta háptica", hapticsHint: "Clic en el centro y en los topes de los sticks (teléfonos)",
     inputs: "Fuentes de mando", inputsHint: "Gana la prioridad más alta. La radio ELRS siempre tiene preferencia sobre la app.", elrs: "Radio ELRS",
@@ -120,6 +122,7 @@ const es: Translation = {
     elrsHelp: "Máxima prioridad: cuando está activa, la app pasa a solo telemetría",
   },
   params: {
+    rateP: "P velocidad alabeo/cabeceo", rateI: "I velocidad alabeo/cabeceo", rateD: "D velocidad alabeo/cabeceo", yawP: "P velocidad guiñada", yawI: "I velocidad guiñada", attP: "P ángulo", gyroLpf: "Paso bajo giroscopio", dtermLpf: "Paso bajo término D", gyroNotch: "Notch giroscopio", motorIdle: "Ralentí motores", thrCurve: "Curva de empuje",
     battCapacity: "Capacidad", battCells: "Celdas", logMode: "Registro de vuelo",
     takeoffAlt: "Altitud de despegue", landSpeed: "Velocidad de aterrizaje", autoDisarm: "Desarmado automático tras aterrizar", maxTilt: "Inclinación máx.",
     maxYawRate: "Velocidad de guiñada máx.", maxClimb: "Ascenso / descenso máx.", maxHSpeed: "Velocidad horizontal máx.", beginner: "Modo principiante",

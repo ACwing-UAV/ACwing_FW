@@ -217,7 +217,8 @@ models** (ToF, flow, baro).
 
 ### 0x09 MOTORS (1 + 4·n B)
 
-`n u8`, then for each motor (M1…Mn, Betaflight numbering, see §10.7):
+`n u8`, then for each motor (M1…Mn, Betaflight numbering, see §10.7). From firmware 0.7.0 `out` is the PWM duty
+the mixer applies while armed (0 when disarmed, the test output during MOTOR_TEST):
 `rpm u16` (`0xFFFF` = n/a, e.g. brushed motors), `temp i8` °C (`-128` = n/a),
 `out u8` commanded output 0…100 %.
 
@@ -634,6 +635,22 @@ reuse). Stored in flash with a version/CRC; on a bad CRC load defaults.
 | 50 | armRequireChecks | 1 | 0 | 1 | bool | |
 | 60 | compassPrimary | 1 | 0 | 1 | enum | 0 FC compass, 1 GPS compass (MAG_GPS models) |
 | 70 | logMode | 1 | 0 | 2 | enum | flight log: 0 off, 1 each flight (arm → 1 s after disarm), 2 always (FLASH_LOG models) — firmware 0.5.0 |
+| 81 | thrCurve | 1.0 | 0 | 1 | – | thrust curve θ of the mixer, f(u) = θu² + (1−θ)u: 1 quadratic (brushed motors), 0 linear; from the thrust stand (ADR 0010) — firmware 0.7.0 |
+| 90 | rateP | 0.020 | 0.002 | 0.1 | per rad/s | roll/pitch rate loop P — firmware 0.7.0 |
+| 91 | rateI | 0.20 | 0 | 2 | per rad | roll/pitch rate loop I |
+| 92 | rateD | 0.0004 | 0 | 0.004 | per rad/s² | roll/pitch rate loop D (on the measurement) |
+| 93 | yawP | 0.040 | 0.002 | 0.2 | per rad/s | yaw rate loop P |
+| 94 | yawI | 0.20 | 0 | 2 | per rad | yaw rate loop I |
+| 95 | attP | 6.0 | 1 | 15 | 1/s | tilt loop P (ANGLE-type modes) |
+| 96 | gyroLpf | 90 | 20 | 250 | Hz | gyro low-pass of the rate loop |
+| 97 | dtermLpf | 70 | 20 | 250 | Hz | D-term low-pass |
+| 98 | gyroNotch | 0 | 0 | 400 | Hz | gyro notch, 0 = off |
+| 99 | motorIdle | 0.05 | 0 | 0.15 | – | thrust of each motor when armed (fraction of the maximum) |
+
+The loop gains (90–95) are in **normalised thrust per motor**: a roll torque of 0.1 raises the left motors and lowers
+the right ones by 0.1 of the maximum thrust. The mixer compensates the battery and the thrust curve, so the gains do
+not change over the pack (`03 - Docs/firmware/control.md`). They apply at once, armed too (5 Hz); PARAM_SAVE stores
+them. The app shows them under Settings › Controls › Flight tuning.
 
 Rules: battWarn > battCrit > battEmerg (if a SET breaks the order →
 `INVALID/OUT_OF_RANGE`). Enum values the model cannot do (RTH without GNSS)
