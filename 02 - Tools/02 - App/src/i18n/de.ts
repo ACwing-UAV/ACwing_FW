@@ -77,6 +77,7 @@ const de: Translation = {
   },
   levels: { 0: "INFO", 1: "WARNUNG", 2: "FEHLER", 3: "KRITISCH" },
   events: {
+    9: "Funkschalter: {op} abgelehnt ({why})",
     8: "Start abgebrochen: kein Abheben", 33: "Akkuüberwachung gestoppt",
     1: "Scharfgeschaltet", 2: "Gesichert", 3: "Start", 4: "Gelandet", 5: "Flugmodus geändert", 6: "Rückkehr zum Startpunkt", 7: "Home gesetzt",
     20: "App‑Verbindung verloren: Failsafe", 21: "Funkverbindung verloren: Failsafe", 22: "Akku‑Failsafe", 23: "Geofence erreicht",
@@ -107,7 +108,7 @@ const de: Translation = {
     units: "Einheiten", metric: "Metrisch", imperial: "Imperial", theme: "Design", dark: "Dunkel", daylight: "Tageslicht", droneName: "Name der Drohne",
   },
   controls: {
-    rcProtocolHint: "Das Protokoll des Empfängers am Flugcontroller (ACwing FC: Stecker J5).", rcMapHint: "AETR für ExpressLRS, Crossfire und FrSky; TAER für die meisten Spektrum-, Futaba- und FlySky-Sender.", rcCompatible: "Kompatible Empfänger",
+    rcProtocolHint: "Das Protokoll des Empfängers am Flugcontroller (ACwing FC: Stecker J5).", rcMapHint: "AETR für ExpressLRS, Crossfire und FrSky; TAER für die meisten Spektrum-, Futaba- und FlySky-Sender.", rcArmSwKillHint: "Arm-Schalter auf AUX1: aus → an schaltet scharf (nur wenn er vorher aus war), an → aus entschärft am Boden. Im Flug stoppt er die Motoren (wie Betaflight) oder wird abgelehnt.", rcModeMapHint: "AUX2 wählt den Flugmodus, solange die Funke die Kontrolle hat. Standardmäßig aus: Empfänger senden auf Kanälen ohne Schalter den Mittelwert.", rcCompatible: "Kompatible Empfänger",
     hoverHint: "Schwebeschub des Rahmens, Startwert der Schätzung im Flug: T400 0,51, T800 0,58, T1200 0,65, +0,04 mit der GPS-Platine.",
     tuning: "Flugabstimmung (erweitert)", tuningHint: "Verstärkungen und Filter der Regelkreise. Immer nur einen Wert ändern, zuerst ohne Propeller; Speichern schreibt sie in die Drohne.", notchHint: "0 = aus. Auf die Spitze des Motorrauschens im Fluglog setzen.",
     idleHint: "Schub jedes Motors im scharfen Zustand, als Anteil des Maximums.", curveHint: "1 = Schub quadratisch im Tastgrad (Bürstenmotoren), 0 = linear. Am Schubprüfstand gemessen.",
@@ -123,7 +124,7 @@ const de: Translation = {
     elrsHelp: "Höchste Priorität: wenn aktiv, zeigt die App nur noch Telemetrie",
   },
   params: {
-    rcProtocol: "Empfängerprotokoll", rcMap: "Kanalreihenfolge",
+    rcProtocol: "Empfängerprotokoll", rcMap: "Kanalreihenfolge", rcArmSwKill: "Arm-Schalter aus im Flug", rcModeMap: "Modusschalter (AUX2)",
     hoverThr: "Schwebeschub",
     rateP: "Roll/Nick-Rate P", rateI: "Roll/Nick-Rate I", rateD: "Roll/Nick-Rate D", yawP: "Gier-Rate P", yawI: "Gier-Rate I", attP: "Winkel P", gyroLpf: "Gyro-Tiefpass", dtermLpf: "D-Term-Tiefpass", gyroNotch: "Gyro-Notch", motorIdle: "Motor-Leerlauf", thrCurve: "Schubkurve",
     battCapacity: "Kapazität", battCells: "Zellen", logMode: "Fluglog",
@@ -137,6 +138,7 @@ const de: Translation = {
   },
   actions: {
     rcNone: "Kein Empfänger", rcCrsf: "CRSF (ExpressLRS, Crossfire, Tracer)", rcSbus: "SBUS (FrSky, Futaba, …)", rcIbus: "i-BUS (FlySky)", rcDsm: "DSM2 / DSMX (Spektrum)", mapAetr: "AETR (Rollen, Nicken, Gas, Gieren)", mapTaer: "TAER (Gas, Rollen, Nicken, Gieren)",
+    swRefused: "Abgelehnt", swKill: "Motoren aus", modeMapOff: "Aus", modeMapHold: "ANGLE · ALT HOLD · POS HOLD", modeMapAcro: "ACRO · ANGLE · ALT HOLD",
     auto: "Automatisch", logOff: "Aus", logArmed: "Bei jedem Flug", logAlways: "Immer",
     hover: "Schweben", land: "Landen", rth: "Rückkehr zum Startpunkt", useFlow: "Optischen Fluss nutzen", altHold: "ALT HOLD", altHoldWarn: "ALT HOLD + Warnung",
     stopBack: "Anhalten und zurückfliegen", compassFc: "Flugcontroller", compassGps: "GPS‑Modul (weiter von den Motoren entfernt)",
@@ -248,6 +250,7 @@ const de: Translation = {
       fence: "Annäherung an Geofence oder Decke", compass: "Kompassstörung", vibration: "Starke Vibration", hot: "Motor oder ESC heiß (> 80 °C)",
     },
     say: { alt: "Höhe {v} Meter", batt: "Akku {v} Prozent", timer: "{v} Minuten" },
+    radioOp: { arm: "Scharfschalten", disarm: "Entschärfen", mode: "Moduswechsel", kill: "Not-Aus" },
   },
   about: {
     logUsed: "Fluglog‑Speicher belegt", logModeHint: "Im Speicher der Drohne aufgezeichnet; Download unter Fluglogs",

@@ -5,7 +5,8 @@
  *   step 1 (WAITING_USER): sticks at rest; the live values are shown; capture stores the centres
  *   step 2 (RUNNING):      the pilot moves every stick to its end points and every switch through its positions;
  *                          min/max are tracked, AUX positions counted (low < 1300 us, mid, high > 1700 us)
- *   capture -> DONE if every stick moved at least 150 us on each side of its centre (throttle: its range)
+ *   capture -> DONE if every stick moved at least RC_CAL_MIN_SPAN (350 us) on each side of its centre
+ *   (throttle: twice that over its range): the same rule as rc_cal_valid()
  *
  * Order of the sticks: throttle, yaw, pitch, roll (rc_state_t.stick_us). The throttle "centre" is its rest
  * position (bottom); only its min/max are used. Pure logic, no I/O; host-testable.
@@ -14,8 +15,9 @@
 #define CAL_STICKS_H
 
 #include <stdint.h>
+#include "rc_input.h"
 
-#define CS_MIN_SPAN 150u            /**< us each side of the centre (throttle: 300 us total) */
+#define CS_MIN_SPAN RC_CAL_MIN_SPAN /**< us each side of the centre (throttle: twice, total) */
 
 typedef struct { uint16_t centre[4], min[4], max[4]; uint8_t aux_pos[4]; } cal_sticks_t;   /**< 28 bytes */
 

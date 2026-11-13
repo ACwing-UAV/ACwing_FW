@@ -11,6 +11,8 @@
 #include "input_arb.h"
 #include "radio_fs.h"
 #include "cal_sticks.h"
+#include "rc_switches.h"
+#include "proto_v2.h"
 #include <stdio.h>
 #include <string.h>
 
@@ -257,6 +259,12 @@ static void test_cal_sticks(void)
           p.r.aux_pos[0], p.r.aux_pos[1], p.r.aux_pos[2], p.r.aux_pos[3]);
     cal_sticks_t bad = p.r; bad.max[2] = (uint16_t)(bad.centre[2] + 100u);
     CHECK(!cs_valid(&bad), "too little travel on one side: not valid");
+    /* sticks moved 40 % of the way (+-200 us): refused, it would scale a full deflection to 250 % */
+    cal_sticks_t part = { { 1000, 1500, 1500, 1500 }, { 1000, 1300, 1300, 1300 }, { 1400, 1700, 1700, 1700 }, { 0, 0, 0, 0 } };
+    CHECK(!cs_valid(&part), "partial travel: not valid");
+    /* Spektrum at 100 % travel (1100-1900 us): valid */
+    cal_sticks_t dsm = { { 1100, 1500, 1500, 1500 }, { 1100, 1100, 1100, 1100 }, { 1900, 1900, 1900, 1900 }, { 0, 0, 0, 0 } };
+    CHECK(cs_valid(&dsm), "1100-1900 us: valid");
 
     /* the scales with a calibration */
     CHECK(rc_stick_cal(1490, 1050, 1490, 1950) == 0 && rc_stick_cal(1950, 1050, 1490, 1950) == 1000 &&
@@ -290,6 +298,55 @@ static void test_cal_sticks(void)
     CHECK(s.pitch != 0, "without a calibration: the default scale (pitch %d)", s.pitch);
 }
 
+/* arm and mode switches: edges only, acting only while the radio has control */
+static rsw_out_t sw(uint8_t link, uint8_t ctrl, uint8_t took, uint16_t a1, uint16_t a2, uint8_t armed, uint8_t air,
+                    uint8_t kill, uint8_t map)
+{
+    const rsw_in_t in = { link, ctrl, took, a1, a2, armed, air, kill, map };
+    rsw_out_t o;
+    rsw_step(&in, &o);
+    return o;
+}
+static void test_switches(void)
+{
+    rsw_init();
+    CHECK(rsw_position(500) == -1 && rsw_position(1000) == 0 && rsw_position(1500) == 1 && rsw_position(2000) == 2, "positions");
+    CHECK(rsw_mode_of(1, 0) == -1 && rsw_mode_of(2, 1) == PV2_MODE_POS_HOLD && rsw_mode_of(0, 2) == PV2_MODE_ACRO,
+          "maps (0 off)");
+    /* a switch left on at power-up never arms */
+    CHECK(sw(1, 1, 1, 2000, 1500, 0, 0, 1, 0).action == RSW_NONE, "on at the first frame: no edge");
+    CHECK(sw(1, 1, 0, 2000, 1500, 0, 0, 1, 0).action == RSW_NONE, "still on: nothing");
+    CHECK(sw(1, 1, 0, 1000, 1500, 0, 0, 1, 0).action == RSW_NONE, "off, disarmed: nothing");
+    CHECK(sw(1, 1, 0, 2000, 1500, 0, 0, 1, 0).action == RSW_ARM, "off -> on: ARM");
+    /* off: DISARM on the ground, KILL in the air (rcArmSwKill 1), DISARM in the air with 0 */
+    CHECK(sw(1, 1, 0, 1000, 1500, 1, 0, 1, 0).action == RSW_DISARM, "on -> off on the ground: DISARM");
+    (void)sw(1, 1, 0, 2000, 1500, 1, 1, 1, 0);
+    CHECK(sw(1, 1, 0, 1000, 1500, 1, 1, 1, 0).action == RSW_KILL, "on -> off in the air: KILL");
+    (void)sw(1, 1, 0, 2000, 1500, 1, 1, 0, 0);
+    CHECK(sw(1, 1, 0, 1000, 1500, 1, 1, 0, 0).action == RSW_DISARM, "rcArmSwKill 0: DISARM (refused in the air)");
+    /* the app flies: the switch is tracked but does nothing; the radio taking control by it arms */
+    CHECK(sw(1, 0, 0, 1000, 1500, 1, 1, 1, 0).action == RSW_NONE, "radio not in control: no action");
+    CHECK(sw(1, 1, 1, 2000, 1500, 0, 0, 1, 0).action == RSW_ARM, "switch on takes control and arms (tracked before)");
+    /* the radio taking control with the switch off never disarms the drone the app armed */
+    (void)sw(1, 0, 0, 1000, 1500, 1, 1, 1, 0);
+    CHECK(sw(1, 1, 1, 1000, 1500, 1, 1, 1, 0).action == RSW_NONE, "take-over with the switch off: no disarm");
+    /* link lost: failsafe values are no edge, the first frame after it neither */
+    (void)sw(1, 1, 0, 2000, 1500, 1, 1, 1, 0);
+    CHECK(sw(0, 1, 0, 1000, 1500, 1, 1, 1, 0).action == RSW_NONE, "link lost: nothing");
+    CHECK(sw(1, 1, 0, 1000, 1500, 1, 1, 1, 0).action == RSW_NONE, "first frame after the loss: no edge");
+    /* AUX1 not used (no signal): never an action */
+    CHECK(sw(1, 1, 0, 0, 1500, 0, 0, 1, 0).action == RSW_NONE && sw(1, 1, 0, 2000, 1500, 0, 0, 1, 0).action == RSW_NONE,
+          "no signal -> on: no edge");
+    /* mode switch */
+    rsw_init();
+    CHECK(sw(1, 1, 1, 1000, 1500, 0, 0, 1, 0).mode == -1, "map 0: no mode, even at the take-over");
+    CHECK(sw(1, 1, 1, 1000, 1500, 0, 0, 1, 1).mode == PV2_MODE_ALT_HOLD, "map 1, take-over at mid: ALT_HOLD");
+    CHECK(sw(1, 1, 0, 1000, 1500, 0, 0, 1, 1).mode == -1, "same position: nothing");
+    CHECK(sw(1, 1, 0, 1000, 2000, 0, 0, 1, 1).mode == PV2_MODE_POS_HOLD, "high: POS_HOLD");
+    CHECK(sw(1, 0, 0, 1000, 1000, 0, 0, 1, 1).mode == -1, "app in control: no mode");
+    CHECK(sw(1, 1, 1, 1000, 1000, 0, 0, 1, 2).mode == PV2_MODE_ACRO, "map 2 low: ACRO");
+}
+
 int main(void)
 {
     test_crsf();
@@ -299,6 +356,7 @@ int main(void)
     test_input();
     test_arbitration();
     test_cal_sticks();
+    test_switches();
     printf("rc: %d passed, %d failed\n", s_pass, s_fail);
     return s_fail ? 1 : 0;
 }

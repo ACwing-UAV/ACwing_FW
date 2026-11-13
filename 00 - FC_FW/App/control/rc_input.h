@@ -29,6 +29,11 @@ enum { RC_MAP_AETR = 0, RC_MAP_TAER = 1 };
 /** serial settings of a protocol (bsp/rc_uart.c) */
 typedef struct { uint32_t baud; uint8_t parity_even, stop2, inverted; } rc_uart_cfg_t;
 
+/** least travel of a calibrated stick each side of its centre (throttle: twice, over its range). 350 us takes
+ *  Spektrum at 100 % travel (1100-1900 us) and refuses a calibration with the sticks moved only part of the way,
+ *  which would scale a full deflection far beyond 1000 (always saturated). */
+#define RC_CAL_MIN_SPAN 350u
+
 /** STICKS calibration (us), order throttle, yaw, pitch, roll; invalid (zeros) = 1000 / 1500 / 2000 */
 typedef struct { uint16_t centre[4], min[4], max[4]; } rc_cal_t;
 

@@ -6,7 +6,7 @@
 import { drone, type EventEntry } from "../link/drone";
 import { appSettings, type AppSettings } from "../settings/appSettings";
 import { LANGS, translate } from "../i18n";
-import { EventCode, EventLevel } from "../protocol/ids";
+import { EventCode, EventLevel, OP } from "../protocol/ids";
 import { toast } from "../ui/kit";
 import { haptic } from "../input/haptics";
 
@@ -32,8 +32,16 @@ export function speak(text: string, urgent = false) {
   }
 }
 
-export function eventText(e: { code: number; text: string }, lang = appSettings.get().lang) {
+const RADIO_OP: Record<number, string> = { [OP.ARM]: "arm", [OP.DISARM]: "disarm", [OP.SET_MODE]: "mode", [OP.KILL]: "kill" };
+
+export function eventText(e: { code: number; text: string; arg?: number }, lang = appSettings.get().lang) {
   const k = `events.${e.code}`;
+  if (e.code === EventCode.RADIO_REFUSED && e.arg !== undefined) {
+    // arg = op << 8 | reason (firmware rc_switches.c)
+    const op = RADIO_OP[(e.arg >> 8) & 0xff];
+    const v = translate(lang, k, { op: op ? translate(lang, `alerts.radioOp.${op}`) : "?", why: translate(lang, `reasons.${e.arg & 0xff}`) });
+    if (v !== k) return v;
+  }
   const v = translate(lang, k);
   return v === k ? e.text : v;
 }

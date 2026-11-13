@@ -227,6 +227,8 @@ export enum EventCode {
   HOME_SET = 7,
   /** firmware extension: no lift-off within 6 s, back on the ground */
   TAKEOFF_ABORTED = 8,
+  /** WARN: a radio-switch command refused, arg = op << 8 | reason (firmware >= 0.8) */
+  RADIO_REFUSED = 9,
   FAILSAFE_APP_LINK = 20,
   FAILSAFE_RADIO = 21,
   FAILSAFE_BATTERY = 22,
@@ -357,6 +359,9 @@ export const PARAMS: ParamDef[] = [
   // RC receiver (firmware 0.7.0): protocol and channel order of the receiver on the FC (control/rc_input.h)
   { id: 100, key: "rcProtocol", def: 1, min: 0, max: 4, step: 1, options: [1, 2, 3, 4, 0] },
   { id: 101, key: "rcMap", def: 0, min: 0, max: 1, step: 1, options: [0, 1] },
+  // RC switches (firmware 0.8.0, control/rc_switches.h): arm switch AUX1, mode switch AUX2
+  { id: 102, key: "rcArmSwKill", def: 1, min: 0, max: 1, step: 1, options: [1, 0] },
+  { id: 103, key: "rcModeMap", def: 0, min: 0, max: 2, step: 1, options: [0, 1, 2] },
 ];
 
 export const PARAM_BY_KEY: Record<string, ParamDef> = Object.fromEntries(PARAMS.map((p) => [p.key, p]));
@@ -375,4 +380,6 @@ export const ACTION = {
   logMode: { 0: "logOff", 1: "logArmed", 2: "logAlways" },
   rcProtocol: { 0: "rcNone", 1: "rcCrsf", 2: "rcSbus", 3: "rcIbus", 4: "rcDsm" },
   rcMap: { 0: "mapAetr", 1: "mapTaer" },
+  rcArmSwKill: { 0: "swRefused", 1: "swKill" },
+  rcModeMap: { 0: "modeMapOff", 1: "modeMapHold", 2: "modeMapAcro" },
 } as Record<string, Record<number, string>>;

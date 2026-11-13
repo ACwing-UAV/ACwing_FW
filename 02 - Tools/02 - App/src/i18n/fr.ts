@@ -77,6 +77,7 @@ const fr: Translation = {
   },
   levels: { 0: "INFO", 1: "ALERTE", 2: "ERREUR", 3: "CRITIQUE" },
   events: {
+    9: "Interrupteur radio : {op} refusé ({why})",
     8: "Décollage annulé : le drone ne s’est pas soulevé", 33: "Surveillance batterie arrêtée",
     1: "Armé", 2: "Désarmé", 3: "Décollage", 4: "Atterri", 5: "Mode de vol changé", 6: "Retour au point de départ", 7: "Home défini",
     20: "Liaison app perdue : failsafe", 21: "Liaison radio perdue : failsafe", 22: "Failsafe batterie", 23: "Géobarrière atteinte",
@@ -107,7 +108,7 @@ const fr: Translation = {
     units: "Unités", metric: "Métriques", imperial: "Impériales", theme: "Thème", dark: "Sombre", daylight: "Plein jour", droneName: "Nom du drone",
   },
   controls: {
-    rcProtocolHint: "Le protocole du récepteur relié au contrôleur de vol (ACwing FC : connecteur J5).", rcMapHint: "AETR pour ExpressLRS, Crossfire et FrSky ; TAER pour la plupart des émetteurs Spektrum, Futaba et FlySky.", rcCompatible: "Récepteurs compatibles",
+    rcProtocolHint: "Le protocole du récepteur relié au contrôleur de vol (ACwing FC : connecteur J5).", rcMapHint: "AETR pour ExpressLRS, Crossfire et FrSky ; TAER pour la plupart des émetteurs Spektrum, Futaba et FlySky.", rcArmSwKillHint: "Interrupteur d’armement sur AUX1 : coupé → actif arme (seulement s’il a été vu coupé avant), actif → coupé désarme au sol. En vol il arrête les moteurs (comme Betaflight) ou est refusé.", rcModeMapHint: "AUX2 choisit le mode de vol quand la radio a le contrôle. Désactivé par défaut : les récepteurs envoient la valeur centrale sur les voies sans interrupteur.", rcCompatible: "Récepteurs compatibles",
     hoverHint: "Poussée de stationnaire du châssis, valeur de départ de l'estimation en vol : T400 0,51, T800 0,58, T1200 0,65, +0,04 avec la carte GPS.",
     tuning: "Réglage du vol (avancé)", tuningHint: "Gains et filtres des boucles du contrôleur de vol. Changez une valeur à la fois, d'abord sans hélices ; Enregistrer les écrit dans le drone.", notchHint: "0 = désactivé. Réglez-le sur le pic de bruit des moteurs visible dans le journal de vol.",
     idleHint: "Poussée de chaque moteur une fois armé, en fraction du maximum.", curveHint: "1 = poussée quadratique en rapport cyclique (moteurs à balais), 0 = linéaire. Mesurée au banc de poussée.",
@@ -123,7 +124,7 @@ const fr: Translation = {
     elrsHelp: "Priorité maximale : quand elle est active, l'app passe en télémétrie seule",
   },
   params: {
-    rcProtocol: "Protocole du récepteur", rcMap: "Ordre des voies",
+    rcProtocol: "Protocole du récepteur", rcMap: "Ordre des voies", rcArmSwKill: "Interrupteur d’armement coupé en vol", rcModeMap: "Sélecteur de modes (AUX2)",
     hoverThr: "Poussée de stationnaire",
     rateP: "P vitesse roulis/tangage", rateI: "I vitesse roulis/tangage", rateD: "D vitesse roulis/tangage", yawP: "P vitesse lacet", yawI: "I vitesse lacet", attP: "P angle", gyroLpf: "Passe-bas gyroscope", dtermLpf: "Passe-bas terme D", gyroNotch: "Coupe-bande gyroscope", motorIdle: "Ralenti moteurs", thrCurve: "Courbe de poussée",
     battCapacity: "Capacité", battCells: "Éléments", logMode: "Journal de vol",
@@ -137,6 +138,7 @@ const fr: Translation = {
   },
   actions: {
     rcNone: "Aucun récepteur", rcCrsf: "CRSF (ExpressLRS, Crossfire, Tracer)", rcSbus: "SBUS (FrSky, Futaba, …)", rcIbus: "i-BUS (FlySky)", rcDsm: "DSM2 / DSMX (Spektrum)", mapAetr: "AETR (roulis, tangage, gaz, lacet)", mapTaer: "TAER (gaz, roulis, tangage, lacet)",
+    swRefused: "Refusé", swKill: "Moteurs coupés", modeMapOff: "Désactivé", modeMapHold: "ANGLE · ALT HOLD · POS HOLD", modeMapAcro: "ACRO · ANGLE · ALT HOLD",
     auto: "Automatique", logOff: "Désactivé", logArmed: "À chaque vol", logAlways: "Toujours",
     hover: "Stationnaire", land: "Atterrir", rth: "Retour au point de départ", useFlow: "Utiliser le flux optique", altHold: "ALT HOLD", altHoldWarn: "ALT HOLD + alerte",
     stopBack: "S'arrêter et reculer", compassFc: "Contrôleur de vol", compassGps: "Module GPS (plus loin des moteurs)",
@@ -248,6 +250,7 @@ const fr: Translation = {
       fence: "Approche de la géobarrière ou du plafond", compass: "Interférence boussole", vibration: "Vibrations élevées", hot: "Moteur ou ESC chaud (> 80 °C)",
     },
     say: { alt: "Altitude {v} mètres", batt: "Batterie {v} pour cent", timer: "{v} minutes" },
+    radioOp: { arm: "armement", disarm: "désarmement", mode: "changement de mode", kill: "arrêt" },
   },
   about: {
     logUsed: "Mémoire du journal utilisée", logModeHint: "Enregistré dans la mémoire du drone ; à télécharger dans Journaux de vol",

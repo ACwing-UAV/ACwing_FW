@@ -12,6 +12,7 @@
 #include "hover_track.h"
 #include "input_arb.h"
 #include "radio_fs.h"
+#include "rc_switches.h"
 #include <string.h>
 #include <math.h>
 
@@ -40,6 +41,9 @@ static ia_sticks_t s_app;          /* last app RC                               
 static ia_sticks_t s_rc;           /* sticks of the source in control (input_arb.c) */
 static uint8_t  s_radio_ctrl;      /* the RC radio has control                      */
 static uint32_t s_radio_sil;       /* since the last valid radio frame              */
+static rc_state_t s_radio;         /* last receiver state (switches)                 */
+static uint8_t  s_radio_took;      /* the radio took control on this step            */
+static uint8_t  s_exec_radio;      /* the command being executed comes from the radio switches */
 static uint8_t  s_rfs_hold;        /* the radio failsafe chose HOLD                 */
 static float    s_last_thr = -1.0f;
 static float    s_stick[4];
@@ -99,7 +103,8 @@ void fc_init(const fc_config_t *cfg)
     s_flight_ms = 0u; s_have_last = 0u;
     memset(&s_app, 0, sizeof s_app); memset(&s_rc, 0, sizeof s_rc);
     s_radio_ctrl = 0u; s_radio_sil = UINT32_MAX; s_rfs_hold = 0u;
-    ia_init(); rfs_init();
+    ia_init(); rfs_init(); rsw_init();
+    memset(&s_radio, 0, sizeof s_radio); s_radio_took = 0u; s_exec_radio = 0u;
     s_test_motor = 0u;
     s_checks_ready = s_batt_fail = s_calibrating = 0u;
     g_fc_dbg_in_air = 0u;
@@ -264,6 +269,10 @@ static uint8_t fs_action(int p_idx)
 static void result(const fc_cmd_t *c, uint8_t res, uint8_t why)
 {
     if (c->op == FC_OP_MOTOR_STOP) return;   /* internal: no ACK */
+    if (s_exec_radio) {                      /* radio switch: no ACK, a refusal is an EVENT (the app shows why) */
+        if (res != PV2_ACK_OK) event(PV2_EV_WARN, PV2_E_RADIO_REFUSED, (int32_t)(((uint32_t)c->op << 8) | why));
+        return;
+    }
     const fc_res_t r = { c->op, c->seq, res, why };
     (void)spsc_push(&s_resq, &r);
 }
@@ -295,7 +304,7 @@ static void exec(const fc_cmd_t *c, uint32_t now, uint8_t est_running)
         if (s_armed)       { REJ(PV2_R_ARMED); return; }
         if (s_calibrating) { REJ(PV2_R_CALIBRATING); return; }
         if (s_in_air)      { REJ(PV2_R_NOT_LANDED); return; }
-        if (s_radio_ctrl) { REJ(PV2_R_RADIO_OVERRIDE); return; }          /* the RC radio flies (input_arb.c) */
+        if (s_radio_ctrl && !s_exec_radio) { REJ(PV2_R_RADIO_OVERRIDE); return; }   /* the RC radio flies (input_arb.c) */
         if (s_rc.have && age_ms(now, s_rc.t_ms) < FC_ARM_RC_FRESH_MS &&
             s_rc.thr > (hold_mode() ? 100 : -900)) { REJ(PV2_R_THROTTLE_NOT_LOW); return; }
         if (s_batt_fail || batt_unusable()) { REJ(PV2_R_BATTERY_LOW); return; }
@@ -438,8 +447,35 @@ static void arbitrate(uint32_t now)
     ia_step(now, s_armed, &s_app, &radio, &o);
     if (o.took_control) event(PV2_EV_WARN, PV2_E_RADIO_OVERRIDE, 0);
     s_radio_ctrl = o.radio;
+    s_radio = radio;
+    s_radio_took = o.took_control;
     s_rc = o.sticks;
     s_radio_sil = have_radio ? age_ms(now, radio.t_ms) : UINT32_MAX;
+}
+
+/* the radio switches (rc_switches.c) as flight-core commands, executed as the app ones */
+static void radio_switches(uint32_t now, uint8_t est_running)
+{
+    const rsw_in_t in = { s_radio.valid, s_radio_ctrl, s_radio_took, s_radio.aux_us[0], s_radio.aux_us[1],
+                          s_armed, s_in_air, (uint8_t)(PARAM(P_RC_ARM_SW_KILL) > 0.5f),
+                          (uint8_t)(PARAM(P_RC_MODE_MAP) + 0.5f) };
+    rsw_out_t o;
+    rsw_step(&in, &o);
+    fc_cmd_t c;
+    memset(&c, 0, sizeof c);
+    s_exec_radio = 1u;
+    switch (o.action) {
+    case RSW_ARM:    c.op = PV2_OP_ARM;  c.len = 2u; c.p[0] = PV2_ARM_MAGIC0; c.p[1] = PV2_ARM_MAGIC1; exec(&c, now, est_running); break;
+    case RSW_DISARM: c.op = PV2_OP_DISARM; exec(&c, now, est_running); break;
+    case RSW_KILL:   c.op = PV2_OP_KILL; c.len = 4u; memcpy(c.p, "KILL", 4); exec(&c, now, est_running); break;
+    default: break;
+    }
+    if (o.mode >= 0) {
+        memset(&c, 0, sizeof c);
+        c.op = PV2_OP_SET_MODE; c.len = 1u; c.p[0] = (uint8_t)o.mode;
+        if (o.mode != (int8_t)s_mode) exec(&c, now, est_running);
+    }
+    s_exec_radio = 0u;
 }
 
 static void update_sticks(uint32_t now)
@@ -917,6 +953,7 @@ void fc_service(uint32_t now, uint8_t est_running, const fc_vert_t *v)
 
     fc_cmd_t c;
     while (spsc_pop(&s_cmdq, &c)) exec(&c, now, est_running);
+    radio_switches(now, est_running);
 
     air_ground(now, dt);
 

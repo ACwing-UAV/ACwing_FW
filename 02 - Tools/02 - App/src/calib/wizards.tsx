@@ -680,7 +680,9 @@ export function SticksWizard() {
   const step = done(cal?.state) ? 2 : cal && cal.step >= 2 ? 1 : 0;
   const steps = [t("calib.sticks.centre"), t("calib.sticks.range"), t("calib.sticks.result")];
   const linked = hasRx;
-  const full = (i: number) => !!d && d.min[i] <= 1000 && d.max[i] >= 2000;
+  // the firmware rule (control/cal_sticks.h): 350 us each side of the centre, the throttle 700 us over its range
+  const SPAN = 350;
+  const full = (i: number) => !!d && (i === 0 ? d.max[0] - d.min[0] > 2 * SPAN : d.min[i] < d.centre[i] - SPAN && d.max[i] > d.centre[i] + SPAN);
   const box = (xi: number, yi: number, caption: string) => {
     const nx = (v: number) => 10 + ((v - 988) / 1024) * 120, ny = (v: number) => 130 - ((v - 988) / 1024) * 120;
     const ok = full(xi) && full(yi);
