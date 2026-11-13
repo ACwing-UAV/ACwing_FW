@@ -151,7 +151,8 @@ All little-endian, packed. `off` = byte offset in the payload.
 | 27 | char[12] | serial | ASCII, zero padded |
 
 `sensors` bits: `0` IMU, `1` BARO, `2` MAG_FC, `3` MAG_GPS, `4` GNSS, `5` FLOW,
-`6` TOF, `7` ESC_TLM (RPM/temperature), `8` CURRENT, `9` ELRS, `10` LEDS,
+`6` TOF, `7` ESC_TLM (RPM/temperature), `8` CURRENT, `9` ELRS (from firmware 0.7.0: **any RC receiver**
+that has sent valid frames, whatever its protocol, see parameter 100), `10` LEDS,
 `11` FLASH_LOG. **Set a bit only if the part is detected at boot**, not if it
 is merely supported: the app hides every feature whose sensor bit is 0.
 
@@ -226,7 +227,7 @@ the mixer applies while armed (0 when disarmed, the test output during MOTOR_TES
 
 | off | type | field | unit / notes |
 |---|---|---|---|
-| 0 | u8 | lq | ELRS link quality %, `0xFF` = no receiver or not linked |
+| 0 | u8 | lq | RC receiver link quality % (any protocol, see CHECKS item 6), `0xFF` = no receiver seen; 0 = link lost |
 | 1 | i8 | rssi | dBm (ELRS) |
 | 2 | i8 | snr | dB (ELRS) |
 | 3 | u16 | pktRate | Hz (ELRS) |
@@ -647,6 +648,8 @@ reuse). Stored in flash with a version/CRC; on a bad CRC load defaults.
 | 97 | dtermLpf | 70 | 20 | 250 | Hz | D-term low-pass |
 | 98 | gyroNotch | 0 | 0 | 400 | Hz | gyro notch, 0 = off |
 | 99 | motorIdle | 0.05 | 0 | 0.15 | – | thrust of each motor when armed (fraction of the maximum) |
+| 100 | rcProtocol | 1 | 0 | 4 | enum | RC receiver on the FC: 0 none, 1 CRSF (ExpressLRS, TBS Crossfire/Tracer), 2 SBUS (FrSky, Futaba…), 3 i-BUS (FlySky), 4 DSM2/DSMX (Spektrum) — firmware 0.7.0 |
+| 101 | rcMap | 0 | 0 | 1 | enum | channel order: 0 AETR, 1 TAER |
 
 The loop gains (90–95) are in **normalised thrust per motor**: a roll torque of 0.1 raises the left motors and lowers
 the right ones by 0.1 of the maximum thrust. The mixer compensates the battery and the thrust curve, so the gains do
@@ -675,7 +678,7 @@ no item in FAIL.
 | 3 | Compass | interference % | WARN > 15 % or compass recommended; FAIL if uncalibrated on GNSS models |
 | 4 | GNSS | satellites | N/A without GNSS; WARN < 3D or < 8 sats |
 | 5 | Home | horizontal accuracy dm (value/10 = m) | N/A without GNSS; WARN not set |
-| 6 | ELRS radio | LQ % | N/A without receiver/not bound; WARN LQ < 70 |
+| 6 | ELRS radio | LQ % | N/A without receiver/not bound; WARN LQ < 70. From firmware 0.7.0 any RC receiver: LQ from CRSF link statistics, from the SBUS lost frames, 100 for i-BUS/DSM while frames arrive, 0 when the link is lost |
 | 7 | EKF | 0 | FAIL if not converged; WARN if attUnc > 3° |
 | 8 | Geofence · failsafe | geofence radius m (gfMaxDist), or gfMaxAlt without GNSS | WARN if a failsafe action cannot be executed |
 | 9 | Optical flow | quality % | N/A without FLOW; WARN < 50 |

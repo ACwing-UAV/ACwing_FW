@@ -108,6 +108,7 @@ const es: Translation = {
     units: "Unidades", metric: "Métricas", imperial: "Imperiales", theme: "Tema", dark: "Oscuro", daylight: "Luz diurna", droneName: "Nombre del dron",
   },
   controls: {
+    rcProtocolHint: "El protocolo del receptor conectado al controlador de vuelo (ACwing FC: conector J5).", rcMapHint: "AETR para ExpressLRS, Crossfire y FrSky; TAER para la mayoría de emisores Spektrum, Futaba y FlySky.", rcCompatible: "Receptores compatibles",
     hoverHint: "Empuje de estacionario del chasis, valor inicial de la estimación en vuelo: T400 0,51, T800 0,58, T1200 0,65, +0,04 con la placa GPS.",
     tuning: "Ajuste de vuelo (avanzado)", tuningHint: "Ganancias y filtros de los lazos del controlador de vuelo. Cambia un valor cada vez, primero sin hélices; Guardar los escribe en el dron.", notchHint: "0 = apagado. Ajústalo al pico de ruido de los motores visto en el registro de vuelo.",
     idleHint: "Empuje de cada motor armado, como fracción del máximo.", curveHint: "1 = empuje cuadrático en el ciclo de trabajo (motores con escobillas), 0 = lineal. Se mide en el banco de empuje.",
@@ -123,6 +124,7 @@ const es: Translation = {
     elrsHelp: "Máxima prioridad: cuando está activa, la app pasa a solo telemetría",
   },
   params: {
+    rcProtocol: "Protocolo del receptor", rcMap: "Orden de canales",
     hoverThr: "Empuje de estacionario",
     rateP: "P velocidad alabeo/cabeceo", rateI: "I velocidad alabeo/cabeceo", rateD: "D velocidad alabeo/cabeceo", yawP: "P velocidad guiñada", yawI: "I velocidad guiñada", attP: "P ángulo", gyroLpf: "Paso bajo giroscopio", dtermLpf: "Paso bajo término D", gyroNotch: "Notch giroscopio", motorIdle: "Ralentí motores", thrCurve: "Curva de empuje",
     battCapacity: "Capacidad", battCells: "Celdas", logMode: "Registro de vuelo",
@@ -135,6 +137,7 @@ const es: Translation = {
     compassPrimary: "Brújula principal",
   },
   actions: {
+    rcNone: "Sin receptor", rcCrsf: "CRSF (ExpressLRS, Crossfire, Tracer)", rcSbus: "SBUS (FrSky, Futaba, …)", rcIbus: "i-BUS (FlySky)", rcDsm: "DSM2 / DSMX (Spektrum)", mapAetr: "AETR (alabeo, cabeceo, gas, guiñada)", mapTaer: "TAER (gas, alabeo, cabeceo, guiñada)",
     auto: "Automático", logOff: "Apagado", logArmed: "En cada vuelo", logAlways: "Siempre",
     hover: "Estacionario", land: "Aterrizar", rth: "Volver a casa", useFlow: "Usar flujo óptico", altHold: "ALT HOLD", altHoldWarn: "ALT HOLD + aviso",
     stopBack: "Detenerse y retroceder", compassFc: "Controladora de vuelo", compassGps: "Módulo GPS (más lejos de los motores)",

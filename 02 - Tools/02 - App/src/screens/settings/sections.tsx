@@ -89,6 +89,17 @@ export function Controls() {
             <h2>{t("controls.inputs")}</h2><span className="small muted">{t("controls.inputsHint")}</span>
           </div>
           <Row label={t("controls.elrs")} badge={<b className="num muted" style={{ width: 18 }}>1</b>}><span className="small" style={{ color: elrs ? "var(--ok)" : "var(--muted)" }}>{elrs ? t("controls.linked") : t("controls.notLinked")}</span></Row>
+          <ParamSelect k="rcProtocol" hint={t("controls.rcProtocolHint")} />
+          <ParamSelect k="rcMap" hint={t("controls.rcMapHint")} />
+          <div className="small muted" style={{ padding: "4px 0 10px" }}>
+            <b>{t("controls.rcCompatible")}</b>
+            <ul style={{ margin: "4px 0 0", paddingLeft: 18 }}>
+              <li>CRSF — ExpressLRS (RadioMaster, BetaFPV, Happymodel, Jumper, iFlight…), TBS Crossfire / Tracer</li>
+              <li>SBUS — FrSky ACCST/ACCESS (X8R, R-XSR, Archer), Futaba FASST/FHSS, RadioMaster/Jumper/FlySky SBUS receivers</li>
+              <li>i-BUS — FlySky (FS-iA6B, FS-iA10B, FS-X6B)</li>
+              <li>DSM — Spektrum DSM2 / DSMX serial satellites</li>
+            </ul>
+          </div>
           <Row label={`${t("controls.gamepad")}${pad ? ` · ${pad.name}` : ""}`} badge={<b className="num muted" style={{ width: 18 }}>2</b>}>
             {!pad && <span className="small muted">{t("controls.gamepadNone")}</span>}
           </Row>

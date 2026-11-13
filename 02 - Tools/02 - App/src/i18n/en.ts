@@ -106,6 +106,7 @@ const en = {
     units: "Units", metric: "Metric", imperial: "Imperial", theme: "Theme", dark: "Dark", daylight: "Daylight", droneName: "Drone name",
   },
   controls: {
+    rcProtocolHint: "The protocol of the receiver wired to the flight controller (ACwing FC: connector J5).", rcMapHint: "AETR for ExpressLRS, Crossfire and FrSky; TAER for most Spektrum, Futaba and FlySky transmitters.", rcCompatible: "Compatible receivers",
     hoverHint: "Hover thrust of the frame, the starting value of the in-flight estimate: T400 0.51, T800 0.58, T1200 0.65, +0.04 with the GPS board.",
     tuning: "Flight tuning (advanced)", tuningHint: "Loop gains and filters of the flight controller. Change one value at a time, props off first; Save writes them to the drone.", notchHint: "0 = off. Set it to the motor noise peak seen in the flight log.",
     idleHint: "Thrust of each motor when armed, as a fraction of the maximum.", curveHint: "1 = thrust quadratic in the duty (brushed motors), 0 = linear. Measured on the thrust stand.",
@@ -121,6 +122,7 @@ const en = {
     elrsHelp: "Top priority: when active, the app switches to telemetry only",
   },
   params: {
+    rcProtocol: "Receiver protocol", rcMap: "Channel order",
     hoverThr: "Hover thrust",
     rateP: "Roll/pitch rate P", rateI: "Roll/pitch rate I", rateD: "Roll/pitch rate D", yawP: "Yaw rate P", yawI: "Yaw rate I", attP: "Angle P", gyroLpf: "Gyro low-pass", dtermLpf: "D-term low-pass", gyroNotch: "Gyro notch", motorIdle: "Motor idle", thrCurve: "Thrust curve",
     battCapacity: "Capacity", battCells: "Cells", logMode: "Flight log",
@@ -133,6 +135,7 @@ const en = {
     compassPrimary: "Primary compass",
   },
   actions: {
+    rcNone: "No receiver", rcCrsf: "CRSF (ExpressLRS, Crossfire, Tracer)", rcSbus: "SBUS (FrSky, Futaba, …)", rcIbus: "i-BUS (FlySky)", rcDsm: "DSM2 / DSMX (Spektrum)", mapAetr: "AETR (roll, pitch, throttle, yaw)", mapTaer: "TAER (throttle, roll, pitch, yaw)",
     auto: "Automatic", logOff: "Off", logArmed: "Each flight", logAlways: "Always",
     hover: "Hover", land: "Land", rth: "Return to home", useFlow: "Use optical flow", altHold: "ALT HOLD", altHoldWarn: "ALT HOLD + warn",
     stopBack: "Stop and move back", compassFc: "Flight controller", compassGps: "GPS module (farther from motors)",

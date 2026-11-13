@@ -108,6 +108,7 @@ const fr: Translation = {
     units: "Unités", metric: "Métriques", imperial: "Impériales", theme: "Thème", dark: "Sombre", daylight: "Plein jour", droneName: "Nom du drone",
   },
   controls: {
+    rcProtocolHint: "Le protocole du récepteur relié au contrôleur de vol (ACwing FC : connecteur J5).", rcMapHint: "AETR pour ExpressLRS, Crossfire et FrSky ; TAER pour la plupart des émetteurs Spektrum, Futaba et FlySky.", rcCompatible: "Récepteurs compatibles",
     hoverHint: "Poussée de stationnaire du châssis, valeur de départ de l'estimation en vol : T400 0,51, T800 0,58, T1200 0,65, +0,04 avec la carte GPS.",
     tuning: "Réglage du vol (avancé)", tuningHint: "Gains et filtres des boucles du contrôleur de vol. Changez une valeur à la fois, d'abord sans hélices ; Enregistrer les écrit dans le drone.", notchHint: "0 = désactivé. Réglez-le sur le pic de bruit des moteurs visible dans le journal de vol.",
     idleHint: "Poussée de chaque moteur une fois armé, en fraction du maximum.", curveHint: "1 = poussée quadratique en rapport cyclique (moteurs à balais), 0 = linéaire. Mesurée au banc de poussée.",
@@ -123,6 +124,7 @@ const fr: Translation = {
     elrsHelp: "Priorité maximale : quand elle est active, l'app passe en télémétrie seule",
   },
   params: {
+    rcProtocol: "Protocole du récepteur", rcMap: "Ordre des voies",
     hoverThr: "Poussée de stationnaire",
     rateP: "P vitesse roulis/tangage", rateI: "I vitesse roulis/tangage", rateD: "D vitesse roulis/tangage", yawP: "P vitesse lacet", yawI: "I vitesse lacet", attP: "P angle", gyroLpf: "Passe-bas gyroscope", dtermLpf: "Passe-bas terme D", gyroNotch: "Coupe-bande gyroscope", motorIdle: "Ralenti moteurs", thrCurve: "Courbe de poussée",
     battCapacity: "Capacité", battCells: "Éléments", logMode: "Journal de vol",
@@ -135,6 +137,7 @@ const fr: Translation = {
     compassPrimary: "Boussole principale",
   },
   actions: {
+    rcNone: "Aucun récepteur", rcCrsf: "CRSF (ExpressLRS, Crossfire, Tracer)", rcSbus: "SBUS (FrSky, Futaba, …)", rcIbus: "i-BUS (FlySky)", rcDsm: "DSM2 / DSMX (Spektrum)", mapAetr: "AETR (roulis, tangage, gaz, lacet)", mapTaer: "TAER (gaz, roulis, tangage, lacet)",
     auto: "Automatique", logOff: "Désactivé", logArmed: "À chaque vol", logAlways: "Toujours",
     hover: "Stationnaire", land: "Atterrir", rth: "Retour au point de départ", useFlow: "Utiliser le flux optique", altHold: "ALT HOLD", altHoldWarn: "ALT HOLD + alerte",
     stopBack: "S'arrêter et reculer", compassFc: "Contrôleur de vol", compassGps: "Module GPS (plus loin des moteurs)",

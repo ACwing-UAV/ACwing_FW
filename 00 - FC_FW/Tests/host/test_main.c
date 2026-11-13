@@ -22,6 +22,8 @@
 #include "checks.h"
 #include "control_hooks.h"
 #include "mixer.h"
+#include "rc_input.h"
+#include "rc_crsf.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -911,6 +913,38 @@ static void test_app(void)
     f0 = s_nf;
     app_run(2000, &v, 1);
     CHECK(count_type(f0, PV2_FT_FLIGHT) >= 18, "new session: FLIGHT back at 10 Hz (%d in 2 s)", count_type(f0, PV2_FT_FLIGHT));
+
+    /* an ELRS receiver (CRSF): CAPS radio bit, SYSTEM link statistics, CHECKS item 6 */
+    {
+        rc_input_init();
+        (void)rc_input_configure(RC_PROTO_CRSF, RC_MAP_AETR);
+        uint8_t fr[26] = { CRSF_ADDR_FC, 24, CRSF_T_RC_CHANNELS };
+        for (int b = 0; b < 22; ++b) fr[3 + b] = 0;            /* all channels 172 (stick bottom) is fine */
+        fr[25] = rc_crsf_crc8(&fr[2], 23);
+        uint8_t ls[14] = { CRSF_ADDR_FC, 12, CRSF_T_LINK_STATS, 62, 70, 88, 7, 0, 2, 3, 80, 100, 6 };
+        ls[13] = rc_crsf_crc8(&ls[2], 11);
+        f0 = s_nf;
+        for (int k = 0; k < 300; ++k) {                        /* 600 ms of frames at 500 Hz, link stats at 10 Hz */
+            rc_input_feed(fr, 26, now);
+            if (k % 50 == 0) rc_input_feed(ls, 14, now);
+            rc_input_service(now);
+            app_run(2, &v, 1);
+        }
+        app_run(1000, &v, 1);                                  /* the receiver keeps sending */
+        int caps_radio = 0, lq = -1, rssi = 0, item6 = -1, val6 = -1;
+        for (int i = f0; i < s_nf; ++i) {
+            if (s_f[i].type == PV2_FT_CAPS) { pv2_caps_t c; memcpy(&c, s_f[i].p, sizeof c); caps_radio = !!(c.sensors & PV2_S_ELRS); }
+            if (s_f[i].type == PV2_FT_SYSTEM) { pv2_system_t y; memcpy(&y, s_f[i].p, sizeof y); lq = y.lq; rssi = y.rssi; }
+            if (s_f[i].type == PV2_FT_CHECKS) {
+                const uint8_t n = s_f[i].p[1];
+                for (uint8_t k = 0; k < n; ++k) if (s_f[i].p[2 + 4 * k] == PV2_CHK_RADIO) { item6 = s_f[i].p[3 + 4 * k]; int16_t vv; memcpy(&vv, &s_f[i].p[4 + 4 * k], 2); val6 = vv; }
+            }
+        }
+        CHECK(caps_radio, "receiver seen: CAPS radio bit");
+        CHECK(lq == 88 && rssi == -62, "SYSTEM lq %d rssi %d from the CRSF link statistics", lq, rssi);
+        CHECK(item6 == PV2_CK_OK && val6 == 88, "CHECKS 6 radio OK, LQ %d", val6);
+        rc_input_init();                                       /* no receiver for the following tests */
+    }
 }
 
 static void test_ble_priority(void)

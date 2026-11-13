@@ -187,4 +187,16 @@
  * ACwing FC there is no ST-LINK virtual COM port. */
 #define APP_USB_TLM         1
 
+/* ---------------- RC receiver (RcTask, drivers/rc, control/rc_input) ---------------- */
+/* ACwing FC rev A: USART1 PB6 TX / PB7 RX -> receiver connector J5 (ELRS, CRSF 420 kbaud; the protocol is the
+ * parameter rcProtocol). USART1 then no longer carries the PC telemetry: the USB port does (APP_USB_TLM).
+ * NUCLEO-WB55: USART1 is the ST-LINK virtual COM port (PC telemetry): no receiver unless the ST-LINK VCP solder
+ * bridges are opened and APP_RC_UART is set to 1. */
+#if APP_HW_REV == 'A'
+#define APP_RC_UART         1
+#else
+#define APP_RC_UART         0
+#endif
+#define APP_TLM_UART        (!APP_RC_UART)   /**< PC telemetry on USART1 (ST-LINK VCP)        */
+
 #endif /* APP_CONFIG_H */
