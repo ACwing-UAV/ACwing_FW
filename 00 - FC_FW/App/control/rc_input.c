@@ -23,6 +23,11 @@ static uint32_t   s_win_ms, s_win_frames;
 static uint8_t    s_have_win;
 static uint16_t   s_sbus_lost, s_sbus_seen;        /* SBUS frame-lost ratio -> lq */
 
+/* ---- STICKS calibration: written by the AppTask, taken by the RcTask (SPSC flag) ---- */
+static rc_cal_t          s_cal_new, s_cal;
+static volatile uint8_t  s_cal_pending;
+static uint8_t           s_cal_ok;
+
 /* ---- published copy ---- */
 static volatile uint32_t s_seq;
 static rc_state_t        s_pub;
@@ -40,6 +45,45 @@ static int16_t clamp1000(int32_t v) { return (int16_t)(v > 1000 ? 1000 : (v < -1
 
 int16_t rc_stick_from_us(uint16_t us)    { return clamp1000(((int32_t)us - 1500) * 2); }
 int16_t rc_throttle_from_us(uint16_t us) { return clamp1000(((int32_t)us - 1000) * 2 - 1000); }
+
+int16_t rc_stick_cal(uint16_t us, uint16_t mn, uint16_t c, uint16_t mx)
+{
+    const int32_t d = (int32_t)us - c;
+    const int32_t span = (d >= 0) ? (int32_t)mx - c : (int32_t)c - mn;
+    return clamp1000(span > 0 ? d * 1000 / span : 0);
+}
+
+int16_t rc_throttle_cal(uint16_t us, uint16_t mn, uint16_t mx)
+{
+    const int32_t span = (int32_t)mx - mn;
+    return clamp1000(span > 0 ? ((int32_t)us - mn) * 2000 / span - 1000 : -1000);
+}
+
+uint8_t rc_cal_valid(const rc_cal_t *c)
+{
+    /* the same rule as cal_sticks: throttle by its range (its "centre" is the rest position, at the bottom) */
+    if (!(c->min[0] + 300u < c->max[0])) return 0u;
+    for (int i = 1; i < 4; ++i)
+        if (!(c->min[i] + 150u < c->centre[i] && c->centre[i] + 150u < c->max[i])) return 0u;
+    return 1u;
+}
+
+void rc_input_set_cal(const rc_cal_t *cal)
+{
+    s_cal_new = *cal;
+    SPSC_BARRIER();
+    s_cal_pending = 1u;
+}
+
+static void take_cal(void)
+{
+    if (!s_cal_pending) return;
+    SPSC_BARRIER();
+    s_cal = s_cal_new;
+    s_cal_ok = rc_cal_valid(&s_cal);
+    SPSC_BARRIER();
+    s_cal_pending = 0u;
+}
 
 static void reset_parser(void)
 {
@@ -100,10 +144,19 @@ static void apply_frame(const rc_frame_t *f, uint32_t now)
     static const uint8_t k_taer[4] = { 0, 3, 2, 1 };
     const uint8_t *m = (s_map == RC_MAP_TAER) ? k_taer : k_aetr;
     if (f->n < 4u) return;
-    s_w.thr   = rc_throttle_from_us(f->us[m[0]]);
-    s_w.yaw   = rc_stick_from_us(f->us[m[1]]);
-    s_w.pitch = rc_stick_from_us(f->us[m[2]]);
-    s_w.roll  = rc_stick_from_us(f->us[m[3]]);
+    for (int i = 0; i < 4; ++i) s_w.stick_us[i] = f->us[m[i]];
+    const uint16_t *u = s_w.stick_us;
+    if (s_cal_ok) {
+        s_w.thr   = rc_throttle_cal(u[0], s_cal.min[0], s_cal.max[0]);
+        s_w.yaw   = rc_stick_cal(u[1], s_cal.min[1], s_cal.centre[1], s_cal.max[1]);
+        s_w.pitch = rc_stick_cal(u[2], s_cal.min[2], s_cal.centre[2], s_cal.max[2]);
+        s_w.roll  = rc_stick_cal(u[3], s_cal.min[3], s_cal.centre[3], s_cal.max[3]);
+    } else {
+        s_w.thr   = rc_throttle_from_us(u[0]);
+        s_w.yaw   = rc_stick_from_us(u[1]);
+        s_w.pitch = rc_stick_from_us(u[2]);
+        s_w.roll  = rc_stick_from_us(u[3]);
+    }
     for (uint8_t i = 0; i < RC_N_AUX; ++i) s_w.aux_us[i] = (uint16_t)((4u + i < f->n) ? f->us[4u + i] : 0u);
     s_w.valid = (uint8_t)!f->failsafe;
     if (s_w.valid) { s_w.t_ms = now; s_w.ever = 1u; s_w.frames++; s_win_frames++; }
@@ -133,6 +186,7 @@ static uint8_t feed_one(uint8_t b, uint32_t now, rc_frame_t *f)
 
 void rc_input_feed(const uint8_t *b, uint32_t n, uint32_t now)
 {
+    take_cal();
     /* CRSF / SBUS / i-BUS: a pause longer than a frame restarts the parser (resync after noise) */
     if (s_have_byte && (now - s_last_byte_ms) > 3u && s_proto != RC_PROTO_DSM) reset_parser();
     if (n) { s_last_byte_ms = now; s_have_byte = 1u; }

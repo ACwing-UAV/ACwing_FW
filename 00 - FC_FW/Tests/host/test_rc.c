@@ -10,6 +10,7 @@
 #include "rc_dsm.h"
 #include "input_arb.h"
 #include "radio_fs.h"
+#include "cal_sticks.h"
 #include <stdio.h>
 #include <string.h>
 
@@ -228,6 +229,67 @@ static void test_arbitration(void)
     CHECK(rfs_step(1, 2900, 1, 0) == RFS_NONE && rfs_step(1, 3100, 1, 0) == RFS_DISARM, "on the ground: disarm after 3 s");
 }
 
+/* STICKS calibration: the procedure (cal_sticks) and its use in rc_input */
+static void test_cal_sticks(void)
+{
+    cs_proc_t p;
+    cs_start(&p);
+    uint16_t st[4] = { 0, 0, 0, 0 }, aux[4] = { 1000, 1000, 1000, 0 };
+    CHECK(cs_capture(&p) == 0 && p.step == 1, "step 1 without a reading: refused");
+    const uint16_t rest[4] = { 1010, 1490, 1520, 1505 };          /* throttle down, centres off by a few us */
+    cs_sample(&p, rest, aux);
+    CHECK(cs_progress(&p) == 0 && cs_capture(&p) == 1 && p.step == 2, "centres captured");
+    CHECK(p.r.centre[1] == 1490 && p.r.centre[2] == 1520, "centres stored");
+    CHECK(cs_capture(&p) == 0 && p.step == 2, "no travel: refused");
+    /* half the ends */
+    memcpy(st, rest, sizeof st); st[0] = 1900; st[1] = 1100; cs_sample(&p, st, aux);
+    const uint8_t half = cs_progress(&p);
+    CHECK(half > 0 && half < 100, "progress partial (%u)", half);
+    /* every end, AUX1 two positions, AUX2 three positions, AUX3 unused, AUX4 no signal */
+    const uint16_t ends[4][4] = { { 1990, 1050, 1040, 1060 }, { 1000, 1950, 1980, 1970 },
+                                  { 1500, 1500, 1500, 1500 }, { 1010, 1490, 1520, 1505 } };
+    const uint16_t ax[4][4] = { { 2000, 1000, 1000, 0 }, { 1000, 1500, 1000, 0 }, { 2000, 2000, 1000, 0 }, { 1000, 1000, 1000, 0 } };
+    for (int k = 0; k < 4; ++k) cs_sample(&p, ends[k], ax[k]);
+    CHECK(cs_progress(&p) == 100, "every end reached");
+    CHECK(cs_capture(&p) == 1 && p.step == 3 && cs_valid(&p.r), "done, valid");
+    CHECK(p.r.min[0] == 1000 && p.r.max[0] == 1990 && p.r.min[3] == 1060 && p.r.max[3] == 1970, "ranges");
+    CHECK(p.r.aux_pos[0] == 2 && p.r.aux_pos[1] == 3 && p.r.aux_pos[2] == 0 && p.r.aux_pos[3] == 0, "AUX kinds %u %u %u %u",
+          p.r.aux_pos[0], p.r.aux_pos[1], p.r.aux_pos[2], p.r.aux_pos[3]);
+    cal_sticks_t bad = p.r; bad.max[2] = (uint16_t)(bad.centre[2] + 100u);
+    CHECK(!cs_valid(&bad), "too little travel on one side: not valid");
+
+    /* the scales with a calibration */
+    CHECK(rc_stick_cal(1490, 1050, 1490, 1950) == 0 && rc_stick_cal(1950, 1050, 1490, 1950) == 1000 &&
+          rc_stick_cal(1050, 1050, 1490, 1950) == -1000 && rc_stick_cal(2100, 1050, 1490, 1950) == 1000,
+          "stick: centre 0, ends +-1000, clamped");
+    CHECK(rc_throttle_cal(1000, 1000, 1990) == -1000 && rc_throttle_cal(1990, 1000, 1990) == 1000 &&
+          rc_throttle_cal(1495, 1000, 1990) == 0, "throttle over its range");
+
+    /* rc_input: the calibration is taken over at the next frame */
+    rc_input_init();
+    (void)rc_input_configure(RC_PROTO_CRSF, RC_MAP_TAER);
+    rc_cal_t c;
+    memcpy(c.centre, p.r.centre, sizeof c.centre); memcpy(c.min, p.r.min, sizeof c.min); memcpy(c.max, p.r.max, sizeof c.max);
+    CHECK(rc_cal_valid(&c), "valid calibration");
+    rc_input_set_cal(&c);
+    /* TAER: ch1 throttle, ch2 roll (aileron), ch3 pitch (elevator), ch4 yaw (rudder) */
+    uint16_t us[16]; for (int i = 0; i < 16; ++i) us[i] = 1500;
+    us[0] = 1000; us[1] = 1505; us[2] = 1520; us[3] = 1490;
+    uint8_t f[64];
+    rc_input_feed(f, crsf_channels(us, f), 5000);
+    rc_state_t s;
+    (void)rc_input_read(&s);
+    CHECK(s.thr == -1000 && s.roll == 0 && s.pitch == 0 && s.yaw == 0, "off-centre rest reads 0 (thr %d roll %d pitch %d yaw %d)",
+          s.thr, s.roll, s.pitch, s.yaw);
+    CHECK(s.stick_us[0] >= 999 && s.stick_us[0] <= 1001 && s.stick_us[2] >= 1519 && s.stick_us[2] <= 1521, "raw us kept");
+    rc_cal_t none; memset(&none, 0, sizeof none);
+    CHECK(!rc_cal_valid(&none), "zeros: not valid");
+    rc_input_set_cal(&none);
+    rc_input_feed(f, crsf_channels(us, f), 5010);
+    (void)rc_input_read(&s);
+    CHECK(s.pitch != 0, "without a calibration: the default scale (pitch %d)", s.pitch);
+}
+
 int main(void)
 {
     test_crsf();
@@ -236,6 +298,7 @@ int main(void)
     test_dsm();
     test_input();
     test_arbitration();
+    test_cal_sticks();
     printf("rc: %d passed, %d failed\n", s_pass, s_fail);
     return s_fail ? 1 : 0;
 }
