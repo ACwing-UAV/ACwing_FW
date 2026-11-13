@@ -17,8 +17,8 @@ record replaces the old one, and the old one is marked *Superseded*.
 | [0008](0008-flash-log-and-usb-cdc.md) | Flight log as a sector ring, downloaded over USB CDC | Accepted |
 | [0009](0009-usb-ground-link.md) | USB is a ground link: no flight commands, no arming while connected | Accepted |
 | [0010](0010-hover-thrust-model.md) | Hover thrust: normalised collective, battery-compensated mixer, online estimate | Accepted |
-| [0011](0011-hand-launch.md) | Hand launch: armed with the motors stopped, release by free fall, attitude recovery | Proposed |
-| [0012](0012-autonomous-flip.md) | Autonomous flip: a phased manoeuvre gated on the thrust available now | Proposed |
+| [0011](0011-hand-launch.md) | Hand launch: armed with the motors stopped, toss up, motors started away from the hand | Accepted |
+| [0012](0012-autonomous-flip.md) | Autonomous flip: a phased manoeuvre gated on the thrust available now | Accepted |
 
 **New record.** Copy the template below to `NNNN-short-title.md`, add it to
 this table and to `nav` in `mkdocs.yml`.

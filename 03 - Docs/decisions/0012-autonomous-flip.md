@@ -1,6 +1,6 @@
 # 0012. Autonomous flip: a phased manoeuvre gated on the thrust available now
 
-- **Status:** Proposed
+- **Status:** Accepted (2026-11-13, design); the implementation is accepted after the validation below
 - **Date:** 2026-11-13
 
 ## Context

@@ -1,6 +1,6 @@
-# 0011. Hand launch: armed with the motors stopped, release detected by free fall, attitude recovery
+# 0011. Hand launch: armed with the motors stopped, toss up, motors started away from the hand
 
-- **Status:** Proposed
+- **Status:** Accepted (2026-11-13, design); the implementation is accepted after the validation below
 - **Date:** 2026-11-13
 
 ## Context
@@ -20,19 +20,25 @@ What the firmware has and what is missing:
 | Vertical | hover thrust estimate (ADR 0010), vertical loop | thrust right after the release, before the altitude estimate settles |
 | Motors | 8520 brushed, lag ≈ 35 ms (assumed), plus the start from standstill | the time from release to thrust sets the height lost |
 
-A first estimate with the vertical model (60 ms to detect the release, 30 ms to start the motors, lag 35 ms;
-`00 - FC_FW/Tests/sim/launch_1d.py`):
+Propeller guards cannot be relied on: a parameter saying they are fitted is a declaration anyone can set, and no
+signal on the board tells whether they are there (2–4 g are within the spread of the hover thrust). The launch must
+therefore be safe for the hand **by the way it starts the motors**, whatever is fitted.
 
-| Configuration | T/W at 4.2 V | Dropped from the hand: lowest point | Tossed up at 1.5 m/s: lowest point |
+A first estimate with the vertical model (`00 - FC_FW/Tests/sim/launch_1d.py`): the release detected after 60 ms of
+free fall, the motors started only once the drone is 10 cm from the release point (§3), 30 ms to start, lag 35 ms.
+
+| Configuration | T/W | Tossed up at 1.5 m/s: lowest point (motors at) | Dropped: lowest point (motors at) |
 |---|---|---|---|
-| T400 | 1.97 | −0.14 m | 0 (above the release point) |
-| T400 at 3.7 V/cell | 1.53 | −0.21 m | 0 |
-| T800 | 1.71 | −0.17 m | 0 |
-| T1200 | 1.55 | −0.21 m | 0 |
-| T1200 at 3.7 V/cell | 1.20 | −0.45 m | 0 |
+| T400, 4.2 V/cell | 1.97 | 0 (98 ms) | −0.42 m (143 ms) |
+| T400, 3.7 V/cell | 1.53 | 0 | −0.60 m |
+| T800, 4.2 V/cell | 1.71 | 0 | −0.50 m |
+| T800, 3.7 V/cell | 1.33 | 0 | −0.85 m |
+| T1200, 4.2 V/cell | 1.55 | 0 | −0.59 m |
+| T1200, 3.7 V/cell | 1.20 | 0 | −1.25 m |
 
-The real risk is not the height but **the hand**: on a drop, the propellers start about 90 ms after the release,
-when the drone is only about 4 cm below the fingers.
+A toss gains the separation while the drone still rises, so it costs no height; a drop pays for every centimetre of
+separation with height. Without the separation rule, a drop starts the propellers 90 ms after the release, about
+4 cm below the fingers.
 
 ## Decision
 
@@ -45,9 +51,10 @@ as `rc_switches` and `pos_ctrl` are.
 ```mermaid
 stateDiagram-v2
   [*] --> Ready: LAUNCH accepted<br/>(armed, motors stopped)
-  Ready --> Released: free fall ≥ 60 ms<br/>(after the presentation)
+  Ready --> Released: push > 1.3 g, then free fall ≥ 60 ms<br/>(after the presentation)
   Ready --> [*]: 10 s timeout, DISARM, KILL,<br/>link lost, USB → disarm
-  Released --> Recover: motors start<br/>thrust 1.0, attitude level
+  Released --> Recover: 10 cm from the release point<br/>motors start, thrust 1.0, attitude level
+  Released --> Recover: 0.3 s (fallback)
   Recover --> Hold: tilt < 15°, |ω| < 1 rad/s,<br/>v_z ≥ 0
   Recover --> Land: not recovered in 1.5 s
   Hold --> [*]: ALT_HOLD / POS_HOLD at the height reached
@@ -62,7 +69,8 @@ stateDiagram-v2
   - EVENT 10 LAUNCH_READY;
   - any of the following disarms: 10 s timeout, DISARM, KILL, the link lost, a USB host.
 - **Presentation:** the release is armed only after the drone has been held still and level (tilt < 30°, |ω| < 1 rad/s) for 0.5 s. A drone carried while walking, or swung, never starts its motors.
-- **Release:** the specific force below 0.3 g for 60 ms (free fall, or the ballistic phase of a toss), with the gyro not saturated → EVENT 11 LAUNCH_RELEASED.
+- **Release:** the push of the hand (specific force above 1.3 g, the toss) followed by free fall (below 0.3 g for 60 ms), with the gyro not saturated → EVENT 11 LAUNCH_RELEASED. With `launchDrop` = 1, free fall alone is accepted (§3).
+- **Separation:** the motors stay off until the drone is 10 cm from the release point (§3).
 - **Recover:**
   - collective 1.0 while falling, then $\hat t_h/\cos(\text{tilt})$;
   - attitude setpoint level, with full authority (airmode);
@@ -82,11 +90,21 @@ The LSM6DSV16X full scale goes from ±2000 to ±4000 °/s, for every mode.
 - Bias calibration and the IEKF are unchanged; only the driver conversion constant changes.
 - Saturation is reported as a flag, and the launch refuses the release while it is set.
 
-### 3. Safety rules
+### 3. Safety rules: the hand does not depend on guards
 
-- **Toss up rather than drop.** The app teaches a toss from a flat palm, upwards; a drop is accepted, with the hand pulled away. Propeller guards are required: the launch is refused unless the frame parameter says the guards are fitted (`propGuards`).
-- **No launch from the radio arm switch.** The launch is an explicit action, from the app (a hold-to-confirm button) or from a radio switch mapped only to it (AUX3, later).
-- **No release indoors without an altitude source.**
+- **Motors started away from the hand.** The firmware does not rely on propeller guards and has no parameter for them. After the release, it starts the motors only once the drone is **10 cm** from the release point. The rule is always active: no parameter disables it.
+  - The distance is the double integral of the world acceleration $R f - g\,e_3$, from the release.
+  - The velocity at the release is the integral of the push, from the presentation, where the drone was still.
+  - Over the 0.1–0.2 s involved, the drift of this dead reckoning is millimetres.
+  - If the 10 cm are not reached within 0.3 s, the motors start anyway: the drone is falling and must recover.
+- **Toss up as the standard launch.** The release requires the push of a toss first, so the drone leaves the hand upwards, and the hand is below the propellers, not above them. The app shows the gesture: flat palm, a short upward push.
+- **Drop only as an explicit option.** `launchDrop` (104, default 0) also accepts free fall without a push.
+  - It costs 0.4–1.3 m of height (table above).
+  - It is refused when the T/W available now is below 1.7.
+  - The app tells the pilot to pull the hand away sideways.
+- **What remains.** A hand held above the drone at the release is still exposed: these rules lower the risk for the normal gesture, they do not remove it. The app shows the warning before every launch.
+- **No launch from the radio arm switch.** The launch is an explicit action: from the app (a hold-to-confirm button), or from a radio switch mapped only to it (AUX3, later).
+- **No release without an altitude source.**
 
 ### 4. Protocol and parameters
 
@@ -94,9 +112,9 @@ The LSM6DSV16X full scale goes from ±2000 to ±4000 °/s, for every mode.
 |---|---|
 | op | `0x1A` LAUNCH, payload `0xA5 0x5A` |
 | auto | `6` LAUNCH; FLIGHT shows `motors_off` while ready |
-| events | 10 LAUNCH_READY (INFO), 11 LAUNCH_RELEASED (INFO), 12 LAUNCH_ABORTED (WARN, arg = reason) |
-| parameter | `propGuards` (104, 0/1) |
-| constants | release 0.3 g / 60 ms, presentation 0.5 s, ready timeout 10 s, recovery 1.5 s |
+| events | 10 LAUNCH_READY (INFO), 11 LAUNCH_RELEASED (INFO, arg = ms to the motor start), 12 LAUNCH_ABORTED (WARN, arg = reason) |
+| parameter | `launchDrop` (104, 0/1, default 0) |
+| constants | push 1.3 g, free fall 0.3 g / 60 ms, separation 10 cm (fallback 0.3 s), presentation 0.5 s, ready timeout 10 s, recovery 1.5 s, drop T/W ≥ 1.7 |
 
 ## Consequences
 
@@ -113,20 +131,27 @@ The LSM6DSV16X full scale goes from ±2000 to ±4000 °/s, for every mode.
   holding time. Rejected.
 - **Detect the release by the height (baro/ToF).** The baro needs hundreds of ms to see 0.2 m, and the ToF sees the
   hand or the floor. Too late, and ambiguous.
-- **Detect the release by a large acceleration (the push of the toss).** A jolt or a tap gives the same signal, and a
-  drop has no push. Free fall is the common signature of a drop and a toss; a hand that holds the drone always
-  gives about 1 g.
+- **Detect the release by the push alone.** A jolt or a tap gives the same signal. The push is used only as the
+  first half of the signature: push, then free fall.
+- **A `propGuards` parameter as an interlock.** It is a declaration: anyone can set it, and the guards can be
+  removed after. Rejected in favour of the separation rule, which protects the hand without trusting it.
+- **A hardware interlock** (a contact closed by the guards). Considered and not pursued.
+- **Start the motors at the free-fall detection** (no separation). 0.3 m less height lost on a drop, with the
+  propellers 4 cm below the fingers. Rejected.
 - **Motors at full thrust on any free fall while armed** (a "catch" feature). Useful later as a recovery from a
   failed motor test or a fall, but it is not a launch: no presentation, no explicit action.
 
 ## Validation (before implementation is accepted)
 
 1. **Host simulation:** the rotational plant of `ctrl_test` plus the vertical point mass, across a grid of releases:
-   - tilt ±40°, body rates up to ±400 °/s, a drop and tosses at 0.5–2 m/s;
+   - tilt ±40°, body rates up to ±400 °/s, tosses at 0.5–2 m/s and drops;
    - 4.2 and 3.6 V, T400/T800/T1200 masses;
-   - pass criteria: recovered within 0.5 s, lowest point ≥ −0.5 m, no attitude error > 5° after the recovery.
+   - pass criteria: motors off until 10 cm of separation, recovered within 0.5 s after the start, a toss loses
+     no height below the release point, a drop within the table above, no attitude error > 5° after the
+     recovery.
 2. **False releases:** synthetic and logged IMU traces of handling (walking, running, shaking, a tap, setting the drone down, a jump with it in the hand). Pass criterion: no release.
-3. **Bench, props off, `MOTORS_ENABLE` = 0:**
+3. **Separation estimate:** logged tosses and drops (props off) against a camera or a string of known length: the 10 cm detected within ±2 cm.
+4. **Bench, props off, `MOTORS_ENABLE` = 0:**
    - drop onto a cushion and check the release in the log (EVENT 11, the timing);
    - then props on, tethered from above.
-4. **First real launches:** T400, full battery, over a soft floor, propeller guards fitted.
+5. **First real launches:** T400, full battery, over a soft floor, tosses only.
