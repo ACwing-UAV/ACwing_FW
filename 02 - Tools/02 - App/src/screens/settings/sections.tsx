@@ -93,6 +93,7 @@ export function Controls() {
           <ParamSelect k="rcMap" hint={t("controls.rcMapHint")} />
           <ParamSelect k="rcArmSwKill" hint={t("controls.rcArmSwKillHint")} />
           <ParamSelect k="rcModeMap" hint={t("controls.rcModeMapHint")} />
+          <ParamSelect k="launchDrop" hint={t("controls.launchDropHint")} />
           <div className="small muted" style={{ padding: "4px 0 10px" }}>
             <b>{t("controls.rcCompatible")}</b>
             <ul style={{ margin: "4px 0 0", paddingLeft: 18 }}>

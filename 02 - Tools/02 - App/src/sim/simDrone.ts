@@ -249,6 +249,25 @@ export class SimDrone {
         this.event(EventLevel.INFO, EventCode.ARMED, "Armed");
         return ok;
       }
+      case OP.LAUNCH: {
+        // hand launch (ADR 0011): the ARM checks, the beginner rule, then armed with the motors stopped
+        if (r.u8_() !== ARM_MAGIC[0] || r.u8_() !== ARM_MAGIC[1]) return [AckResult.INVALID, Reason.NONE];
+        if (this.armed) return rej(Reason.ARMED);
+        if (this.cal) return rej(Reason.CALIBRATING);
+        if (this.inAir) return rej(Reason.NOT_LANDED);
+        if (this.p("beginner")) return rej(Reason.NONE);
+        if (this.battLevel >= BattWarn.CRITICAL || this.battMonitorLost) return rej(Reason.BATTERY_LOW);
+        if (this.battLevel >= BattWarn.LOW) return rej(Reason.THRUST_LOW);
+        if (this.p("armRequireChecks") && !this.checks().ready) return rej(Reason.CHECKS_FAILING);
+        this.armed = true;
+        this.mahAtArm = this.usedMah;
+        this.landedT = 0;
+        this.auto = AutoAction.LAUNCH;
+        this.launchT = 0;
+        this.event(EventLevel.INFO, EventCode.ARMED, "Armed");
+        this.event(EventLevel.INFO, EventCode.LAUNCH_READY, "Launch ready: toss the drone up");
+        return ok;
+      }
       case OP.DISARM:
         if (!this.armed) return ok;
         if (this.inAir) return rej(Reason.NOT_LANDED);
@@ -397,6 +416,7 @@ export class SimDrone {
   }
 
   private takeoffTarget = 1;
+  private launchT = 0; // s in the hand since LAUNCH (the simulator tosses the drone after 3 s)
   private fsLong = false;
   private collectiveThr = 0; // ACRO / ANGLE: collective 0..1 from the throttle stick
   private gfCeilEv = false;  // EVENT 23 sent for the current ceiling breach
@@ -805,7 +825,17 @@ export class SimDrone {
     if (this.landIdle && !rcStale && thr < -0.9) this.landIdle = false;
 
     if (this.armed && !this.killedFall) {
-      if (this.auto === AutoAction.TAKEOFF) {
+      if (this.auto === AutoAction.LAUNCH) {
+        // in the hand, motors stopped; after 3 s the simulator tosses it: released, then the height held
+        this.launchT += dt;
+        if (!this.inAir && this.launchT >= 3) {
+          this.inAir = true;
+          this.alt = Math.max(this.alt, 1.3);
+          this.event(EventLevel.INFO, EventCode.LAUNCH_RELEASED, "Launched");
+          this.auto = AutoAction.NONE;
+          this.mode = this.sensors & (SENSOR.GNSS | SENSOR.FLOW) ? FlightMode.POS_HOLD : FlightMode.ALT_HOLD;
+        }
+      } else if (this.auto === AutoAction.TAKEOFF) {
         tgtVz = this.alt < this.takeoffTarget - 0.05 ? 0.6 : 0;
         if (this.alt >= this.takeoffTarget - 0.05) {
           this.auto = AutoAction.NONE;

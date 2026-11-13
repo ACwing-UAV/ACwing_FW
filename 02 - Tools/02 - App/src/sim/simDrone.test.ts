@@ -105,3 +105,24 @@ describe("simulator: manual collective in ANGLE and ACRO", () => {
   });
 });
 
+
+describe("simulator: hand launch (ADR 0011)", () => {
+  it("LAUNCH: armed with the motors stopped in the hand, then tossed: in the air, height held", () => {
+    const d = new SimDrone("indoor");
+    d.onSubscribe();
+    fly(d, 0.2, { throttle: -1000 });
+    d.command(Cmd.launch(1));
+    const p = d as unknown as Peek;
+    expect(p.armed).toBe(true);
+    expect(p.auto).toBe(AutoAction.LAUNCH);
+    fly(d, 2, { throttle: 0 });
+    expect(p.inAir).toBe(false);                          // still in the hand
+    fly(d, 1.5, { throttle: 0 });                         // the simulator tosses it after 3 s
+    expect(p.inAir).toBe(true);
+    expect(p.auto).toBe(AutoAction.NONE);
+    expect([FlightMode.ALT_HOLD, FlightMode.POS_HOLD]).toContain(p.mode);
+    const h0 = p.alt;
+    fly(d, 2, { throttle: 0 });
+    expect(Math.abs(p.alt - h0)).toBeLessThan(0.3);       // holds the height reached
+  });
+});

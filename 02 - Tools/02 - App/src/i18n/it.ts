@@ -34,7 +34,7 @@ const it: Translation = {
   },
   cockpit: {
     armed: "ARMATO", disarmed: "DISARMATO", slideToDisarm: "ARMATO · scorri per disarmare", slideToDisarmAria: "Scorri per disarmare (solo a terra)",
-    flightMode: "Modalità di volo", flight: "Volo", autoTakeoff: "Decollo auto", autoLand: "Atterraggio auto", rth: "RTH", rthLong: "Ritorno a casa",
+    flightMode: "Modalità di volo", flight: "Volo", autoTakeoff: "Decollo auto", launch: "Lancio a mano", launchHold: "tieni premuto per iniziare", launchReady: "Lancialo verso l’alto dal palmo aperto · mano sotto il drone, mai sopra le eliche", autoLand: "Atterraggio auto", rth: "RTH", rthLong: "Ritorno a casa",
     pause: "Pausa / hover", kill: "STOP MOTORI", killHold: "tieni premuto 2 s", killConfirm: "Fermare i motori in volo? Il drone cadrà.",
     killYes: "Ferma i motori", relAlt: "Quota relativa", vSpeed: "Velocità verticale", gSpeed: "Velocità al suolo", home: "Home",
     homeDetail: "rotta {brg}° · RTH ≈ {eta}", motorsRpm: "Motori (RPM)", motorsOut: "Motori (uscita)", avgCell: "Cella media", used: "Consumati",
@@ -57,7 +57,7 @@ const it: Translation = {
     setCapacity: "Imposta la capacità della batteria",
   },
   modes: { 0: "ACRO", 1: "ANGLE", 2: "ALT HOLD", 3: "POS HOLD" },
-  auto: { 0: "", 1: "DECOLLO", 2: "ATTERRAGGIO", 3: "RTH", 4: "PAUSA", 5: "FAILSAFE" },
+  auto: { 0: "", 1: "DECOLLO", 2: "ATTERRAGGIO", 3: "RTH", 4: "PAUSA", 5: "FAILSAFE", 6: "LANCIO" },
   telemetry: {
     title: "Telemetria", recording: "Registrazione log", exportCsv: "Esporta CSV", battery: "Batteria", groundSpeed: "Velocità al suolo",
     homeDist: "Distanza da home", radioLink: "Link radio", estRemaining: "Autonomia stimata", rthNeeds: "RTH richiede {t}",
@@ -77,6 +77,7 @@ const it: Translation = {
   },
   levels: { 0: "INFO", 1: "AVVISO", 2: "ERRORE", 3: "CRITICO" },
   events: {
+    10: "Pronto al lancio: lancia il drone verso l’alto", 11: "Lanciato", 12: "Lancio annullato: {why}",
     9: "Interruttore radio: {op} rifiutato ({why})",
     8: "Decollo annullato: il drone non si è sollevato", 33: "Monitor batteria fermo",
     1: "Armato", 2: "Disarmato", 3: "Decollo", 4: "Atterrato", 5: "Modalità di volo cambiata", 6: "Ritorno a casa", 7: "Home impostata",
@@ -90,7 +91,7 @@ const it: Translation = {
     5: "batteria troppo bassa", 6: "home non impostata", 7: "la radio ELRS ha il controllo", 8: "il drone è armato", 9: "rimozione eliche non confermata",
     10: "il drone non è armato", 11: "è in corso una calibrazione", 12: "nessuna calibrazione in corso", 13: "il drone si sta muovendo",
     14: "valore fuori intervallo", 15: "impostazione sconosciuta", 16: "sensore non montato",
-    17: "è collegato un cavo USB a un computer: scollegalo", 18: "non consentito via USB (link di terra)", 19: "un altro dispositivo ha il controllo delle impostazioni",
+    17: "è collegato un cavo USB a un computer: scollegalo", 18: "non consentito via USB (link di terra)", 19: "un altro dispositivo ha il controllo delle impostazioni", 20: "spinta insufficiente ora (batteria o peso)",
   },
   cmdError: { rejected: "Non eseguito: {why}", timeout: "Nessuna risposta dal drone", offline: "Non connesso", other: "Il drone ha rifiutato il comando" },
   settings: {
@@ -108,7 +109,7 @@ const it: Translation = {
     units: "Unità", metric: "Metriche", imperial: "Imperiali", theme: "Tema", dark: "Scuro", daylight: "Luce diurna", droneName: "Nome del drone",
   },
   controls: {
-    rcProtocolHint: "Il protocollo del ricevitore collegato al controllore di volo (ACwing FC: connettore J5).", rcMapHint: "AETR per ExpressLRS, Crossfire e FrSky; TAER per la maggior parte dei trasmettitori Spektrum, Futaba e FlySky.", rcArmSwKillHint: "Interruttore di arm su AUX1: spento → acceso arma (solo se visto spento prima), acceso → spento disarma a terra. In volo ferma i motori (come Betaflight) o viene rifiutato.", rcModeMapHint: "AUX2 sceglie la modalità di volo mentre la radio ha il controllo. Spento di default: i ricevitori inviano il valore centrale sui canali senza interruttore.", rcCompatible: "Ricevitori compatibili",
+    rcProtocolHint: "Il protocollo del ricevitore collegato al controllore di volo (ACwing FC: connettore J5).", rcMapHint: "AETR per ExpressLRS, Crossfire e FrSky; TAER per la maggior parte dei trasmettitori Spektrum, Futaba e FlySky.", rcArmSwKillHint: "Interruttore di arm su AUX1: spento → acceso arma (solo se visto spento prima), acceso → spento disarma a terra. In volo ferma i motori (come Betaflight) o viene rifiutato.", rcModeMapHint: "AUX2 sceglie la modalità di volo mentre la radio ha il controllo. Spento di default: i ricevitori inviano il valore centrale sui canali senza interruttore.", launchDropHint: "Spento: solo un lancio verso l’alto avvia i motori (partono a 10 cm dalla mano o in cima al lancio). Acceso: accetta anche lasciarlo cadere; costa 0,4–1,3 m di quota e richiede più spinta.", rcCompatible: "Ricevitori compatibili",
     hoverHint: "Spinta di hover del telaio, valore di partenza della stima in volo: T400 0,51, T800 0,58, T1200 0,65, +0,04 con la scheda GPS.",
     tuning: "Taratura del volo (avanzata)", tuningHint: "Guadagni e filtri dei loop del controllore di volo. Cambia un valore alla volta, prima senza eliche; Salva li scrive sul drone.", notchHint: "0 = spento. Impostalo sul picco di rumore dei motori visto nel log di volo.",
     idleHint: "Spinta di ogni motore da armato, come frazione della massima.", curveHint: "1 = spinta quadratica nel duty (motori a spazzole), 0 = lineare. Si misura al banco di spinta.",
@@ -124,7 +125,7 @@ const it: Translation = {
     elrsHelp: "Priorità massima: quando è attiva, l'app passa alla sola telemetria",
   },
   params: {
-    rcProtocol: "Protocollo del ricevitore", rcMap: "Ordine dei canali", rcArmSwKill: "Interruttore arm spento in volo", rcModeMap: "Selettore modi (AUX2)",
+    rcProtocol: "Protocollo del ricevitore", rcMap: "Ordine dei canali", rcArmSwKill: "Interruttore arm spento in volo", rcModeMap: "Selettore modi (AUX2)", launchDrop: "Lancio a mano",
     hoverThr: "Spinta di hover",
     rateP: "P rate rollio/beccheggio", rateI: "I rate rollio/beccheggio", rateD: "D rate rollio/beccheggio", yawP: "P rate imbardata", yawI: "I rate imbardata", attP: "P angolo", gyroLpf: "Passa-basso giroscopio", dtermLpf: "Passa-basso termine D", gyroNotch: "Notch giroscopio", motorIdle: "Minimo motori", thrCurve: "Curva di spinta",
     battCapacity: "Capacità", battCells: "Celle", logMode: "Log di volo",
@@ -138,7 +139,7 @@ const it: Translation = {
   },
   actions: {
     rcNone: "Nessun ricevitore", rcCrsf: "CRSF (ExpressLRS, Crossfire, Tracer)", rcSbus: "SBUS (FrSky, Futaba, …)", rcIbus: "i-BUS (FlySky)", rcDsm: "DSM2 / DSMX (Spektrum)", mapAetr: "AETR (rollio, beccheggio, gas, imbardata)", mapTaer: "TAER (gas, rollio, beccheggio, imbardata)",
-    swRefused: "Rifiutato", swKill: "Motori spenti", modeMapOff: "Spento", modeMapHold: "ANGLE · ALT HOLD · POS HOLD", modeMapAcro: "ACRO · ANGLE · ALT HOLD",
+    swRefused: "Rifiutato", swKill: "Motori spenti", modeMapOff: "Spento", modeMapHold: "ANGLE · ALT HOLD · POS HOLD", modeMapAcro: "ACRO · ANGLE · ALT HOLD", launchTossOnly: "Solo lancio verso l’alto", launchDropToo: "Lancio o caduta",
     auto: "Automatico", logOff: "Spento", logArmed: "A ogni volo", logAlways: "Sempre",
     hover: "Hover", land: "Atterra", rth: "Ritorno a casa", useFlow: "Usa flusso ottico", altHold: "ALT HOLD", altHoldWarn: "ALT HOLD + avviso",
     stopBack: "Fermati e torna indietro", compassFc: "Flight controller", compassGps: "Modulo GPS (più lontano dai motori)",
@@ -251,6 +252,7 @@ const it: Translation = {
     },
     say: { alt: "Quota {v} metri", batt: "Batteria {v} per cento", timer: "{v} minuti" },
     radioOp: { arm: "armo", disarm: "disarmo", mode: "cambio modo", kill: "arresto" },
+    launchAbort: { 1: "10 s in mano", 2: "collegamento perso", 3: "non recuperato, atterraggio", 4: "stima d’assetto persa", 5: "lancio troppo debole, motori fermi" },
   },
   about: {
     logUsed: "Memoria log usata", logModeHint: "Registrato nella memoria del drone; scaricalo in Log di volo",

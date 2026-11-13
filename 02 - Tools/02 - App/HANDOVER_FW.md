@@ -162,7 +162,7 @@ is merely supported: the app hides every feature whose sensor bit is 0.
 |---|---|---|---|
 | 0 | u8 | arm | `0` disarmed, `1` armed |
 | 1 | u8 | mode | `0` ACRO, `1` ANGLE, `2` ALT_HOLD, `3` POS_HOLD |
-| 2 | u8 | auto | `0` none, `1` TAKEOFF, `2` LAND, `3` RTH, `4` HOLD (pause), `5` FAILSAFE |
+| 2 | u8 | auto | `0` none, `1` TAKEOFF, `2` LAND, `3` RTH, `4` HOLD (pause), `5` FAILSAFE, `6` LAUNCH (firmware 0.11) |
 | 3 | u8 | failsafe | bits: `0` APP_LINK, `1` RADIO, `2` BATTERY, `3` GEOFENCE, `4` GPS, `5` FLOW |
 | 4 | u16 | flags | bits: `0` IN_AIR, `1` LANDED, `2` HOME_SET, `3` GEOFENCE_ON, `4` BEGINNER, `5` ARM_BLOCKED (checks not ready and `armRequireChecks`=1) |
 | 6 | u8 | input | who commands the sticks: `0` none, `1` APP, `2` ELRS |
@@ -290,7 +290,8 @@ NOT_CALIBRATING, `13` NOT_STILL, `14` OUT_OF_RANGE, `15` UNKNOWN_PARAM,
 `16` SENSOR_MISSING, `17` USB_CONNECTED (ARM, TAKEOFF, MOTOR_TEST while a
 USB host is connected), `18` NOT_OVER_USB (a flight command received over
 USB), `19` OTHER_LINK (a configuration change from the link that does not
-have control) — 17…19 from firmware 0.6.0, §5.2. The app translates each reason into the user's language
+have control) — 17…19 from firmware 0.6.0, §5.2; `20` THRUST_LOW (not enough
+thrust-to-weight at the present cell voltage for the manoeuvre, firmware 0.11). The app translates each reason into the user's language
 ("Not done: throttle is not at minimum").
 
 ### 0x0F CHECKS (2 + 4·n B)
@@ -333,6 +334,7 @@ INIT) and `0x02 N` (STATE decimation) keep their phase-2 format without seq.
 | `0x17` | HOLD | – | in air: auto = HOLD (pause); on ground: no-op OK |
 | `0x18` | KILL | `4B 49 4C 4C` ("KILL") | **always executed**, any state, in flight too; motors off at once, disarm, EVENT 70 CRITICAL |
 | `0x19` | SET_MODE | `mode u8` | `INVALID` > 3; POS_HOLD without GNSS and FLOW → `SENSOR_MISSING`; ACRO with `beginner`=1 → `REJECTED/NONE` |
+| `0x1A` | LAUNCH | `0xA5 0x5A` | hand launch (§7.7, firmware 0.11): the ARM checks, then `SENSOR_MISSING` without an altitude estimate, `THRUST_LOW` below T/W 1.5 now (1.7 with `launchDrop`) or without a battery reading, `REJECTED/NONE` with `beginner`=1 or from the radio; refused over USB |
 | `0x20` | PARAM_GET | `id u16` | answer PARAM frame; `INVALID/UNKNOWN_PARAM` |
 | `0x21` | PARAM_SET | `id u16, value f32` | `INVALID/OUT_OF_RANGE` outside min…max; RAM only (flag dirty), answer PARAM |
 | `0x22` | PARAM_SAVE | – | write all params to flash, EVENT 60, then PARAM for every id (dirty cleared). Allowed armed? **No** → `REJECTED/ARMED` recommended (flash write stalls) — the app only saves from Settings |
@@ -648,6 +650,31 @@ would cancel HOLD at once) — firmware 0.6.1.
 Immediate motor stop (also in flight: the app asks for a 2 s hold and a
 confirmation). Disarm, EVENT 70 CRITICAL.
 
+### 7.7 LAUNCH (hand launch) — firmware 0.11, ADR 0011
+
+`LAUNCH` arms the drone **with the motors stopped** (`auto` = 6, EVENT 10).
+The pilot holds it still and level for 0.5 s, then tosses it up. The release
+is the push of the hand (> 1.3 g) followed by free fall (< 0.3 g for 60 ms);
+the motors start only once the drone is 10 cm from the release point, or at
+the top of the toss if it rose at least 4 cm (EVENT 11, arg = ms from the
+release). The flight core then recovers the attitude at full authority and
+holds the height reached, in POS_HOLD with the flow or ALT_HOLD (EVENT 5).
+
+- While in the hand, the drone is not "in the air" whatever its height, and
+  the 10 s no-take-off disarm is replaced by the launch timeout.
+- EVENT 12 WARN (arg): `1` 10 s in the hand, `2` link lost for 1 s, `5` toss
+  too weak (it rose less than 4 cm: it would fall back onto the hand) → disarm,
+  motors never started; `3` not level within 1.5 s → LAND; `4` attitude
+  estimate lost → motors off.
+- `launchDrop` (104) = 1 also accepts a drop without the push (T/W ≥ 1.7);
+  it costs 0.4–1.3 m of height.
+- DISARM and KILL work as usual while in the hand.
+- **Not distinguishable from a toss:** a jump with the drone in the hand.
+  The app tells the pilot to stand still (ADR 0011, validation).
+
+The app offers it with a 1.5 s hold button while disarmed, and shows the
+gesture while the drone is in the hand.
+
 ## 8. Parameters
 
 Values are **f32 on the wire**, ids are stable forever (add new ids, never
@@ -698,6 +725,7 @@ reuse). Stored in flash with a version/CRC; on a bad CRC load defaults.
 | 101 | rcMap | 0 | 0 | 1 | enum | channel order: 0 AETR, 1 TAER |
 | 102 | rcArmSwKill | 1 | 0 | 1 | enum | arm switch off in the air: 1 motors off (KILL), 0 refused — firmware 0.8.0 |
 | 103 | rcModeMap | 0 | 0 | 2 | enum | mode switch AUX2: 0 off, 1 ANGLE/ALT_HOLD/POS_HOLD, 2 ACRO/ANGLE/ALT_HOLD — firmware 0.8.0 |
+| 104 | launchDrop | 0 | 0 | 1 | enum | hand launch (§7.7): 0 toss up only, 1 a drop is accepted too — firmware 0.11 |
 
 The loop gains (90–95) are in **normalised thrust per motor**: a roll torque of 0.1 raises the left motors and lowers
 the right ones by 0.1 of the maximum thrust. The mixer compensates the battery and the thrust curve, so the gains do
@@ -866,6 +894,9 @@ calibrated).
 | 7 | INFO | HOME_SET | – | |
 | 8 | WARN | TAKEOFF_ABORTED | – | no lift-off within 6 s, back on the ground — firmware 0.5.0 |
 | 9 | WARN | RADIO_REFUSED | op << 8 \| reason | a radio-switch command refused (§6 radio switches) — firmware 0.8.0 |
+| 10 | INFO | LAUNCH_READY | launchDrop | LAUNCH accepted: armed, motors stopped (§7.7) — firmware 0.11 |
+| 11 | INFO | LAUNCH_RELEASED | ms | the motors started, ms from the release |
+| 12 | WARN | LAUNCH_ABORTED | reason | §7.7 |
 | 20 | ERROR | FAILSAFE_APP_LINK | action | long app-link failsafe |
 | 21 | ERROR | FAILSAFE_RADIO | action | |
 | 22 | ERROR | FAILSAFE_BATTERY | action | |
