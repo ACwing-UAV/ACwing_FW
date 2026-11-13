@@ -54,6 +54,7 @@ const param_def_t g_param_def[PARAM_COUNT] = {
     [P_RC_ARM_SW_KILL]     = { 102, 1.0f,   0.0f,    1.0f,    0 },   /* arm switch off in the air: 1 motors off (KILL), 0 refused */
     [P_RC_MODE_MAP]        = { 103, 0.0f,   0.0f,    2.0f,    0 },   /* AUX2 modes: 0 off, 1 ANGLE/ALT_HOLD/POS_HOLD, 2 ACRO/ANGLE/ALT_HOLD */
     [P_LAUNCH_DROP]        = { 104, 0.0f,   0.0f,    1.0f,    0 },   /* hand launch: 1 accepts a drop (no push), T/W >= 1.7 */
+    [P_CTL_LAW]            = { 105, 0.0f,   0.0f,    3.0f,    0 },   /* control law (ADR 0013), applied while disarmed */
     [P_HOVER_THR]          = { 80, 0.51f,   0.25f,   0.85f,   0 },   /* hover thrust seed (ADR 0010): T400 0.51, T800 0.58, T1200 0.65, +0.04 GPS */
 };
 

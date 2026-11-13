@@ -33,6 +33,8 @@ jobs:
       - name: Build and run (gcc, AddressSanitizer + UBSan)
         working-directory: "00 - FC_FW/Tests/host"
         run: make
+      - name: The control-law example of the docs compiles against ctl_api.h
+        run: python3 "00 - FC_FW/Tests/host/doc_example.py"
       - name: Design estimates of the ADRs (flip, hand launch)
         working-directory: "00 - FC_FW/Tests/sim"
         run: |

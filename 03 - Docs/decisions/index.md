@@ -19,6 +19,7 @@ record replaces the old one, and the old one is marked *Superseded*.
 | [0010](0010-hover-thrust-model.md) | Hover thrust: normalised collective, battery-compensated mixer, online estimate | Accepted |
 | [0011](0011-hand-launch.md) | Hand launch: armed with the motors stopped, toss up, motors started away from the hand | Accepted |
 | [0012](0012-autonomous-flip.md) | Autonomous flip: a phased manoeuvre gated on the thrust available now | Accepted |
+| [0013](0013-control-law-interface.md) | A generic control-law interface: reference in, getters and setters, swappable laws | Accepted |
 
 **New record.** Copy the template below to `NNNN-short-title.md`, add it to
 this table and to `nav` in `mkdocs.yml`.

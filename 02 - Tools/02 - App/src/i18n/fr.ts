@@ -109,7 +109,7 @@ const fr: Translation = {
     units: "Unités", metric: "Métriques", imperial: "Impériales", theme: "Thème", dark: "Sombre", daylight: "Plein jour", droneName: "Nom du drone",
   },
   controls: {
-    rcProtocolHint: "Le protocole du récepteur relié au contrôleur de vol (ACwing FC : connecteur J5).", rcMapHint: "AETR pour ExpressLRS, Crossfire et FrSky ; TAER pour la plupart des émetteurs Spektrum, Futaba et FlySky.", rcArmSwKillHint: "Interrupteur d’armement sur AUX1 : coupé → actif arme (seulement s’il a été vu coupé avant), actif → coupé désarme au sol. En vol il arrête les moteurs (comme Betaflight) ou est refusé.", rcModeMapHint: "AUX2 choisit le mode de vol quand la radio a le contrôle. Désactivé par défaut : les récepteurs envoient la valeur centrale sur les voies sans interrupteur.", launchDropHint: "Désactivé : seul un lancer vers le haut démarre les moteurs (à 10 cm de la main ou au sommet du lancer). Activé : un lâcher est aussi accepté ; il coûte 0,4–1,3 m de hauteur et demande plus de poussée.", rcCompatible: "Récepteurs compatibles",
+    rcProtocolHint: "Le protocole du récepteur relié au contrôleur de vol (ACwing FC : connecteur J5).", rcMapHint: "AETR pour ExpressLRS, Crossfire et FrSky ; TAER pour la plupart des émetteurs Spektrum, Futaba et FlySky.", rcArmSwKillHint: "Interrupteur d’armement sur AUX1 : coupé → actif arme (seulement s’il a été vu coupé avant), actif → coupé désarme au sol. En vol il arrête les moteurs (comme Betaflight) ou est refusé.", rcModeMapHint: "AUX2 choisit le mode de vol quand la radio a le contrôle. Désactivé par défaut : les récepteurs envoient la valeur centrale sur les voies sans interrupteur.", launchDropHint: "Désactivé : seul un lancer vers le haut démarre les moteurs (à 10 cm de la main ou au sommet du lancer). Activé : un lâcher est aussi accepté ; il coûte 0,4–1,3 m de hauteur et demande plus de poussée.", ctlLawHint: "La loi de commande utilisée au prochain armement (elle ne change que désarmé). 0 est la cascade intégrée ; 1–3 sont des lois ajoutées au firmware (ADR 0013). Un indice sans loi utilise la loi intégrée.", rcCompatible: "Récepteurs compatibles",
     hoverHint: "Poussée de stationnaire du châssis, valeur de départ de l'estimation en vol : T400 0,51, T800 0,58, T1200 0,65, +0,04 avec la carte GPS.",
     tuning: "Réglage du vol (avancé)", tuningHint: "Gains et filtres des boucles du contrôleur de vol. Changez une valeur à la fois, d'abord sans hélices ; Enregistrer les écrit dans le drone.", notchHint: "0 = désactivé. Réglez-le sur le pic de bruit des moteurs visible dans le journal de vol.",
     idleHint: "Poussée de chaque moteur une fois armé, en fraction du maximum.", curveHint: "1 = poussée quadratique en rapport cyclique (moteurs à balais), 0 = linéaire. Mesurée au banc de poussée.",
@@ -125,7 +125,7 @@ const fr: Translation = {
     elrsHelp: "Priorité maximale : quand elle est active, l'app passe en télémétrie seule",
   },
   params: {
-    rcProtocol: "Protocole du récepteur", rcMap: "Ordre des voies", rcArmSwKill: "Interrupteur d’armement coupé en vol", rcModeMap: "Sélecteur de modes (AUX2)", launchDrop: "Lancer à la main",
+    rcProtocol: "Protocole du récepteur", rcMap: "Ordre des voies", rcArmSwKill: "Interrupteur d’armement coupé en vol", rcModeMap: "Sélecteur de modes (AUX2)", launchDrop: "Lancer à la main", ctlLaw: "Loi de commande",
     hoverThr: "Poussée de stationnaire",
     rateP: "P vitesse roulis/tangage", rateI: "I vitesse roulis/tangage", rateD: "D vitesse roulis/tangage", yawP: "P vitesse lacet", yawI: "I vitesse lacet", attP: "P angle", gyroLpf: "Passe-bas gyroscope", dtermLpf: "Passe-bas terme D", gyroNotch: "Coupe-bande gyroscope", motorIdle: "Ralenti moteurs", thrCurve: "Courbe de poussée",
     battCapacity: "Capacité", battCells: "Éléments", logMode: "Journal de vol",
@@ -139,7 +139,7 @@ const fr: Translation = {
   },
   actions: {
     rcNone: "Aucun récepteur", rcCrsf: "CRSF (ExpressLRS, Crossfire, Tracer)", rcSbus: "SBUS (FrSky, Futaba, …)", rcIbus: "i-BUS (FlySky)", rcDsm: "DSM2 / DSMX (Spektrum)", mapAetr: "AETR (roulis, tangage, gaz, lacet)", mapTaer: "TAER (gaz, roulis, tangage, lacet)",
-    swRefused: "Refusé", swKill: "Moteurs coupés", modeMapOff: "Désactivé", modeMapHold: "ANGLE · ALT HOLD · POS HOLD", modeMapAcro: "ACRO · ANGLE · ALT HOLD", launchTossOnly: "Lancer vers le haut seulement", launchDropToo: "Lancer ou lâcher",
+    swRefused: "Refusé", swKill: "Moteurs coupés", modeMapOff: "Désactivé", modeMapHold: "ANGLE · ALT HOLD · POS HOLD", modeMapAcro: "ACRO · ANGLE · ALT HOLD", launchTossOnly: "Lancer vers le haut seulement", launchDropToo: "Lancer ou lâcher", ctlLawCascade: "Cascade PID intégrée", ctlLawUser1: "Loi personnalisée 1", ctlLawUser2: "Loi personnalisée 2", ctlLawUser3: "Loi personnalisée 3",
     auto: "Automatique", logOff: "Désactivé", logArmed: "À chaque vol", logAlways: "Toujours",
     hover: "Stationnaire", land: "Atterrir", rth: "Retour au point de départ", useFlow: "Utiliser le flux optique", altHold: "ALT HOLD", altHoldWarn: "ALT HOLD + alerte",
     stopBack: "S'arrêter et reculer", compassFc: "Contrôleur de vol", compassGps: "Module GPS (plus loin des moteurs)",

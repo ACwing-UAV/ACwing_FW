@@ -12,6 +12,21 @@ static const float k_y[MIXER_MOTORS] = { +1.0f, -1.0f, -1.0f, +1.0f };
 
 static float clampf(float v, float lo, float hi) { return v < lo ? lo : (v > hi ? hi : v); }
 
+static float batt_k(float v_cell) { return (v_cell > 2.5f) ? MIXER_VREF / clampf(v_cell, 3.0f, 4.35f) : 1.0f; }
+
+void mixer_direct(const float thrust[MIXER_MOTORS], float v_cell, const mixer_cfg_t *cfg, mixer_out_t *o)
+{
+    memset(o, 0, sizeof *o);
+    o->batt_k = batt_k(v_cell);
+    float sum = 0.0f;
+    for (unsigned i = 0; i < MIXER_MOTORS; ++i) {
+        const float t = clampf(thrust[i], 0.0f, 1.0f);
+        o->t[i] = t; sum += t;
+        o->duty[i] = clampf(mixer_curve_inv(t, cfg->theta) * o->batt_k, 0.0f, 1.0f);
+    }
+    o->collective = sum / (float)MIXER_MOTORS;
+}
+
 float mixer_curve_inv(float t, float theta)
 {
     t = clampf(t, 0.0f, 1.0f);
@@ -65,7 +80,7 @@ void mixer_quadx(float collective, const float torque[3], float v_cell, const mi
     if (T > hi) { T = hi; o->sat_col = 1u; }
     o->collective = T;
     /* 4. thrust curve and battery */
-    const float bk = (v_cell > 2.5f) ? MIXER_VREF / clampf(v_cell, 3.0f, 4.35f) : 1.0f;
+    const float bk = batt_k(v_cell);
     o->batt_k = bk;
     for (unsigned i = 0; i < MIXER_MOTORS; ++i) {
         const float t = clampf(T + rp[i] + k * yw[i], 0.0f, 1.0f);

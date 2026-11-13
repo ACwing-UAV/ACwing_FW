@@ -8,12 +8,11 @@
 #include "params.h"
 #include "proto_v2.h"
 #include "spsc.h"
-#include "alt_ctrl.h"
+#include "ctl_io.h"
 #include "hover_track.h"
 #include "input_arb.h"
 #include "radio_fs.h"
 #include "rc_switches.h"
-#include "pos_ctrl.h"
 #include "launch.h"
 #include <string.h>
 #include <math.h>
@@ -43,7 +42,6 @@ static ia_sticks_t s_app;          /* last app RC                               
 static ia_sticks_t s_rc;           /* sticks of the source in control (input_arb.c) */
 static uint8_t  s_radio_ctrl;      /* the RC radio has control                      */
 static uint32_t s_radio_sil;       /* since the last valid radio frame              */
-static pos_ctrl_t s_pc;             /* horizontal position hold                        */
 static ln_t     s_ln;              /* hand launch (launch.c)                          */
 static ln_out_t s_lno;
 static rc_state_t s_radio;         /* last receiver state (switches)                 */
@@ -65,10 +63,11 @@ static float      s_to_target;      /* TAKEOFF target height (h frame)         *
 static uint32_t   s_to_t0;
 static uint8_t    s_to_lifted, s_dbg_forced, s_landed, s_geofence, s_geofence_ev;
 static uint32_t   s_touch_ms, s_flow_bad_ms;
-static alt_ctrl_t s_ac;
+static ctl_ref_t s_ref;             /* reference for the control law (ctl_api.h) */
+static fc_setpoint_t s_ref_sp;     /* its manager part, before the law            */
+static uint8_t  s_ctl_sat;         /* the law's collective at a limit              */
 static fc_setpoint_t s_sp;
 static uint8_t    s_prev_auto;      /* setpoints(): automatic action of the previous step */
-static uint8_t    s_prev_vert;      /* setpoints(): the altitude loop ran at the previous step */
 static uint8_t    s_hold_prev;      /* HOLD active at the previous step (stick-cancel reference) */
 static float      s_hold_thr;       /* throttle stick when HOLD began                  */
 
@@ -109,7 +108,6 @@ void fc_init(const fc_config_t *cfg)
     memset(&s_app, 0, sizeof s_app); memset(&s_rc, 0, sizeof s_rc);
     s_radio_ctrl = 0u; s_radio_sil = UINT32_MAX; s_rfs_hold = 0u;
     ia_init(); rfs_init(); rsw_init();
-    { pc_gains_t pg; pc_gains_default(&pg); pc_init(&s_pc, &pg); }
     ln_cancel(&s_ln); memset(&s_lno, 0, sizeof s_lno);
     memset(&s_radio, 0, sizeof s_radio); s_radio_took = 0u; s_exec_radio = 0u;
     s_test_motor = 0u;
@@ -120,9 +118,11 @@ void fc_init(const fc_config_t *cfg)
     s_lift_ms = s_now = 0u;
     hover_track_init();
     s_hover = hover_track_value();
-    alt_ctrl_init(&s_ac, s_hover);
+    ctl_io_init();                      /* the control law (ADR 0013): default cascade, or the one of ctlLaw */
+    ctl_io_feed_hover(s_hover);
     memset(&s_sp, 0, sizeof s_sp);
-    s_prev_auto = PV2_AUTO_NONE; s_prev_vert = 0u; s_hold_prev = 0u; s_hold_thr = 0.0f;
+    memset(&s_ref, 0, sizeof s_ref); memset(&s_ref_sp, 0, sizeof s_ref_sp); s_ctl_sat = 0u;
+    s_prev_auto = PV2_AUTO_NONE; s_hold_prev = 0u; s_hold_thr = 0.0f;
     s_land_idle = 0u; s_air_thr = 0u; s_air_thr_ms = 0u;
     s_land_ol = 0u; s_land_ol_t0 = 0u; s_land_ol_from = 0.0f;
     s_rc_stale = 1u; s_last_thr = -1.0f;
@@ -297,8 +297,7 @@ static void arm_now(uint32_t now)
     s_land_idle = 0u; s_air_thr = 0u; s_air_thr_ms = 0u; s_land_ol = 0u;
     if (s_have_v && s_v.valid) { s_h_ref = s_h_ground = s_h_sp = s_v.h; }
     hover_track_arm(PARAM(P_HOVER_THR));
-    s_hover = hover_track_value();
-    alt_ctrl_reset(&s_ac, 0.0f);
+    s_hover = hover_track_value();               /* the law resets its loops when it sees the drone armed */
     if (s_cfg.motors_arm) s_cfg.motors_arm(1u);
     event(PV2_EV_INFO, PV2_E_ARMED, 0);
 }
@@ -394,8 +393,7 @@ static void exec(const fc_cmd_t *c, uint32_t now, uint8_t est_running)
         }
         s_h_sp = s_h_ground;
         s_to_t0 = now; s_to_lifted = 0u;
-        alt_ctrl_reset(&s_ac, 0.0f);
-        lift_off();                  /* motors spool up: not landed any more (as the app simulator) */
+        lift_off();                  /* the law enters its vertical loop from the hover thrust */                  /* motors spool up: not landed any more (as the app simulator) */
         s_auto = PV2_AUTO_TAKEOFF;
         OK();
         event(PV2_EV_INFO, PV2_E_TAKEOFF_STARTED, (int32_t)(alt * 100.0f + 0.5f));
@@ -811,14 +809,33 @@ static void geofence_vz(float *vz)
     }
 }
 
+/* geofence on the height in a closed-loop vertical mode (§6): flags, EVENT 23, and the cut of a climb that the law
+ * applies (ref.vz_ceiling). climbing: the reference asks to go up (a climb rate > 0, or a height above). */
+static float geofence_ceiling(uint8_t climbing)
+{
+    float vz = climbing ? 1.0f : 0.0f;
+    geofence_vz(&vz);
+    return (climbing && vz <= 0.0f) ? vz : CTL_NO_LIMIT;
+}
+
+/* the reference for the control law (ctl_api.h): what the drone must do, not how */
+static void ref_attitude(ctl_ref_t *r, const fc_setpoint_t *sp)
+{
+    r->roll = sp->roll; r->pitch = sp->pitch;
+    r->rate[0] = sp->roll_rate; r->rate[1] = sp->pitch_rate; r->rate[2] = sp->yaw_rate;
+}
+
 static void setpoints(uint32_t now, uint32_t dt_ms)
 {
-    const float dt = (float)dt_ms * 1e-3f;
-    s_ac.hover = s_hover;                 /* the vertical loop works around the live hover estimate */
+    (void)dt_ms;
     const float beg = (PARAM(P_BEGINNER) > 0.5f) ? 0.5f : 1.0f;
     fc_setpoint_t sp;
     memset(&sp, 0, sizeof sp);
     sp.armed = s_armed; sp.mode = s_mode; sp.autom = s_auto; sp.in_air = s_in_air;
+    ctl_ref_t r;
+    memset(&r, 0, sizeof r);
+    r.armed = s_armed; r.in_air = s_in_air;
+    r.vz_ceiling = CTL_NO_LIMIT; r.thrust_max = 1.0f;
 
     /* entering HOLD / failsafe HOLD: hold the current height */
     if (s_auto != s_prev_auto && (s_auto == PV2_AUTO_HOLD || s_auto == PV2_AUTO_FAILSAFE)) s_h_sp = s_v.h;
@@ -832,15 +849,18 @@ static void setpoints(uint32_t now, uint32_t dt_ms)
     sp.roll_rate  = s_stick[3] * 4.0f * yawr;           /* ACRO: 4x the yaw rate scale */
     sp.pitch_rate = s_stick[2] * 4.0f * yawr;
     sp.yaw_rate   = -s_stick[1] * yawr;                  /* stick right = clockwise = -z (FLU) */
+    r.att = (uint8_t)((s_mode == PV2_MODE_ACRO && s_auto == PV2_AUTO_NONE) ? CTL_ATT_RATE : CTL_ATT_ANGLE);
+    r.tilt_max = tilt;
 
-    if (!s_armed) { s_prev_vert = 0u; s_sp = sp; return; }
+    if (!s_armed) { s_ref_sp = sp; s_ref = r; ref_attitude(&s_ref, &s_ref_sp); return; }
     if (s_auto == PV2_AUTO_LAUNCH) {
         /* hand launch (launch.c): motors stopped in the hand, then thrust and level attitude */
-        sp.motors_off = s_lno.motors_off;
-        sp.thrust = s_lno.motors_off ? 0.0f : s_lno.thrust;
+        sp.motors_off = r.motors_off = s_lno.motors_off;
         sp.roll = sp.pitch = sp.roll_rate = sp.pitch_rate = sp.yaw_rate = 0.0f;
-        s_prev_vert = 0u;
-        s_sp = sp;
+        r.att = CTL_ATT_ANGLE;
+        r.vert = CTL_V_COLLECTIVE;
+        r.collective = s_lno.motors_off ? 0.0f : s_lno.thrust;
+        s_ref_sp = sp; s_ref = r; ref_attitude(&s_ref, &s_ref_sp);
         return;
     }
 
@@ -850,8 +870,8 @@ static void setpoints(uint32_t now, uint32_t dt_ms)
     const uint8_t vert = (uint8_t)(s_in_air && alt_ok() &&
                                    (s_auto != PV2_AUTO_NONE || hold_mode()));
     if (!vert) {
-        s_prev_vert = 0u;
         float thr;
+        r.vert = CTL_V_COLLECTIVE;
         if (!s_in_air && (hold_mode() || s_land_idle)) {
             thr = 0.0f;                                      /* hold modes take off with TAKEOFF; idle after a landing */
             s_land_ol = 0u;
@@ -867,71 +887,62 @@ static void setpoints(uint32_t now, uint32_t dt_ms)
         } else {
             thr = collective(s_stick[0]);                    /* ACRO / ANGLE (any mode without an estimate) */
             s_land_ol = 0u;
-            /* geofence also in the manual modes: the collective may not push above the
-             * ceiling. The climb rate allowed falls with the distance to the ceiling
-             * (braking at FC_GF_BRAKE_A), so a full-throttle climb stops in time; the
-             * vertical loop limits the collective only while it asks for less. */
+            /* geofence also in the manual modes: the collective may not push above the ceiling. The climb rate
+             * allowed falls with the distance to the ceiling (braking at FC_GF_BRAKE_A), so a full-throttle climb
+             * stops in time; the law limits the collective only while it asks for less. */
             if (s_in_air && alt_ok()) {
                 const float d = ceiling_h() - s_v.h;
-                const float vz_ok = (d > 0.0f) ? sqrtf(2.0f * FC_GF_BRAKE_A * d) : (d < -0.3f ? -0.3f : 0.0f);
+                r.vz_ceiling = (d > 0.0f) ? sqrtf(2.0f * FC_GF_BRAKE_A * d) : (d < -0.3f ? -0.3f : 0.0f);
                 float vz_now = s_v.vz;
                 geofence_vz(&vz_now);                         /* flags and EVENT 23 at the ceiling */
-                const float lim = alt_ctrl_step(&s_ac, vz_ok, s_v.vz, s_v.cos_tilt, dt);
-                if (lim < thr) thr = lim;
-                else alt_ctrl_reset(&s_ac, 0.0f);    /* not limiting: ready for a bumpless change */
             }
         }
-        sp.thrust = clampf(thr, 0.0f, 1.0f);
-        s_sp = sp;
+        r.collective = clampf(thr, 0.0f, 1.0f);
+        s_ref_sp = sp; s_ref = r; ref_attitude(&s_ref, &s_ref_sp);
         return;
     }
     s_land_ol = 0u;
 
-    /* entering the altitude loop in the air (ACRO / ANGLE -> ALT_HOLD, HOLD, LAND...): start
-     * from the hover collective, not from an old integrator (§6, no thrust jump) */
-    if (!s_prev_vert && s_auto != PV2_AUTO_TAKEOFF) alt_ctrl_reset(&s_ac, 0.0f);
-    s_prev_vert = 1u;
-
     const float maxc = PARAM(P_MAX_CLIMB) * beg;
     const float land = PARAM(P_LAND_SPEED);
-    float vz;
+    uint8_t climbing;
     switch (s_auto) {
     case PV2_AUTO_TAKEOFF:
-        vz = alt_ctrl_vz_sp(&s_ac, s_to_target, s_v.h, FC_TAKEOFF_VZ, land);
+        r.vert = CTL_V_HEIGHT; r.h_sp = s_to_target; r.vz_up = FC_TAKEOFF_VZ; r.vz_dn = land;
+        climbing = (uint8_t)(s_to_target > s_v.h);
         s_h_sp = s_v.h;
         break;
     case PV2_AUTO_LAND:
     case PV2_AUTO_RTH:                       /* no GNSS here: RTH lands in place */
-        vz = -((has(PV2_S_TOF) && s_v.tof_valid && s_v.tof_h < 1.0f) ? FC_LAND_SLOW_VZ : land);
-        if (s_v.tof_ground) vz = -FC_LAND_SLOW_VZ;
+        r.vert = CTL_V_CLIMB;
+        r.vz_sp = -((has(PV2_S_TOF) && s_v.tof_valid && s_v.tof_h < 1.0f) ? FC_LAND_SLOW_VZ : land);
+        if (s_v.tof_ground) r.vz_sp = -FC_LAND_SLOW_VZ;
+        climbing = 0u;
         s_h_sp = s_v.h;
         break;
     case PV2_AUTO_HOLD:
     case PV2_AUTO_FAILSAFE:
-        vz = alt_ctrl_vz_sp(&s_ac, s_h_sp, s_v.h, maxc, land);
+        r.vert = CTL_V_HEIGHT; r.h_sp = s_h_sp; r.vz_up = maxc; r.vz_dn = land;
+        climbing = (uint8_t)(s_h_sp > s_v.h);
         break;
     default:                                 /* ALT_HOLD / POS_HOLD, pilot: climb rate */
-        if (fabsf(s_stick[0]) < 0.05f) vz = alt_ctrl_vz_sp(&s_ac, s_h_sp, s_v.h, maxc, land);
-        else { vz = s_stick[0] * maxc; s_h_sp = s_v.h; }
+        if (fabsf(s_stick[0]) < 0.05f) {
+            r.vert = CTL_V_HEIGHT; r.h_sp = s_h_sp; r.vz_up = maxc; r.vz_dn = land;
+            climbing = (uint8_t)(s_h_sp > s_v.h);
+        } else {
+            r.vert = CTL_V_CLIMB; r.vz_sp = s_stick[0] * maxc; s_h_sp = s_v.h;
+            climbing = (uint8_t)(r.vz_sp > 0.0f);
+        }
         break;
     }
+    r.vz_ceiling = geofence_ceiling(climbing);          /* may also lower s_h_sp and the take-off target */
 
-    geofence_vz(&vz);
-
-    /* take-off spool-up: thrust ramps from idle until the drone leaves the ground;
-     * the ramp is the controller's upper limit, so the integrator does not wind up */
-    const float thr_max = s_ac.thr_max;
-    if (s_auto == PV2_AUTO_TAKEOFF && !s_to_lifted) {
-        const float ramp = 0.10f + 0.40f * (float)(now - s_to_t0) * 1e-3f;
-        if (ramp < s_ac.thr_max) s_ac.thr_max = ramp;
-    }
-    const float thr = alt_ctrl_step(&s_ac, vz, s_v.vz, s_v.cos_tilt, dt);
-    s_ac.thr_max = thr_max;
+    /* take-off spool-up: thrust ramps from idle until the drone leaves the ground; the ramp is the upper limit of
+     * the collective, so the integrator does not wind up */
+    if (s_auto == PV2_AUTO_TAKEOFF && !s_to_lifted) r.thrust_max = 0.10f + 0.40f * (float)(now - s_to_t0) * 1e-3f;
     sp.alt_ctrl = 1u;
-    sp.thrust = thr;
-    sp.vz_sp = vz;
     sp.h_sp = s_h_sp;
-    s_sp = sp;
+    s_ref_sp = sp; s_ref = r; ref_attitude(&s_ref, &s_ref_sp);
 }
 
 /* ---- hand launch (launch.c, ADR 0011): the module decides, the core applies ---- */
@@ -939,8 +950,7 @@ static void launch_done(void)
 {
     s_auto = PV2_AUTO_NONE;
     s_mode = has(PV2_S_GNSS | PV2_S_FLOW) ? PV2_MODE_POS_HOLD : PV2_MODE_ALT_HOLD;   /* as after TAKEOFF */
-    s_h_sp = s_v.h;                                    /* the height reached */
-    alt_ctrl_reset(&s_ac, 0.0f);
+    s_h_sp = s_v.h;                                    /* the height reached (the law enters its loop fresh) */
     event(PV2_EV_INFO, PV2_E_MODE_CHANGED, s_mode);
 }
 
@@ -975,23 +985,48 @@ static uint8_t auto_holds_position(void)
                      s_auto == PV2_AUTO_HOLD || s_auto == PV2_AUTO_FAILSAFE);
 }
 
-static void horizontal_setpoints(uint32_t dt_ms)
+/* the horizontal group of the reference: a velocity (zero = hold the point) while a position can be held */
+static void horizontal_ref(void)
 {
-    fc_setpoint_t *sp = &s_sp;
+    ctl_ref_t *r = &s_ref;
     const uint8_t wanted = (uint8_t)(s_mode == PV2_MODE_POS_HOLD || auto_holds_position());
     /* a position needs the flow above its minimum height, and the height held by the altitude loop */
-    sp->pos_hold = (uint8_t)(s_armed && s_in_air && sp->alt_ctrl && wanted && s_have_v && s_v.flow_usable &&
-                             !(s_failsafe & PV2_FS_FLOW));
-    if (!sp->pos_hold) { pc_reset(&s_pc); return; }
+    s_ref_sp.pos_hold = (uint8_t)(s_armed && s_in_air && s_ref_sp.alt_ctrl && wanted && s_have_v && s_v.flow_usable &&
+                                  !(s_failsafe & PV2_FS_FLOW));
+    if (!s_ref_sp.pos_hold) { r->horiz = CTL_H_NONE; return; }
     const float beg = (PARAM(P_BEGINNER) > 0.5f) ? 0.5f : 1.0f;
     float vmax = PARAM(P_MAX_HSPEED) * beg;
     if (indoor() && vmax > FC_INDOOR_HSPEED) vmax = FC_INDOOR_HSPEED;
     /* the pilot moves the drone only in POS_HOLD; an automatic action holds the point */
     const uint8_t pilot = (uint8_t)(s_auto == PV2_AUTO_NONE && !s_rc_stale);
-    const pc_in_t in = { { s_v.vel_b[0], s_v.vel_b[1] }, s_v.yaw,
-                         pilot ? s_stick[2] : 0.0f, pilot ? -s_stick[3] : 0.0f,
-                         vmax, PARAM(P_MAX_TILT) * beg * DEG2RAD, (float)dt_ms * 1e-3f };
-    pc_step(&s_pc, &in, &sp->roll, &sp->pitch);
+    r->horiz = CTL_H_VELOCITY;
+    r->v_max = vmax;
+    r->vel_sp[0] = pilot ? s_stick[2] * vmax : 0.0f;          /* pitch stick + forward  */
+    r->vel_sp[1] = pilot ? -s_stick[3] * vmax : 0.0f;         /* roll stick + right = -y */
+}
+
+/* the control law (ctl_api.h): the state and the reference in, the status out; fc_setpoint() is the manager
+ * part of the reference with what the law did (collective, attitude targets, climb rate) */
+static void control_step(uint32_t dt_ms)
+{
+    ctl_vehicle_t veh;
+    veh.h_valid = (uint8_t)(s_have_v && s_v.valid);
+    veh.h = s_v.h; veh.vz = s_v.vz; veh.a_up = s_v.a_up;
+    veh.cos_tilt = s_have_v ? s_v.cos_tilt : 1.0f; veh.yaw = s_v.yaw;
+    veh.vel_valid = (uint8_t)(s_have_v && s_v.flow_usable);
+    veh.vel_b[0] = s_v.vel_b[0]; veh.vel_b[1] = s_v.vel_b[1];
+    ctl_io_feed_vehicle(&veh);
+    ctl_io_feed_hover(s_hover);
+    ctl_io_set_ref(&s_ref);
+    ctl_io_outer((float)dt_ms * 1e-3f);
+    ctl_status_t st;
+    ctl_get_status(&st);
+    fc_setpoint_t sp = s_ref_sp;
+    sp.thrust = s_ref.armed ? st.collective : 0.0f;
+    if (s_ref.horiz == CTL_H_VELOCITY) { sp.roll = st.roll; sp.pitch = st.pitch; }
+    if (sp.alt_ctrl) sp.vz_sp = st.vz_sp;
+    s_sp = sp;
+    s_ctl_sat = st.saturated;
 }
 
 /* ---- hover thrust (hover_track.c): the flight core only reports its state ---- */
@@ -1008,7 +1043,7 @@ static void hover_update(uint32_t now)
 {
     hover_gate_t g;
     g.airborne = hover_airborne(now);
-    g.saturated = (uint8_t)(s_sp.thrust <= s_ac.thr_min + 0.01f || s_sp.thrust >= s_ac.thr_max - 0.01f);
+    g.saturated = s_ctl_sat;                         /* the collective at a limit of the law */
     g.a_up = s_v.a_up;
     g.thrust = s_sp.thrust;
     g.cos_tilt = s_v.cos_tilt;
@@ -1099,7 +1134,8 @@ void fc_service(uint32_t now, uint8_t est_running, const fc_vert_t *v)
     if (s_test_motor && ((int32_t)(now - s_test_until) >= 0 || s_silence > FC_FS_SHORT_MS)) test_stop();
 
     setpoints(now, dt);
-    horizontal_setpoints(dt);
+    horizontal_ref();
+    control_step(dt);
     hover_update(now);
     publish();
 }

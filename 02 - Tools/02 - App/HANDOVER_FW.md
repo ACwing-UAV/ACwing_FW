@@ -726,6 +726,7 @@ reuse). Stored in flash with a version/CRC; on a bad CRC load defaults.
 | 102 | rcArmSwKill | 1 | 0 | 1 | enum | arm switch off in the air: 1 motors off (KILL), 0 refused — firmware 0.8.0 |
 | 103 | rcModeMap | 0 | 0 | 2 | enum | mode switch AUX2: 0 off, 1 ANGLE/ALT_HOLD/POS_HOLD, 2 ACRO/ANGLE/ALT_HOLD — firmware 0.8.0 |
 | 104 | launchDrop | 0 | 0 | 1 | enum | hand launch (§7.7): 0 toss up only, 1 a drop is accepted too — firmware 0.11 |
+| 105 | ctlLaw | 0 | 0 | 3 | enum | control law (ADR 0013): 0 cascade PID (default), 1–3 laws added with `ctl_register()`; applied only while disarmed, an index without a law falls back to 0 — firmware 0.12 |
 
 The loop gains (90–95) are in **normalised thrust per motor**: a roll torque of 0.1 raises the left motors and lowers
 the right ones by 0.1 of the maximum thrust. The mixer compensates the battery and the thrust curve, so the gains do

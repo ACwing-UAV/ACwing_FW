@@ -61,6 +61,7 @@ nav:
       - Architecture: firmware/architecture.md
       - Flight core: firmware/flight-core.md
       - Attitude control and mixer: firmware/control.md
+      - Writing a control law: firmware/control-api.md
       - RC receiver: firmware/rc.md
       - Sensors and expansion boards: firmware/sensors.md
       - Telemetry protocol: firmware/telemetry.md
@@ -92,6 +93,7 @@ nav:
       - decisions/0010-hover-thrust-model.md
       - decisions/0011-hand-launch.md
       - decisions/0012-autonomous-flip.md
+      - decisions/0013-control-law-interface.md
   - Project:
       - Lessons learned: project/lessons-learned.md
       - Roadmap: project/roadmap.md

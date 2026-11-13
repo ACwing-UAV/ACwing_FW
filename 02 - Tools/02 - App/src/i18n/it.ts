@@ -109,7 +109,7 @@ const it: Translation = {
     units: "Unità", metric: "Metriche", imperial: "Imperiali", theme: "Tema", dark: "Scuro", daylight: "Luce diurna", droneName: "Nome del drone",
   },
   controls: {
-    rcProtocolHint: "Il protocollo del ricevitore collegato al controllore di volo (ACwing FC: connettore J5).", rcMapHint: "AETR per ExpressLRS, Crossfire e FrSky; TAER per la maggior parte dei trasmettitori Spektrum, Futaba e FlySky.", rcArmSwKillHint: "Interruttore di arm su AUX1: spento → acceso arma (solo se visto spento prima), acceso → spento disarma a terra. In volo ferma i motori (come Betaflight) o viene rifiutato.", rcModeMapHint: "AUX2 sceglie la modalità di volo mentre la radio ha il controllo. Spento di default: i ricevitori inviano il valore centrale sui canali senza interruttore.", launchDropHint: "Spento: solo un lancio verso l’alto avvia i motori (partono a 10 cm dalla mano o in cima al lancio). Acceso: accetta anche lasciarlo cadere; costa 0,4–1,3 m di quota e richiede più spinta.", rcCompatible: "Ricevitori compatibili",
+    rcProtocolHint: "Il protocollo del ricevitore collegato al controllore di volo (ACwing FC: connettore J5).", rcMapHint: "AETR per ExpressLRS, Crossfire e FrSky; TAER per la maggior parte dei trasmettitori Spektrum, Futaba e FlySky.", rcArmSwKillHint: "Interruttore di arm su AUX1: spento → acceso arma (solo se visto spento prima), acceso → spento disarma a terra. In volo ferma i motori (come Betaflight) o viene rifiutato.", rcModeMapHint: "AUX2 sceglie la modalità di volo mentre la radio ha il controllo. Spento di default: i ricevitori inviano il valore centrale sui canali senza interruttore.", launchDropHint: "Spento: solo un lancio verso l’alto avvia i motori (partono a 10 cm dalla mano o in cima al lancio). Acceso: accetta anche lasciarlo cadere; costa 0,4–1,3 m di quota e richiede più spinta.", ctlLawHint: "La legge di controllo usata dal prossimo arming (cambia solo da disarmato). 0 è la cascata integrata; 1–3 sono leggi aggiunte al firmware (ADR 0013). Un indice senza legge usa quella integrata.", rcCompatible: "Ricevitori compatibili",
     hoverHint: "Spinta di hover del telaio, valore di partenza della stima in volo: T400 0,51, T800 0,58, T1200 0,65, +0,04 con la scheda GPS.",
     tuning: "Taratura del volo (avanzata)", tuningHint: "Guadagni e filtri dei loop del controllore di volo. Cambia un valore alla volta, prima senza eliche; Salva li scrive sul drone.", notchHint: "0 = spento. Impostalo sul picco di rumore dei motori visto nel log di volo.",
     idleHint: "Spinta di ogni motore da armato, come frazione della massima.", curveHint: "1 = spinta quadratica nel duty (motori a spazzole), 0 = lineare. Si misura al banco di spinta.",
@@ -125,7 +125,7 @@ const it: Translation = {
     elrsHelp: "Priorità massima: quando è attiva, l'app passa alla sola telemetria",
   },
   params: {
-    rcProtocol: "Protocollo del ricevitore", rcMap: "Ordine dei canali", rcArmSwKill: "Interruttore arm spento in volo", rcModeMap: "Selettore modi (AUX2)", launchDrop: "Lancio a mano",
+    rcProtocol: "Protocollo del ricevitore", rcMap: "Ordine dei canali", rcArmSwKill: "Interruttore arm spento in volo", rcModeMap: "Selettore modi (AUX2)", launchDrop: "Lancio a mano", ctlLaw: "Legge di controllo",
     hoverThr: "Spinta di hover",
     rateP: "P rate rollio/beccheggio", rateI: "I rate rollio/beccheggio", rateD: "D rate rollio/beccheggio", yawP: "P rate imbardata", yawI: "I rate imbardata", attP: "P angolo", gyroLpf: "Passa-basso giroscopio", dtermLpf: "Passa-basso termine D", gyroNotch: "Notch giroscopio", motorIdle: "Minimo motori", thrCurve: "Curva di spinta",
     battCapacity: "Capacità", battCells: "Celle", logMode: "Log di volo",
@@ -139,7 +139,7 @@ const it: Translation = {
   },
   actions: {
     rcNone: "Nessun ricevitore", rcCrsf: "CRSF (ExpressLRS, Crossfire, Tracer)", rcSbus: "SBUS (FrSky, Futaba, …)", rcIbus: "i-BUS (FlySky)", rcDsm: "DSM2 / DSMX (Spektrum)", mapAetr: "AETR (rollio, beccheggio, gas, imbardata)", mapTaer: "TAER (gas, rollio, beccheggio, imbardata)",
-    swRefused: "Rifiutato", swKill: "Motori spenti", modeMapOff: "Spento", modeMapHold: "ANGLE · ALT HOLD · POS HOLD", modeMapAcro: "ACRO · ANGLE · ALT HOLD", launchTossOnly: "Solo lancio verso l’alto", launchDropToo: "Lancio o caduta",
+    swRefused: "Rifiutato", swKill: "Motori spenti", modeMapOff: "Spento", modeMapHold: "ANGLE · ALT HOLD · POS HOLD", modeMapAcro: "ACRO · ANGLE · ALT HOLD", launchTossOnly: "Solo lancio verso l’alto", launchDropToo: "Lancio o caduta", ctlLawCascade: "Cascata PID integrata", ctlLawUser1: "Legge personalizzata 1", ctlLawUser2: "Legge personalizzata 2", ctlLawUser3: "Legge personalizzata 3",
     auto: "Automatico", logOff: "Spento", logArmed: "A ogni volo", logAlways: "Sempre",
     hover: "Hover", land: "Atterra", rth: "Ritorno a casa", useFlow: "Usa flusso ottico", altHold: "ALT HOLD", altHoldWarn: "ALT HOLD + avviso",
     stopBack: "Fermati e torna indietro", compassFc: "Flight controller", compassGps: "Modulo GPS (più lontano dai motori)",
