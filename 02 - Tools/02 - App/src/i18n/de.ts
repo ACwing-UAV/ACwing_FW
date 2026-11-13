@@ -107,6 +107,7 @@ const de: Translation = {
     units: "Einheiten", metric: "Metrisch", imperial: "Imperial", theme: "Design", dark: "Dunkel", daylight: "Tageslicht", droneName: "Name der Drohne",
   },
   controls: {
+    rcProtocolHint: "Das Protokoll des Empfängers am Flugcontroller (ACwing FC: Stecker J5).", rcMapHint: "AETR für ExpressLRS, Crossfire und FrSky; TAER für die meisten Spektrum-, Futaba- und FlySky-Sender.", rcCompatible: "Kompatible Empfänger",
     hoverHint: "Schwebeschub des Rahmens, Startwert der Schätzung im Flug: T400 0,51, T800 0,58, T1200 0,65, +0,04 mit der GPS-Platine.",
     tuning: "Flugabstimmung (erweitert)", tuningHint: "Verstärkungen und Filter der Regelkreise. Immer nur einen Wert ändern, zuerst ohne Propeller; Speichern schreibt sie in die Drohne.", notchHint: "0 = aus. Auf die Spitze des Motorrauschens im Fluglog setzen.",
     idleHint: "Schub jedes Motors im scharfen Zustand, als Anteil des Maximums.", curveHint: "1 = Schub quadratisch im Tastgrad (Bürstenmotoren), 0 = linear. Am Schubprüfstand gemessen.",
@@ -122,6 +123,7 @@ const de: Translation = {
     elrsHelp: "Höchste Priorität: wenn aktiv, zeigt die App nur noch Telemetrie",
   },
   params: {
+    rcProtocol: "Empfängerprotokoll", rcMap: "Kanalreihenfolge",
     hoverThr: "Schwebeschub",
     rateP: "Roll/Nick-Rate P", rateI: "Roll/Nick-Rate I", rateD: "Roll/Nick-Rate D", yawP: "Gier-Rate P", yawI: "Gier-Rate I", attP: "Winkel P", gyroLpf: "Gyro-Tiefpass", dtermLpf: "D-Term-Tiefpass", gyroNotch: "Gyro-Notch", motorIdle: "Motor-Leerlauf", thrCurve: "Schubkurve",
     battCapacity: "Kapazität", battCells: "Zellen", logMode: "Fluglog",
@@ -134,6 +136,7 @@ const de: Translation = {
     compassPrimary: "Primärer Kompass",
   },
   actions: {
+    rcNone: "Kein Empfänger", rcCrsf: "CRSF (ExpressLRS, Crossfire, Tracer)", rcSbus: "SBUS (FrSky, Futaba, …)", rcIbus: "i-BUS (FlySky)", rcDsm: "DSM2 / DSMX (Spektrum)", mapAetr: "AETR (Rollen, Nicken, Gas, Gieren)", mapTaer: "TAER (Gas, Rollen, Nicken, Gieren)",
     auto: "Automatisch", logOff: "Aus", logArmed: "Bei jedem Flug", logAlways: "Immer",
     hover: "Schweben", land: "Landen", rth: "Rückkehr zum Startpunkt", useFlow: "Optischen Fluss nutzen", altHold: "ALT HOLD", altHoldWarn: "ALT HOLD + Warnung",
     stopBack: "Anhalten und zurückfliegen", compassFc: "Flugcontroller", compassGps: "GPS‑Modul (weiter von den Motoren entfernt)",

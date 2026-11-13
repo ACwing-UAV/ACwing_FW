@@ -45,10 +45,15 @@ uint8_t checks_build(const checks_in_t *in, pv2_check_t *it, uint8_t *ready, uin
         put(&it[n++], PV2_CHK_COMPASS, st, i);
     }
 
-    /* 4 GNSS, 5 home, 6 ELRS: not fitted */
+    /* 4 GNSS, 5 home: not fitted yet */
     put(&it[n++], PV2_CHK_GNSS,  PV2_CK_NA, 0);
     put(&it[n++], PV2_CHK_HOME,  PV2_CK_NA, 0);
-    put(&it[n++], PV2_CHK_RADIO, PV2_CK_NA, 0);
+    /* 6 RC receiver: N/A until one has been seen; WARN with the link lost or LQ < 70 % */
+    if (!in->rc_ever) put(&it[n++], PV2_CHK_RADIO, PV2_CK_NA, 0);
+    else {
+        const uint8_t lq = in->rc_valid ? (in->rc_lq == 0xFFu ? 100u : in->rc_lq) : 0u;
+        put(&it[n++], PV2_CHK_RADIO, lq < 70u ? PV2_CK_WARN : PV2_CK_OK, lq);
+    }
 
     /* 7 EKF */
     put(&it[n++], PV2_CHK_EKF,

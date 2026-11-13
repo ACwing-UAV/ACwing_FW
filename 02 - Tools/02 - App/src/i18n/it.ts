@@ -107,6 +107,7 @@ const it: Translation = {
     units: "Unità", metric: "Metriche", imperial: "Imperiali", theme: "Tema", dark: "Scuro", daylight: "Luce diurna", droneName: "Nome del drone",
   },
   controls: {
+    rcProtocolHint: "Il protocollo del ricevitore collegato al controllore di volo (ACwing FC: connettore J5).", rcMapHint: "AETR per ExpressLRS, Crossfire e FrSky; TAER per la maggior parte dei trasmettitori Spektrum, Futaba e FlySky.", rcCompatible: "Ricevitori compatibili",
     hoverHint: "Spinta di hover del telaio, valore di partenza della stima in volo: T400 0,51, T800 0,58, T1200 0,65, +0,04 con la scheda GPS.",
     tuning: "Taratura del volo (avanzata)", tuningHint: "Guadagni e filtri dei loop del controllore di volo. Cambia un valore alla volta, prima senza eliche; Salva li scrive sul drone.", notchHint: "0 = spento. Impostalo sul picco di rumore dei motori visto nel log di volo.",
     idleHint: "Spinta di ogni motore da armato, come frazione della massima.", curveHint: "1 = spinta quadratica nel duty (motori a spazzole), 0 = lineare. Si misura al banco di spinta.",
@@ -122,6 +123,7 @@ const it: Translation = {
     elrsHelp: "Priorità massima: quando è attiva, l'app passa alla sola telemetria",
   },
   params: {
+    rcProtocol: "Protocollo del ricevitore", rcMap: "Ordine dei canali",
     hoverThr: "Spinta di hover",
     rateP: "P rate rollio/beccheggio", rateI: "I rate rollio/beccheggio", rateD: "D rate rollio/beccheggio", yawP: "P rate imbardata", yawI: "I rate imbardata", attP: "P angolo", gyroLpf: "Passa-basso giroscopio", dtermLpf: "Passa-basso termine D", gyroNotch: "Notch giroscopio", motorIdle: "Minimo motori", thrCurve: "Curva di spinta",
     battCapacity: "Capacità", battCells: "Celle", logMode: "Log di volo",
@@ -134,6 +136,7 @@ const it: Translation = {
     compassPrimary: "Bussola principale",
   },
   actions: {
+    rcNone: "Nessun ricevitore", rcCrsf: "CRSF (ExpressLRS, Crossfire, Tracer)", rcSbus: "SBUS (FrSky, Futaba, …)", rcIbus: "i-BUS (FlySky)", rcDsm: "DSM2 / DSMX (Spektrum)", mapAetr: "AETR (rollio, beccheggio, gas, imbardata)", mapTaer: "TAER (gas, rollio, beccheggio, imbardata)",
     auto: "Automatico", logOff: "Spento", logArmed: "A ogni volo", logAlways: "Sempre",
     hover: "Hover", land: "Atterra", rth: "Ritorno a casa", useFlow: "Usa flusso ottico", altHold: "ALT HOLD", altHoldWarn: "ALT HOLD + avviso",
     stopBack: "Fermati e torna indietro", compassFc: "Flight controller", compassGps: "Modulo GPS (più lontano dai motori)",

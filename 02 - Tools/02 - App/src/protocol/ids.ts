@@ -354,6 +354,9 @@ export const PARAMS: ParamDef[] = [
   { id: 97, key: "dtermLpf", def: 70, min: 20, max: 250, step: 1, unit: "Hz" },
   { id: 98, key: "gyroNotch", def: 0, min: 0, max: 400, step: 1, unit: "Hz" },
   { id: 99, key: "motorIdle", def: 0.05, min: 0, max: 0.15, step: 0.01 },
+  // RC receiver (firmware 0.7.0): protocol and channel order of the receiver on the FC (control/rc_input.h)
+  { id: 100, key: "rcProtocol", def: 1, min: 0, max: 4, step: 1, options: [1, 2, 3, 4, 0] },
+  { id: 101, key: "rcMap", def: 0, min: 0, max: 1, step: 1, options: [0, 1] },
 ];
 
 export const PARAM_BY_KEY: Record<string, ParamDef> = Object.fromEntries(PARAMS.map((p) => [p.key, p]));
@@ -370,4 +373,6 @@ export const ACTION = {
   compassPrimary: { 0: "compassFc", 1: "compassGps" },
   battCells: { 0: "auto" },
   logMode: { 0: "logOff", 1: "logArmed", 2: "logAlways" },
+  rcProtocol: { 0: "rcNone", 1: "rcCrsf", 2: "rcSbus", 3: "rcIbus", 4: "rcDsm" },
+  rcMap: { 0: "mapAetr", 1: "mapTaer" },
 } as Record<string, Record<number, string>>;

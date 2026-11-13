@@ -36,6 +36,8 @@ typedef struct {
     float    batt_warn, batt_crit;   /**< params battWarn / battCrit                */
     uint8_t  usb_host;         /**< a USB host is connected (item 12, FAIL)         */
     float    hover;            /**< hover thrust in use, normalised (item 13)       */
+    uint8_t  rc_ever, rc_valid;/**< RC receiver seen / link up (item 6)             */
+    uint8_t  rc_lq;            /**< link quality %, 0xFF = n/a (link up = 100)      */
 } checks_in_t;
 
 /** item 13: WARN when hovering needs more than this fraction of the thrust left at the present voltage */

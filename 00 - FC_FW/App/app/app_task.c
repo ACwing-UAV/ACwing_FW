@@ -22,6 +22,7 @@
 #include "log_task.h"
 #include "usb_link.h"
 #include "control_hooks.h"
+#include "rc_input.h"
 #include <string.h>
 #include <math.h>
 
@@ -182,7 +183,9 @@ static uint16_t sensors_now(void)
     fsh_est_t e;
     memset(&e, 0, sizeof e);
     fsh_est_read(&e);
-    return (uint16_t)(e.sensors | ext_sensors() | s_cfg.board_sensors);
+    rc_state_t rc;
+    const uint16_t radio = rc_input_read(&rc) ? PV2_S_ELRS : 0u;     /* any RC receiver seen (CAPS bit 9) */
+    return (uint16_t)(e.sensors | ext_sensors() | s_cfg.board_sensors | radio);
 }
 
 static batt_state_t batt_now(void)
@@ -317,6 +320,16 @@ static void send_system(void)
     pv2_system_t s;
     memset(&s, 0, sizeof s);
     s.lq = 0xFFu;
+    {
+        rc_state_t rc;
+        if (rc_input_read(&rc)) {                                   /* RC receiver link (CRSF carries all of it) */
+            s.lq = rc.valid ? (rc.link.lq == 0xFFu ? 100u : rc.link.lq) : 0u;
+            s.rssi = rc.link.rssi;
+            s.snr = rc.link.snr;
+            s.pkt_rate_hz = rc.link.pkt_rate_hz;
+            s.tx_power_mw = rc.link.tx_power_mw;
+        }
+    }
     s.cpu_pct = (uint8_t)(e.cpu_pct > 100.0f ? 100.0f : e.cpu_pct);
     s.loop_hz = (uint16_t)(e.loop_hz + 0.5f);
     s.jitter_us = (uint16_t)(e.jitter_us > 65535.0f ? 65535.0f : e.jitter_us);
@@ -391,6 +404,12 @@ static void build_checks(pv2_check_t *it, uint8_t *n)
     }
     in.usb_host = usbl_host();
     in.hover = f.hover;
+    {
+        rc_state_t rc;
+        memset(&rc, 0, sizeof rc);
+        in.rc_ever = rc_input_read(&rc);
+        in.rc_valid = rc.valid; in.rc_lq = rc.link.lq;
+    }
     *n = checks_build(&in, it, &s_ready, &s_batt_fail);
 }
 
