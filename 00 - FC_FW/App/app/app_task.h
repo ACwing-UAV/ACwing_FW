@@ -22,7 +22,7 @@
 #include "calib_mgr.h"
 
 #define APP_FW_MAJOR  0u
-#define APP_FW_MINOR  14u
+#define APP_FW_MINOR  15u
 #define APP_FW_PATCH  0u
 
 typedef struct {
@@ -36,8 +36,6 @@ typedef struct {
     uint16_t board_sensors;       /**< CAPS bits of the board itself (CURRENT, FLASH_LOG)        */
     /** flash log used %, 0xFF = no log; may be NULL */
     uint8_t (*log_pct)(void);
-    /** memory health for SYSTEM: lowest free heap, smallest stack margin (bytes) and its task; NULL = n/a */
-    void    (*mem_health)(uint16_t *heap_min_free, uint16_t *stack_min_free, char task[4]);
 } app_task_cfg_t;
 
 /** Before the scheduler starts: loads the flash image (parameters, name,

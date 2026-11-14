@@ -206,7 +206,7 @@ models** (ToF, flow, baro).
 |---|---|---|---|
 | 0 | u8 | fix | `0` none, `2` 2D, `3` 3D, **`0xFF` = no GNSS hardware** |
 | 1 | u8 | sats | |
-| 2 | u16 | hdop | ×100 |
+| 2 | u16 | hdop | ×100. From firmware 0.15 the **pDOP** of NAV-PVT (the receiver gives no hDOP; pDOP ≥ hDOP) |
 | 4 | i32 | lat | 1e-7 deg |
 | 8 | i32 | lon | 1e-7 deg |
 | 12 | i32 | altMsl | cm |
@@ -557,7 +557,8 @@ position loop in **POS_HOLD and in every automatic action** (TAKEOFF, LAND, RTH,
   (±5 %), the drone brakes and holds the point where it stopped (no flying back the braking distance);
 - automatic actions: the sticks are ignored, the drone holds the point;
 - flow not usable (below 80 mm, lost): angles from the sticks, level when centred, height still held;
-- GNSS is not a position source yet: outdoors POS_HOLD holds the height only.
+- GNSS is not a position source yet (ADR 0014): with the GPS board and no flow, POS_HOLD is refused (`SENSOR_MISSING`)
+  and the takeoff ends in ALT_HOLD; the receiver data reach NAV and CHECKS only.
 
 The setpoint carries two flags, `alt_ctrl` (vertical loop) and `pos_hold` (position loop); `pos_hold` implies
 `alt_ctrl`. Both are in the flight log (VERT flags bits 4, 5).
@@ -790,8 +791,8 @@ no item in FAIL.
 |---|---|---|---|
 | 1 | Battery | average cell mV; **0** = no battery measured | N/A without a monitor; WARN with value 0 = no battery (USB power); FAIL with value 0 = battery monitor stopped; else FAIL < battCrit (or latched CRITICAL), WARN < battWarn (or latched LOW) |
 | 2 | IMU & level | 0 | FAIL if IMU missing / not calibrated (accel never calibrated) |
-| 3 | Compass | interference % | WARN > 15 % or compass recommended; FAIL if uncalibrated on GNSS models |
-| 4 | GNSS | satellites | N/A without GNSS; WARN < 3D or < 8 sats |
+| 3 | Compass | interference % | WARN > 15 % or compass recommended; FAIL if uncalibrated on GNSS models (from firmware 0.15: once the GNSS is a navigation source, ADR 0014) |
+| 4 | GNSS | satellites | N/A without GNSS; WARN < 3D or < 8 sats (or the solution older than 2 s) |
 | 5 | Home | horizontal accuracy dm (value/10 = m) | N/A without GNSS; WARN not set |
 | 6 | ELRS radio | LQ % | N/A without receiver/not bound; WARN LQ < 70. From firmware 0.7.0 any RC receiver: LQ from CRSF link statistics, from the SBUS lost frames, 100 for i-BUS/DSM while frames arrive, 0 when the link is lost |
 | 7 | EKF | 0 | FAIL if not converged; WARN if attUnc > 3° |
@@ -994,6 +995,10 @@ The app does not know model names; it reads CAPS:
 | no `ESC_TLM` | motors shown as output % instead of RPM |
 | no `ELRS` | no radio items, no sticks calibration |
 | `cells` | battery thresholds shown per cell; 1S indoor models fine |
+
+**Firmware 0.15 (ADR 0014):** CAPS `GNSS` / `MAG_GPS` mean the GPS board answered. Until the horizontal
+estimator fuses the solution the drone does not navigate on it: RTH → `NO_GPS`, POS_HOLD needs the flow, the
+`gfMaxDist` fence is not enforced. The app still shows the GNSS data and the outdoor items.
 
 Reference configurations in the simulator: outdoor = 4S, IMU, BARO, MAG_FC,
 MAG_GPS, GNSS, FLOW, TOF, ESC_TLM, CURRENT, ELRS, LEDS, FLASH_LOG; indoor = 1S,

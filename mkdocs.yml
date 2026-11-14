@@ -94,6 +94,7 @@ nav:
       - decisions/0011-hand-launch.md
       - decisions/0012-autonomous-flip.md
       - decisions/0013-control-law-interface.md
+      - decisions/0014-gnss-input.md
   - Project:
       - Lessons learned: project/lessons-learned.md
       - Roadmap: project/roadmap.md

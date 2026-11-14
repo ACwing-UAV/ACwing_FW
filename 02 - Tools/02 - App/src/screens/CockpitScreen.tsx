@@ -224,7 +224,7 @@ export function CockpitScreen() {
         {s.system && s.system.lq !== null && compact && <span className="num small">LQ {s.system.lq}%</span>}
         <div className="ck-stat full"><span className="k">{t("cockpit.linkBle")}</span><span className="v">{s.rssi !== null ? `${s.rssi} dBm` : "–"} · {(s.rxBytesPerS / 1000).toFixed(1)} kB/s</span></div>
         {gps ? (
-          <div className="ck-stat full"><span className="k">{t("cockpit.gnss")}</span><span className="v">{s.nav ? `${s.nav.fix === 3 ? "3D" : s.nav.fix === 2 ? "2D" : "–"} · ${s.nav.sats} sat · HDOP ${s.nav.hdop.toFixed(1)}` : "–"}</span></div>
+          <div className="ck-stat full"><span className="k">{t("cockpit.gnss")}</span><span className="v">{s.nav ? `${s.nav.fix === 3 ? "3D" : s.nav.fix === 2 ? "2D" : "–"} · ${s.nav.sats} sat · PDOP ${s.nav.hdop.toFixed(1)}` : "–"}</span></div>
         ) : (
           <div className="ck-stat full"><span className="k">{t("cockpit.flow")}</span><span className="v">{s.nav?.flowQ != null ? `${s.nav.flowQ}%` : "–"}</span></div>
         )}

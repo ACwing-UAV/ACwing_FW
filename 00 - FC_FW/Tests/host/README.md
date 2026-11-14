@@ -12,6 +12,9 @@ app-link failsafe timings, flow lost, ceiling), vertical estimator, VL53L1X and
 flow-bridge drivers, AppTask protocol (subscribe order, rates, parameters,
 flash, CHECKS, KILL), BLE HI/LO ring priority.
 
+A binary `gnss_test` checks the GNSS input (ADR 0014): the UBX parser, the M10 driver on a
+simulated DDC target, the IIS2MDC, the ExtTask with the GPS board, the NAV fields and the GNSS checks.
+
 A second binary, `ext_test`, checks the ExtTask logic (`app/ext_sens.c`):
 probing, a board plugged in late, polling and a lost device found again. It
 uses a VL53L1X register model and the real flow-bridge firmware logic

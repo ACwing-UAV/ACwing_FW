@@ -1,7 +1,8 @@
 # Continuous integration: the test suites that keep firmware, app and PC tools
 # in agreement on the protocol and on the flight behaviour.
 #   firmware  host tests of 00 - FC_FW (flight core, AppTask, links, battery, log, IEKF, control loops, hover
-#             estimate, RC input, position hold), ASan/UBSan; the 1-D design estimates of ADR 0011/0012
+#             estimate, RC input, position hold, GNSS input), ASan/UBSan; the 1-D design estimates of ADR 0011/0012;
+#             the portable drivers include no HAL and no RTOS (ADR 0005)
 #   firmware-target  cross-build of the STM32WB55 firmware with arm-none-eabi-gcc from the CubeIDE project
 #             (.cproject include paths, defines and sources), Debug and Release on the bench board (90 % of RAM or
 #             FLASH), and the rev A flight board (80 % of RAM)
@@ -34,6 +35,12 @@ jobs:
       - name: Build and run (gcc, AddressSanitizer + UBSan)
         working-directory: "00 - FC_FW/Tests/host"
         run: make
+      - name: Portable drivers include no HAL and no RTOS (ADR 0005)
+        working-directory: "00 - FC_FW/App/drivers"
+        run: |
+          if grep -rnE '#include *[<"](stm32|main\.h|cmsis_os|FreeRTOS|task\.h|queue\.h|semphr\.h)' .; then
+            echo "a driver depends on the HAL or the RTOS: move the binding to bsp/"; exit 1
+          fi
       - name: The control-law example of the docs compiles against ctl_api.h
         run: python3 "00 - FC_FW/Tests/host/doc_example.py"
       - name: Design estimates of the ADRs (flip, hand launch)

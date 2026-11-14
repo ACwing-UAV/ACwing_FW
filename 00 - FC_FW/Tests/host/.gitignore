@@ -1,5 +1,6 @@
 host_test
 ext_test
+gnss_test
 frames.bin
 power_test
 log_test

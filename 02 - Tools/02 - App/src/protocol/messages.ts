@@ -208,7 +208,7 @@ export function encodePower(m: PowerMsg): Uint8Array {
 export interface NavMsg {
   fix: number; // 0 none, 2 = 2D, 3 = 3D, 0xFF = no GNSS hardware
   sats: number;
-  hdop: number; // wire ×100 u16
+  hdop: number; // wire ×100 u16; from FW 0.15 the pDOP of NAV-PVT (ADR 0014)
   lat: number; // wire 1e-7 deg i32
   lon: number;
   altMslM: number; // wire cm i32

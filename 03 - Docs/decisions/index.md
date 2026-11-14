@@ -20,6 +20,7 @@ record replaces the old one, and the old one is marked *Superseded*.
 | [0011](0011-hand-launch.md) | Hand launch: armed with the motors stopped, toss up, motors started away from the hand | Accepted |
 | [0012](0012-autonomous-flip.md) | Autonomous flip: a phased manoeuvre gated on the thrust available now | Accepted |
 | [0013](0013-control-law-interface.md) | A generic control-law interface: reference in, getters and setters, swappable laws | Accepted |
+| [0014](0014-gnss-input.md) | GNSS input: u-blox M10 on the Qwiic bus, UBX only, detected but not a position source yet | Accepted |
 
 **New record.** Copy the template below to `NNNN-short-title.md`, add it to
 this table and to `nav` in `mkdocs.yml`.

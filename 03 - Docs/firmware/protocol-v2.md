@@ -122,11 +122,11 @@ than 256 bytes are free in the HI ring, so a list never pushes out an ACK.
 
 | Area | Implemented | Reported honestly as missing (as §15 of the handover asks) |
 |---|---|---|
-| Frames | CAPS (sensor bits detected at run time, cells), FLIGHT 10 Hz, POWER 5 Hz, NAV 5 Hz (also indoor: baro, ToF, flow quality), MOTORS 5 Hz, SYSTEM 2 Hz (with the flash log %), CHECKS 2 Hz (0.5 Hz armed), CALIB, EVENT (ERROR and CRITICAL sent 3 times, 100 ms apart), PARAM, ACK | POWER only where the battery is measured (ACwing FC; not on the bench by default): elsewhere `REQUEST(POWER)` returns `UNSUPPORTED` |
+| Frames | CAPS (sensor bits detected at run time, cells), FLIGHT 10 Hz, POWER 5 Hz, NAV 5 Hz (also indoor: baro, ToF, flow quality; with the GPS board fix, satellites, pDOP, position, velocity from the M10, ADR 0014), MOTORS 5 Hz, SYSTEM 2 Hz (with the flash log %), CHECKS 2 Hz (0.5 Hz armed), CALIB, EVENT (ERROR and CRITICAL sent 3 times, 100 ms apart), PARAM, ACK | POWER only where the battery is measured (ACwing FC; not on the bench by default): elsewhere `REQUEST(POWER)` returns `UNSUPPORTED` |
 | Commands | ACK cache of 32 entries: a repeat gets the cached ACK and is not executed again. ARM, DISARM, KILL, SET_MODE, TAKEOFF, LAND, HOLD, PARAM_*, CAL_*, MOTOR_TEST (behind `MOTORS_ENABLE`), STREAM_RATES, REQUEST, SET_NAME | RTH → `NO_GPS`. MOTOR_REVERSE and MOTOR_REMAP → `UNSUPPORTED` |
 | Parameters | the full ids.ts table; A/B flash pages with seq + CRC32; save allowed only when disarmed | – |
 | Calibrations | ACCEL (6 positions), LEVEL, GYRO, COMPASS (ellipsoid fit, 36-sector coverage), BATTERY (voltage and current scales), each with one backup per type (CAL_RESTORE) | FLOW_TOF → `UNSUPPORTED` while the board is present. STICKS, MOTORS → `SENSOR_MISSING`; BATTERY too without CAPS CURRENT |
-| Failsafes | app link (RC stale 0.25 s, short 1 s, long 3 s with EVENT 20, link back 0.5 s, ground disarm 3 s), geofence ceiling (gfMaxAlt, gfCeiling with ToF), flow lost in POS_HOLD, battery (LOW / CRITICAL → LAND / EMERGENCY → locked LAND, events 30/31/32/22) | radio, GNSS: no hardware yet. Battery RTH needs GNSS: LAND instead |
+| Failsafes | app link (RC stale 0.25 s, short 1 s, long 3 s with EVENT 20, link back 0.5 s, ground disarm 3 s), geofence ceiling (gfMaxAlt, gfCeiling with ToF), flow lost in POS_HOLD, battery (LOW / CRITICAL → LAND / EMERGENCY → locked LAND, events 30/31/32/22) | GNSS lost (`fsGpsLost`), distance geofence: the GNSS is read (ADR 0014) but not a navigation source yet. Battery RTH needs GNSS navigation: LAND instead |
 
 ## Parameters and flash
 

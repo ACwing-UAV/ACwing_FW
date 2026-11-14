@@ -18,6 +18,7 @@
 #include "checks.h"
 #include "fc_shared.h"
 #include "ext_sens.h"
+#include "gnss_nav.h"
 #include "batt_task.h"
 #include "log_task.h"
 #include "usb_link.h"
@@ -298,6 +299,11 @@ static void send_nav(void)
         n.vel_ned_cms[1] = sat16(ve * 100.0f);
         n.vel_ned_cms[2] = e.alt_valid ? sat16(-e.vz * 100.0f) : 0;
     }
+    {   /* the GNSS solution replaces the baro altitude and the flow velocity while it is good */
+        ext_gnss_t g;
+        const uint8_t have = (uint8_t)ext_gnss_read(&g);
+        gnss_nav_fill(&n, (uint8_t)((s_sensors & PV2_S_GNSS) != 0u), have, &g, s_now);
+    }
     n.tof_mm = e.tof_mm;
     n.flow_q = e.flow_q;
     n.wind_cms = 0xFFFFu;
@@ -413,6 +419,10 @@ static void build_checks(pv2_check_t *it, uint8_t *n)
     }
     in.usb_host = usbl_host();
     in.hover = f.hover;
+    {
+        ext_gnss_t g;
+        if (ext_gnss_read(&g) && gnss_fresh(&g, s_now)) { in.gnss_fix = gnss_fix_code(&g.pvt); in.gnss_sats = g.pvt.num_sv; }
+    }
     {
         rc_state_t rc;
         memset(&rc, 0, sizeof rc);

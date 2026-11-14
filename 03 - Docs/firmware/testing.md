@@ -8,6 +8,7 @@ the tests that run without a board, and what each one proves.
 |---|---|---|---|
 | FC host tests | `make` in `00 - FC_FW/Tests/host` | 93 | flight core, failsafes, TAKEOFF/LAND, altitude filter, drivers, AppTask protocol, BLE rings |
 | ExtTask, end to end | same `make` (`ext_test`) | 12 | Qwiic probing and polling, with the real bridge logic of `01 - FLOW_FW` |
+| GNSS input | same `make` (`gnss_test`) | 58 | UBX parser and builders, NAV-PVT, the M10 on a simulated DDC, the IIS2MDC, the ExtTask with the GPS board, NAV and CHECKS items 3–5 (ADR 0014) |
 | Battery | same `make` (`power_test`) | 95 | estimator, BattTask signals, battery failsafes, BATTERY calibration, CHECKS item 1, POWER, flash image v1 → v2 |
 | Flight log | same `make` (`log_test`) | 63 | W25Q driver on a simulated chip, sector ring (wrap, re-mount, power loss), queues, LogTask policy, USB download protocol, BLE last-flight download through the AppTask, SET_TIME and LR_TIME |
 | USB ground link | same `make` (`link_test`) | 35 | flight commands refused over USB, ARM / TAKEOFF / MOTOR_TEST refused with a USB host (CHECKS item 12), the first link has control of the settings, ACKs to their own link, three producers on one endpoint without cut frames, calibration aborted when USB closes |
