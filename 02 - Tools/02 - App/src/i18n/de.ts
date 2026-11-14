@@ -34,7 +34,7 @@ const de: Translation = {
   },
   cockpit: {
     armed: "SCHARF", disarmed: "GESICHERT", slideToDisarm: "SCHARF · wischen zum Sichern", slideToDisarmAria: "Wischen zum Sichern (nur am Boden)",
-    flightMode: "Flugmodus", flight: "Flug", autoTakeoff: "Auto‑Start", autoLand: "Auto‑Landung", rth: "RTH", rthLong: "Rückkehr zum Startpunkt",
+    flightMode: "Flugmodus", flight: "Flug", autoTakeoff: "Auto‑Start", launch: "Wurfstart", launchHold: "gedrückt halten zum Starten", launchReady: "Mit flacher Hand nach oben werfen · Hand unter der Drohne, nie über den Propellern", autoLand: "Auto‑Landung", rth: "RTH", rthLong: "Rückkehr zum Startpunkt",
     pause: "Pause / Schweben", kill: "MOTOR‑STOPP", killHold: "2 s halten", killConfirm: "Motoren im Flug stoppen? Die Drohne fällt herunter.",
     killYes: "Motoren stoppen", relAlt: "Relative Höhe", vSpeed: "Vertikalgeschwindigkeit", gSpeed: "Geschwindigkeit über Grund", home: "Home",
     homeDetail: "Peilung {brg}° · RTH ≈ {eta}", motorsRpm: "Motoren (U/min)", motorsOut: "Motoren (Ausgang)", avgCell: "Ø Zelle", used: "Verbraucht",
@@ -57,7 +57,7 @@ const de: Translation = {
     setCapacity: "Akkukapazität eingeben",
   },
   modes: { 0: "ACRO", 1: "ANGLE", 2: "ALT HOLD", 3: "POS HOLD" },
-  auto: { 0: "", 1: "START", 2: "LANDUNG", 3: "RTH", 4: "PAUSE", 5: "FAILSAFE" },
+  auto: { 0: "", 1: "START", 2: "LANDUNG", 3: "RTH", 4: "PAUSE", 5: "FAILSAFE", 6: "WURF" },
   telemetry: {
     title: "Telemetrie", recording: "Log wird aufgezeichnet", exportCsv: "CSV exportieren", battery: "Akku", groundSpeed: "Geschwindigkeit über Grund",
     homeDist: "Entfernung zu Home", radioLink: "Funkverbindung", estRemaining: "Gesch. Restflugzeit", rthNeeds: "RTH benötigt {t}",
@@ -77,6 +77,7 @@ const de: Translation = {
   },
   levels: { 0: "INFO", 1: "WARNUNG", 2: "FEHLER", 3: "KRITISCH" },
   events: {
+    10: "Wurfstart bereit: Drohne nach oben werfen", 11: "Gestartet", 12: "Wurfstart abgebrochen: {why}",
     9: "Funkschalter: {op} abgelehnt ({why})",
     8: "Start abgebrochen: kein Abheben", 33: "Akkuüberwachung gestoppt",
     1: "Scharfgeschaltet", 2: "Gesichert", 3: "Start", 4: "Gelandet", 5: "Flugmodus geändert", 6: "Rückkehr zum Startpunkt", 7: "Home gesetzt",
@@ -90,7 +91,7 @@ const de: Translation = {
     5: "Akku zu schwach", 6: "Home ist nicht gesetzt", 7: "der ELRS‑Funk hat die Kontrolle", 8: "die Drohne ist scharf", 9: "Propellerabbau nicht bestätigt",
     10: "die Drohne ist nicht scharf", 11: "eine Kalibrierung läuft", 12: "keine Kalibrierung aktiv", 13: "die Drohne bewegt sich",
     14: "Wert außerhalb des Bereichs", 15: "unbekannte Einstellung", 16: "Sensor nicht verbaut",
-    17: "ein USB-Kabel zu einem Computer ist angeschlossen: abziehen", 18: "über USB nicht erlaubt (Bodenverbindung)", 19: "ein anderes Gerät steuert die Einstellungen",
+    17: "ein USB-Kabel zu einem Computer ist angeschlossen: abziehen", 18: "über USB nicht erlaubt (Bodenverbindung)", 19: "ein anderes Gerät steuert die Einstellungen", 20: "zu wenig Schub jetzt (Akku oder Gewicht)",
   },
   cmdError: { rejected: "Nicht ausgeführt: {why}", timeout: "Keine Antwort von der Drohne", offline: "Nicht verbunden", other: "Die Drohne hat den Befehl abgelehnt" },
   settings: {
@@ -108,7 +109,7 @@ const de: Translation = {
     units: "Einheiten", metric: "Metrisch", imperial: "Imperial", theme: "Design", dark: "Dunkel", daylight: "Tageslicht", droneName: "Name der Drohne",
   },
   controls: {
-    rcProtocolHint: "Das Protokoll des Empfängers am Flugcontroller (ACwing FC: Stecker J5).", rcMapHint: "AETR für ExpressLRS, Crossfire und FrSky; TAER für die meisten Spektrum-, Futaba- und FlySky-Sender.", rcArmSwKillHint: "Arm-Schalter auf AUX1: aus → an schaltet scharf (nur wenn er vorher aus war), an → aus entschärft am Boden. Im Flug stoppt er die Motoren (wie Betaflight) oder wird abgelehnt.", rcModeMapHint: "AUX2 wählt den Flugmodus, solange die Funke die Kontrolle hat. Standardmäßig aus: Empfänger senden auf Kanälen ohne Schalter den Mittelwert.", rcCompatible: "Kompatible Empfänger",
+    rcProtocolHint: "Das Protokoll des Empfängers am Flugcontroller (ACwing FC: Stecker J5).", rcMapHint: "AETR für ExpressLRS, Crossfire und FrSky; TAER für die meisten Spektrum-, Futaba- und FlySky-Sender.", rcArmSwKillHint: "Arm-Schalter auf AUX1: aus → an schaltet scharf (nur wenn er vorher aus war), an → aus entschärft am Boden. Im Flug stoppt er die Motoren (wie Betaflight) oder wird abgelehnt.", rcModeMapHint: "AUX2 wählt den Flugmodus, solange die Funke die Kontrolle hat. Standardmäßig aus: Empfänger senden auf Kanälen ohne Schalter den Mittelwert.", launchDropHint: "Aus: nur ein Wurf nach oben startet die Motoren (10 cm von der Hand oder am höchsten Punkt). An: auch Fallenlassen wird akzeptiert; kostet 0,4–1,3 m Höhe und braucht mehr Schub.", rcCompatible: "Kompatible Empfänger",
     hoverHint: "Schwebeschub des Rahmens, Startwert der Schätzung im Flug: T400 0,51, T800 0,58, T1200 0,65, +0,04 mit der GPS-Platine.",
     tuning: "Flugabstimmung (erweitert)", tuningHint: "Verstärkungen und Filter der Regelkreise. Immer nur einen Wert ändern, zuerst ohne Propeller; Speichern schreibt sie in die Drohne.", notchHint: "0 = aus. Auf die Spitze des Motorrauschens im Fluglog setzen.",
     idleHint: "Schub jedes Motors im scharfen Zustand, als Anteil des Maximums.", curveHint: "1 = Schub quadratisch im Tastgrad (Bürstenmotoren), 0 = linear. Am Schubprüfstand gemessen.",
@@ -124,7 +125,7 @@ const de: Translation = {
     elrsHelp: "Höchste Priorität: wenn aktiv, zeigt die App nur noch Telemetrie",
   },
   params: {
-    rcProtocol: "Empfängerprotokoll", rcMap: "Kanalreihenfolge", rcArmSwKill: "Arm-Schalter aus im Flug", rcModeMap: "Modusschalter (AUX2)",
+    rcProtocol: "Empfängerprotokoll", rcMap: "Kanalreihenfolge", rcArmSwKill: "Arm-Schalter aus im Flug", rcModeMap: "Modusschalter (AUX2)", launchDrop: "Wurfstart",
     hoverThr: "Schwebeschub",
     rateP: "Roll/Nick-Rate P", rateI: "Roll/Nick-Rate I", rateD: "Roll/Nick-Rate D", yawP: "Gier-Rate P", yawI: "Gier-Rate I", attP: "Winkel P", gyroLpf: "Gyro-Tiefpass", dtermLpf: "D-Term-Tiefpass", gyroNotch: "Gyro-Notch", motorIdle: "Motor-Leerlauf", thrCurve: "Schubkurve",
     battCapacity: "Kapazität", battCells: "Zellen", logMode: "Fluglog",
@@ -138,7 +139,7 @@ const de: Translation = {
   },
   actions: {
     rcNone: "Kein Empfänger", rcCrsf: "CRSF (ExpressLRS, Crossfire, Tracer)", rcSbus: "SBUS (FrSky, Futaba, …)", rcIbus: "i-BUS (FlySky)", rcDsm: "DSM2 / DSMX (Spektrum)", mapAetr: "AETR (Rollen, Nicken, Gas, Gieren)", mapTaer: "TAER (Gas, Rollen, Nicken, Gieren)",
-    swRefused: "Abgelehnt", swKill: "Motoren aus", modeMapOff: "Aus", modeMapHold: "ANGLE · ALT HOLD · POS HOLD", modeMapAcro: "ACRO · ANGLE · ALT HOLD",
+    swRefused: "Abgelehnt", swKill: "Motoren aus", modeMapOff: "Aus", modeMapHold: "ANGLE · ALT HOLD · POS HOLD", modeMapAcro: "ACRO · ANGLE · ALT HOLD", launchTossOnly: "Nur Wurf nach oben", launchDropToo: "Wurf oder Fallenlassen",
     auto: "Automatisch", logOff: "Aus", logArmed: "Bei jedem Flug", logAlways: "Immer",
     hover: "Schweben", land: "Landen", rth: "Rückkehr zum Startpunkt", useFlow: "Optischen Fluss nutzen", altHold: "ALT HOLD", altHoldWarn: "ALT HOLD + Warnung",
     stopBack: "Anhalten und zurückfliegen", compassFc: "Flugcontroller", compassGps: "GPS‑Modul (weiter von den Motoren entfernt)",
@@ -251,6 +252,7 @@ const de: Translation = {
     },
     say: { alt: "Höhe {v} Meter", batt: "Akku {v} Prozent", timer: "{v} Minuten" },
     radioOp: { arm: "Scharfschalten", disarm: "Entschärfen", mode: "Moduswechsel", kill: "Not-Aus" },
+    launchAbort: { 1: "10 s in der Hand", 2: "Verbindung verloren", 3: "nicht stabilisiert, Landung", 4: "Lageschätzung verloren", 5: "Wurf zu schwach, Motoren aus" },
   },
   about: {
     logUsed: "Fluglog‑Speicher belegt", logModeHint: "Im Speicher der Drohne aufgezeichnet; Download unter Fluglogs",

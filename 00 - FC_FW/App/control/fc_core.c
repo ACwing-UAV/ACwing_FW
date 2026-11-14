@@ -14,6 +14,7 @@
 #include "radio_fs.h"
 #include "rc_switches.h"
 #include "pos_ctrl.h"
+#include "launch.h"
 #include <string.h>
 #include <math.h>
 
@@ -43,6 +44,8 @@ static ia_sticks_t s_rc;           /* sticks of the source in control (input_arb
 static uint8_t  s_radio_ctrl;      /* the RC radio has control                      */
 static uint32_t s_radio_sil;       /* since the last valid radio frame              */
 static pos_ctrl_t s_pc;             /* horizontal position hold                        */
+static ln_t     s_ln;              /* hand launch (launch.c)                          */
+static ln_out_t s_lno;
 static rc_state_t s_radio;         /* last receiver state (switches)                 */
 static uint8_t  s_radio_took;      /* the radio took control on this step            */
 static uint8_t  s_exec_radio;      /* the command being executed comes from the radio switches */
@@ -107,6 +110,7 @@ void fc_init(const fc_config_t *cfg)
     s_radio_ctrl = 0u; s_radio_sil = UINT32_MAX; s_rfs_hold = 0u;
     ia_init(); rfs_init(); rsw_init();
     { pc_gains_t pg; pc_gains_default(&pg); pc_init(&s_pc, &pg); }
+    ln_cancel(&s_ln); memset(&s_lno, 0, sizeof s_lno);
     memset(&s_radio, 0, sizeof s_radio); s_radio_took = 0u; s_exec_radio = 0u;
     s_test_motor = 0u;
     s_checks_ready = s_batt_fail = s_calibrating = 0u;
@@ -140,7 +144,7 @@ uint8_t fc_is_core_op(uint8_t op)
     switch (op) {
     case PV2_OP_ARM: case PV2_OP_DISARM: case PV2_OP_TAKEOFF: case PV2_OP_LAND:
     case PV2_OP_RTH: case PV2_OP_HOLD: case PV2_OP_KILL: case PV2_OP_SET_MODE:
-    case PV2_OP_MOTOR_TEST: case FC_OP_MOTOR_STOP:
+    case PV2_OP_MOTOR_TEST: case FC_OP_MOTOR_STOP: case PV2_OP_LAUNCH:
         return 1u;
     default:
         return 0u;
@@ -244,6 +248,7 @@ static void disarm(void)
     s_geofence = 0u;
     s_batt_lock = 0u;
     s_land_idle = 0u; s_air_thr = 0u; s_air_thr_ms = 0u; s_land_ol = 0u;
+    ln_cancel(&s_ln); memset(&s_lno, 0, sizeof s_lno);
     if (was) hover_track_disarm(s_flight_ms);
     if (was) event(PV2_EV_INFO, PV2_E_DISARMED, 0);
 }
@@ -266,6 +271,42 @@ static uint8_t fs_action(int p_idx)
     if (a == 2) return (gnss() && home_set()) ? PV2_AUTO_RTH : PV2_AUTO_LAND;
     if (a == 1) return PV2_AUTO_LAND;
     return PV2_AUTO_HOLD;
+}
+
+/* ---- arming: the checks and the state, shared by ARM and LAUNCH ---- */
+static uint8_t arm_refusal(uint32_t now, uint8_t est_running)
+{
+    if (s_armed)       return PV2_R_ARMED;
+    if (s_calibrating) return PV2_R_CALIBRATING;
+    if (s_in_air)      return PV2_R_NOT_LANDED;
+    if (s_radio_ctrl && !s_exec_radio) return PV2_R_RADIO_OVERRIDE;     /* the RC radio flies (input_arb.c) */
+    if (s_rc.have && age_ms(now, s_rc.t_ms) < FC_ARM_RC_FRESH_MS &&
+        s_rc.thr > (hold_mode() ? 100 : -900)) return PV2_R_THROTTLE_NOT_LOW;
+    if (s_batt_fail || batt_unusable()) return PV2_R_BATTERY_LOW;
+    /* never arm without a running attitude estimate, whatever armRequireChecks says */
+    if (!est_running || (PARAM(P_ARM_REQUIRE_CHECKS) > 0.5f && !s_checks_ready)) return PV2_R_CHECKS_FAILING;
+    return PV2_R_NONE;
+}
+
+static void arm_now(uint32_t now)
+{
+    s_armed = 1u;
+    s_auto = PV2_AUTO_NONE; s_failsafe = 0u; s_fs_long = 0u;
+    s_took_off = 0u; s_arm_ms = now; s_flight_ms = 0u;
+    s_landed = 0u; s_geofence_ev = 0u;
+    s_land_idle = 0u; s_air_thr = 0u; s_air_thr_ms = 0u; s_land_ol = 0u;
+    if (s_have_v && s_v.valid) { s_h_ref = s_h_ground = s_h_sp = s_v.h; }
+    hover_track_arm(PARAM(P_HOVER_THR));
+    s_hover = hover_track_value();
+    alt_ctrl_reset(&s_ac, 0.0f);
+    if (s_cfg.motors_arm) s_cfg.motors_arm(1u);
+    event(PV2_EV_INFO, PV2_E_ARMED, 0);
+}
+
+/* LAUNCH: the altitude source it needs besides arming (ADR 0011 §1); PV2_R_NONE = none missing */
+static uint8_t launch_refusal(void)
+{
+    return (uint8_t)((!alt_sensor() || !alt_ok()) ? PV2_R_SENSOR_MISSING : PV2_R_NONE);
 }
 
 /* ================================================================== */
@@ -304,29 +345,28 @@ static void exec(const fc_cmd_t *c, uint32_t now, uint8_t est_running)
     switch (c->op) {
     case PV2_OP_ARM: {
         if (c->len < 2u || p[0] != PV2_ARM_MAGIC0 || p[1] != PV2_ARM_MAGIC1) { INVALID(PV2_R_NONE); return; }
-        if (s_armed)       { REJ(PV2_R_ARMED); return; }
-        if (s_calibrating) { REJ(PV2_R_CALIBRATING); return; }
-        if (s_in_air)      { REJ(PV2_R_NOT_LANDED); return; }
-        if (s_radio_ctrl && !s_exec_radio) { REJ(PV2_R_RADIO_OVERRIDE); return; }   /* the RC radio flies (input_arb.c) */
-        if (s_rc.have && age_ms(now, s_rc.t_ms) < FC_ARM_RC_FRESH_MS &&
-            s_rc.thr > (hold_mode() ? 100 : -900)) { REJ(PV2_R_THROTTLE_NOT_LOW); return; }
-        if (s_batt_fail || batt_unusable()) { REJ(PV2_R_BATTERY_LOW); return; }
-        /* never arm without a running attitude estimate, whatever armRequireChecks says */
-        if (!est_running || (PARAM(P_ARM_REQUIRE_CHECKS) > 0.5f && !s_checks_ready)) {
-            REJ(PV2_R_CHECKS_FAILING); return;
-        }
-        s_armed = 1u;
-        s_auto = PV2_AUTO_NONE; s_failsafe = 0u; s_fs_long = 0u;
-        s_took_off = 0u; s_arm_ms = now; s_flight_ms = 0u;
-        s_landed = 0u; s_geofence_ev = 0u;
-        s_land_idle = 0u; s_air_thr = 0u; s_air_thr_ms = 0u; s_land_ol = 0u;
-        if (s_have_v && s_v.valid) { s_h_ref = s_h_ground = s_h_sp = s_v.h; }
-        hover_track_arm(PARAM(P_HOVER_THR));
-        s_hover = hover_track_value();
-        alt_ctrl_reset(&s_ac, 0.0f);
-        if (s_cfg.motors_arm) s_cfg.motors_arm(1u);
+        const uint8_t why = arm_refusal(now, est_running);
+        if (why) { REJ(why); return; }
         OK();
-        event(PV2_EV_INFO, PV2_E_ARMED, 0);
+        arm_now(now);
+        return;
+    }
+    case PV2_OP_LAUNCH: {
+        if (c->len < 2u || p[0] != PV2_ARM_MAGIC0 || p[1] != PV2_ARM_MAGIC1) { INVALID(PV2_R_NONE); return; }
+        if (s_exec_radio) { REJ(PV2_R_NONE); return; }           /* never from the arm switch (ADR 0011 §3) */
+        if (PARAM(P_BEGINNER) > 0.5f) { REJ(PV2_R_NONE); return; }   /* as ACRO */
+        uint8_t why = arm_refusal(now, est_running);
+        if (!why) why = launch_refusal();
+        if (why) { REJ(why); return; }
+        const uint8_t drop = (uint8_t)(PARAM(P_LAUNCH_DROP) > 0.5f);
+        if (ln_tw_available(hover_track_value(), s_v.v_cell) < (drop ? LN_TW_MIN_DROP : LN_TW_MIN)) {
+            REJ(PV2_R_THRUST_LOW); return;
+        }
+        OK();
+        arm_now(now);
+        ln_start(&s_ln, drop);
+        s_auto = PV2_AUTO_LAUNCH;
+        event(PV2_EV_INFO, PV2_E_LAUNCH_READY, drop);
         return;
     }
     case PV2_OP_DISARM:
@@ -654,6 +694,8 @@ static void air_ground_no_alt(uint32_t now, uint32_t dt)
 /* ---- in air / on ground ---- */
 static void air_ground(uint32_t now, uint32_t dt)
 {
+    /* hand launch: held in the hand, lifted, thrown: launch.c decides when the drone flies */
+    if (s_auto == PV2_AUTO_LAUNCH) return;
     /* bench override (no altitude sensor, or forced): debugger flag */
     if (s_armed && g_fc_dbg_in_air && !s_in_air) {
         lift_off(); s_dbg_forced = 1u;
@@ -792,6 +834,15 @@ static void setpoints(uint32_t now, uint32_t dt_ms)
     sp.yaw_rate   = -s_stick[1] * yawr;                  /* stick right = clockwise = -z (FLU) */
 
     if (!s_armed) { s_prev_vert = 0u; s_sp = sp; return; }
+    if (s_auto == PV2_AUTO_LAUNCH) {
+        /* hand launch (launch.c): motors stopped in the hand, then thrust and level attitude */
+        sp.motors_off = s_lno.motors_off;
+        sp.thrust = s_lno.motors_off ? 0.0f : s_lno.thrust;
+        sp.roll = sp.pitch = sp.roll_rate = sp.pitch_rate = sp.yaw_rate = 0.0f;
+        s_prev_vert = 0u;
+        s_sp = sp;
+        return;
+    }
 
     /* the pilot put the stick at the bottom after a touchdown: manual take-off allowed again */
     if (s_land_idle && !s_rc_stale && s_stick[0] < FC_THR_LOW) s_land_idle = 0u;
@@ -883,6 +934,40 @@ static void setpoints(uint32_t now, uint32_t dt_ms)
     s_sp = sp;
 }
 
+/* ---- hand launch (launch.c, ADR 0011): the module decides, the core applies ---- */
+static void launch_done(void)
+{
+    s_auto = PV2_AUTO_NONE;
+    s_mode = has(PV2_S_GNSS | PV2_S_FLOW) ? PV2_MODE_POS_HOLD : PV2_MODE_ALT_HOLD;   /* as after TAKEOFF */
+    s_h_sp = s_v.h;                                    /* the height reached */
+    alt_ctrl_reset(&s_ac, 0.0f);
+    event(PV2_EV_INFO, PV2_E_MODE_CHANGED, s_mode);
+}
+
+static void launch_abort(uint8_t reason)
+{
+    event(PV2_EV_WARN, PV2_E_LAUNCH_ABORTED, reason);
+    if (reason == LN_AB_NOT_RECOVERED && s_in_air) { s_auto = PV2_AUTO_LAND; s_touch_ms = 0u; return; }
+    disarm();                                          /* in the hand, or no attitude estimate: motors off */
+}
+
+static void launch_service(uint8_t est_running, uint32_t dt_ms)
+{
+    if (s_auto != PV2_AUTO_LAUNCH) {                   /* ended by a command, a failsafe or a disarm */
+        if (s_ln.phase) { ln_cancel(&s_ln); memset(&s_lno, 0, sizeof s_lno); }
+        return;
+    }
+    const ln_in_t in = { s_v.f_g, { s_v.a_w[0], s_v.a_w[1], s_v.a_w[2] }, s_v.w, s_v.cos_tilt, s_v.gyro_sat,
+                         s_v.vz, (uint8_t)(est_running && s_have_v), pilot_link_ok(), s_hover };
+    ln_step(&s_ln, &in, dt_ms, &s_lno);
+    if (s_lno.released) {
+        lift_off();
+        event(PV2_EV_INFO, PV2_E_LAUNCH_RELEASED, s_lno.start_ms);
+    }
+    if (s_lno.phase == LN_DONE) { ln_cancel(&s_ln); launch_done(); }
+    else if (s_lno.phase == LN_ABORT) { const uint8_t r = s_lno.abort_reason; ln_cancel(&s_ln); launch_abort(r); }
+}
+
 /* ---- horizontal position (pos_ctrl.c): after setpoints(), it may replace roll / pitch ---- */
 static uint8_t auto_holds_position(void)
 {
@@ -912,7 +997,7 @@ static void horizontal_setpoints(uint32_t dt_ms)
 /* ---- hover thrust (hover_track.c): the flight core only reports its state ---- */
 static uint8_t hover_airborne(uint32_t now)
 {
-    return (uint8_t)(s_in_air && alt_ok() && !s_v.tof_ground &&
+    return (uint8_t)(s_in_air && alt_ok() && !s_v.tof_ground && s_auto != PV2_AUTO_LAUNCH &&
         (now - s_lift_ms) > FC_HOVER_SPOOL_MS &&
         !(s_auto == PV2_AUTO_TAKEOFF && !s_to_lifted) &&
         !(s_v.tof_valid && s_v.tof_h < FC_HOVER_MIN_TOF_H) &&
@@ -981,6 +1066,7 @@ void fc_service(uint32_t now, uint8_t est_running, const fc_vert_t *v)
     fc_cmd_t c;
     while (spsc_pop(&s_cmdq, &c)) exec(&c, now, est_running);
     radio_switches(now, est_running);
+    launch_service(est_running, dt);
 
     air_ground(now, dt);
 
@@ -1003,7 +1089,7 @@ void fc_service(uint32_t now, uint8_t est_running, const fc_vert_t *v)
     }
 
     /* ---- automatic disarm ---- */
-    if (s_armed && !s_in_air) {
+    if (s_armed && !s_in_air && s_auto != PV2_AUTO_LAUNCH) {       /* the launch has its own timeout */
         if (!s_took_off && (now - s_arm_ms) > FC_NO_TAKEOFF_MS) disarm();
         else if (s_took_off && (now - s_landed_ms) > (uint32_t)(PARAM(P_AUTO_DISARM) * 1000.0f)) disarm();
     }

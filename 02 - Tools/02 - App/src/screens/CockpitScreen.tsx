@@ -157,6 +157,11 @@ export function CockpitScreen() {
   const actions = (
     <div className="ck-actions">
       <button className="btn" onClick={() => run(drone.takeoff(drone.param("takeoffAlt")))} disabled={!armed || inAir || battLock} title={lockTitle}><Icon name="up" size={18} />{t("cockpit.autoTakeoff")}</button>
+      {!armed && connected && (
+        <HoldButton ms={1500} onHold={() => run(drone.launch())} className="btn" label={`${t("cockpit.launch")}, ${t("cockpit.launchHold")}`}>
+          <Icon name="up" size={18} />{t("cockpit.launch")}
+        </HoldButton>
+      )}
       <button className="btn" onClick={() => run(drone.land())} disabled={!inAir}><Icon name="land" size={18} />{t("cockpit.autoLand")}</button>
       {gps && <button className="btn warn" onClick={() => run(drone.rth())} disabled={!inAir || battLock} title={lockTitle}><Icon name="home" size={18} />{t("cockpit.rth")}</button>}
       <button className="btn" onClick={() => run(drone.hold())} disabled={!inAir || battLock} title={lockTitle} style={gps ? undefined : { gridColumn: "span 2" }}><Icon name="pause" size={18} />{t("cockpit.pause")}</button>
@@ -164,6 +169,8 @@ export function CockpitScreen() {
   );
 
   const autoChip = f && f.auto !== AutoAction.NONE ? <span className="chip auto">{t(`auto.${f.auto}`)}</span> : null;
+  // hand launch (ADR 0011): in the hand with the motors stopped; the gesture and the one rule that protects the hand
+  const launchReady = !!f && f.auto === AutoAction.LAUNCH && !inAir;
 
   if (vp.phone && vp.h > vp.w && !portraitOk) {
     return (
@@ -191,6 +198,7 @@ export function CockpitScreen() {
           {f ? t(`modes.${f.mode}`) : "–"} <Icon name="down" size={12} stroke={2.4} />
         </button>
         {autoChip}
+        {launchReady && <span className="banner warn" role="status">{t("cockpit.launchReady")}</span>}
         <span className="spacer" style={{ flex: 1 }} />
         {s.system && s.system.lq !== null && <div className="ck-stat full"><span className="k">{t("cockpit.linkElrs")}</span><span className="v">LQ {s.system.lq}% · {s.system.rssi} dBm</span></div>}
         {s.system && s.system.lq !== null && compact && <span className="num small">LQ {s.system.lq}%</span>}

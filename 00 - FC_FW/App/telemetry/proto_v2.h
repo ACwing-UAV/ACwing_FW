@@ -56,6 +56,7 @@
 #define PV2_OP_HOLD           0x17u
 #define PV2_OP_KILL           0x18u
 #define PV2_OP_SET_MODE       0x19u
+#define PV2_OP_LAUNCH         0x1Au   /**< ARM magic: hand launch (ADR 0011), firmware 0.11 */
 #define PV2_OP_PARAM_GET      0x20u
 #define PV2_OP_PARAM_SET      0x21u
 #define PV2_OP_PARAM_SAVE     0x22u
@@ -95,13 +96,14 @@ enum {
     PV2_R_UNKNOWN_PARAM = 15, PV2_R_SENSOR_MISSING = 16,
     PV2_R_USB_CONNECTED = 17,   /**< ARM / TAKEOFF / MOTOR_TEST while a USB host is connected (ADR 0009) */
     PV2_R_NOT_OVER_USB = 18,    /**< flight command received over the USB link: ground link only        */
-    PV2_R_OTHER_LINK = 19       /**< configuration change from the link that does not have control       */
+    PV2_R_OTHER_LINK = 19,      /**< configuration change from the link that does not have control       */
+    PV2_R_THRUST_LOW = 20       /**< not enough thrust-to-weight now for the manoeuvre (ADR 0011/0012)    */
 };
 
 /* ---------------- enums and bit masks ---------------- */
 enum { PV2_MODE_ACRO = 0, PV2_MODE_ANGLE = 1, PV2_MODE_ALT_HOLD = 2, PV2_MODE_POS_HOLD = 3 };
 enum { PV2_AUTO_NONE = 0, PV2_AUTO_TAKEOFF = 1, PV2_AUTO_LAND = 2, PV2_AUTO_RTH = 3,
-       PV2_AUTO_HOLD = 4, PV2_AUTO_FAILSAFE = 5 };
+       PV2_AUTO_HOLD = 4, PV2_AUTO_FAILSAFE = 5, PV2_AUTO_LAUNCH = 6 };
 enum { PV2_INPUT_NONE = 0, PV2_INPUT_APP = 1, PV2_INPUT_ELRS = 2 };
 
 #define PV2_FS_APP_LINK   (1u << 0)
@@ -141,6 +143,9 @@ enum {
     PV2_E_MODE_CHANGED = 5, PV2_E_RTH_STARTED = 6, PV2_E_HOME_SET = 7,
     PV2_E_TAKEOFF_ABORTED = 8,      /**< firmware extension (WARN): no lift-off; the app shows the text */
     PV2_E_RADIO_REFUSED = 9,        /**< firmware 0.8 (WARN): a radio-switch command refused, arg = op << 8 | reason */
+    PV2_E_LAUNCH_READY = 10,        /**< firmware 0.11 (INFO): armed in the hand, motors stopped (ADR 0011)  */
+    PV2_E_LAUNCH_RELEASED = 11,     /**< firmware 0.11 (INFO): motors started, arg = ms from the release     */
+    PV2_E_LAUNCH_ABORTED = 12,      /**< firmware 0.11 (WARN): arg = launch.h LN_AB_* reason                  */
     PV2_E_FAILSAFE_APP_LINK = 20, PV2_E_FAILSAFE_RADIO = 21, PV2_E_FAILSAFE_BATTERY = 22,
     PV2_E_GEOFENCE_BREACH = 23, PV2_E_GPS_LOST = 24, PV2_E_FLOW_LOST = 25,
     PV2_E_BATTERY_LOW = 30, PV2_E_BATTERY_CRITICAL = 31, PV2_E_BATTERY_EMERGENCY = 32,

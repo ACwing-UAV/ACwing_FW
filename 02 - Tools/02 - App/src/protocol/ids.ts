@@ -58,6 +58,7 @@ export const OP = {
   HOLD: 0x17,
   KILL: 0x18,
   SET_MODE: 0x19,
+  LAUNCH: 0x1a, // hand launch (ADR 0011), ARM magic, firmware >= 0.11
   PARAM_GET: 0x20,
   PARAM_SET: 0x21,
   PARAM_SAVE: 0x22,
@@ -126,6 +127,8 @@ export enum Reason {
   NOT_OVER_USB = 18,
   /** configuration change from the link that does not have control (the first link opened has it) */
   OTHER_LINK = 19,
+  /** not enough thrust-to-weight now for the manoeuvre (hand launch, flip; firmware >= 0.11) */
+  THRUST_LOW = 20,
 }
 
 export enum FlightMode {
@@ -147,6 +150,8 @@ export enum AutoAction {
   RTH = 3,
   HOLD = 4,
   FAILSAFE = 5,
+  /** hand launch (ADR 0011): armed with the motors stopped until the toss, then recovery */
+  LAUNCH = 6,
 }
 
 /** FLIGHT.failsafe bits */
@@ -229,6 +234,10 @@ export enum EventCode {
   TAKEOFF_ABORTED = 8,
   /** WARN: a radio-switch command refused, arg = op << 8 | reason (firmware >= 0.8) */
   RADIO_REFUSED = 9,
+  /** hand launch (firmware >= 0.11): INFO ready, INFO released (arg = ms to the motor start), WARN aborted (arg = reason) */
+  LAUNCH_READY = 10,
+  LAUNCH_RELEASED = 11,
+  LAUNCH_ABORTED = 12,
   FAILSAFE_APP_LINK = 20,
   FAILSAFE_RADIO = 21,
   FAILSAFE_BATTERY = 22,
@@ -362,6 +371,8 @@ export const PARAMS: ParamDef[] = [
   // RC switches (firmware 0.8.0, control/rc_switches.h): arm switch AUX1, mode switch AUX2
   { id: 102, key: "rcArmSwKill", def: 1, min: 0, max: 1, step: 1, options: [1, 0] },
   { id: 103, key: "rcModeMap", def: 0, min: 0, max: 2, step: 1, options: [0, 1, 2] },
+  // hand launch (firmware 0.11, ADR 0011)
+  { id: 104, key: "launchDrop", def: 0, min: 0, max: 1, step: 1, options: [0, 1] },
 ];
 
 export const PARAM_BY_KEY: Record<string, ParamDef> = Object.fromEntries(PARAMS.map((p) => [p.key, p]));
@@ -382,4 +393,5 @@ export const ACTION = {
   rcMap: { 0: "mapAetr", 1: "mapTaer" },
   rcArmSwKill: { 0: "swRefused", 1: "swKill" },
   rcModeMap: { 0: "modeMapOff", 1: "modeMapHold", 2: "modeMapAcro" },
+  launchDrop: { 0: "launchTossOnly", 1: "launchDropToo" },
 } as Record<string, Record<number, string>>;

@@ -138,6 +138,14 @@ void ctrl_rate_step(const ctrl_rate_in_t *in)
 
     float torque[3];
     att_ctrl_rate(&s_att, in->gyro, s_sp.in_air, torque);
+    if (s_sp.motors_off) {
+        /* armed in the hand (hand launch, ADR 0011): duty 0, not the idle; loops ready from zero */
+        static const float zero[MIXER_MOTORS] = { 0.0f, 0.0f, 0.0f, 0.0f };
+        att_ctrl_reset(&s_att);
+        motors_set(zero);
+        for (unsigned i = 0; i < MIXER_MOTORS; ++i) s_pct[i] = 0u;
+        return;
+    }
     if (!s_sp.in_air && s_sp.thrust <= s_mix.idle + 0.02f) {
         att_ctrl_reset(&s_att);                     /* idle on the ground: no torque, no memory */
         torque[0] = torque[1] = torque[2] = 0.0f;

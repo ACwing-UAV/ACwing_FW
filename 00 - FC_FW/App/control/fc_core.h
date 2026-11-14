@@ -131,6 +131,12 @@ typedef struct {
     float   a_up;                    /**< m/s^2, + up, gravity and accelerometer bias removed, ~10 Hz low-pass */
     float   vel_b[2];                /**< m/s, horizontal velocity from the flow, body x forward, y left (valid with flow_usable) */
     float   yaw;                     /**< rad, heading of the attitude (NWU, + counter-clockwise) */
+    /* hand launch (ADR 0011) */
+    float   f_g;                     /**< specific force magnitude of the last acc window, g      */
+    float   a_w[3];                  /**< world acceleration, gravity removed, m/s^2 (NWU)        */
+    float   w;                       /**< |body rate|, rad/s                                      */
+    uint8_t gyro_sat;                /**< a gyro axis saturated since the last call               */
+    float   v_cell;                  /**< sagged cell voltage, V (0 = unknown)                    */
 } fc_vert_t;
 
 /** setpoints for the attitude / rate loops (phase 3) and the motor mixer */
@@ -143,6 +149,7 @@ typedef struct {
     float   yaw_rate;                /**< rad/s, FLU: + = counter-clockwise from above (stick right = negative) */
     float   h_sp, vz_sp;             /**< m, m/s (when alt_ctrl)                   */
     uint8_t in_air;                  /**< airborne: the rate loop may integrate      */
+    uint8_t motors_off;              /**< armed with the motors stopped (hand launch, ADR 0011): duty 0 */
     uint8_t pos_hold;                /* 1: roll / pitch from the horizontal position loop (pos_ctrl.c):
                                         POS_HOLD, or an automatic action (TAKEOFF, LAND, RTH, HOLD,
                                         failsafe), with a usable flow and the altitude loop on

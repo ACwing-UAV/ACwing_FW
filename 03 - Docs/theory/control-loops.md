@@ -261,6 +261,15 @@ ground (0.15 m above the ground level), so the integrator cannot wind up on the 
 at 0.6 m/s to the target (`takeoffAlt`, below the ceiling). No lift-off within 6 s → TAKEOFF aborted (EVENT 8),
 back on the ground.
 
+### Hand launch (LAUNCH)
+
+Armed with the motors stopped (`motors_off`: `ctrl_loop.c` writes duty 0, the loops stay reset) while the drone
+is in the hand; neither the airborne test nor the no-take-off disarm runs. At the motor start (10 cm from the
+release point, or the apex of a toss) the setpoint is level attitude, yaw rate 0, and the collective of
+`launch.c`: 1.0 while falling, $\hat t_h/\cos(\text{tilt})$ otherwise, $\hat t_h$ beyond 60° of tilt (the
+attitude first, the airmode keeps the torque). Once level, slow and no longer falling, the vertical loop holds
+the height reached. Details, numbers and limits: [ADR 0011](../decisions/0011-hand-launch.md).
+
 ### LAND and RTH
 
 With an altitude estimate: descent at `landSpeed` (0.7 m/s), 0.3 m/s below 1 m when a ToF sees the floor;

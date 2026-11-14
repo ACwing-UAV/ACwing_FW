@@ -32,6 +32,7 @@ enum {
     P_HOVER_THR,               /* ADR 0010 §3: seed of the hover-thrust estimate */
     P_RC_PROTOCOL, P_RC_MAP,   /* RC receiver (control/rc_input.h) */
     P_RC_ARM_SW_KILL, P_RC_MODE_MAP, /* RC switches (control/rc_switches.h) */
+    P_LAUNCH_DROP,             /* hand launch (ADR 0011): accept a drop without the push */
     PARAM_COUNT
 };
 

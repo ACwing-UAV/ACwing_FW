@@ -29,6 +29,7 @@ export const Cmd = {
   rc: (seq: number, rc: RcInput) =>
     cmd(OP.RC, seq, (w) => w.i16(rc.throttle).i16(rc.yaw).i16(rc.pitch).i16(rc.roll).u8(rc.buttons)),
   arm: (seq: number) => cmd(OP.ARM, seq, (w) => w.raw(ARM_MAGIC)),
+  launch: (seq: number) => cmd(OP.LAUNCH, seq, (w) => w.raw(ARM_MAGIC)),
   disarm: (seq: number) => cmd(OP.DISARM, seq),
   takeoff: (seq: number, altM: number) => cmd(OP.TAKEOFF, seq, (w) => w.u16(altM * 100)),
   land: (seq: number) => cmd(OP.LAND, seq),

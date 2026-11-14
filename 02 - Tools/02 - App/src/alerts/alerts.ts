@@ -42,6 +42,11 @@ export function eventText(e: { code: number; text: string; arg?: number }, lang 
     const v = translate(lang, k, { op: op ? translate(lang, `alerts.radioOp.${op}`) : "?", why: translate(lang, `reasons.${e.arg & 0xff}`) });
     if (v !== k) return v;
   }
+  if (e.code === EventCode.LAUNCH_ABORTED && e.arg !== undefined) {
+    // arg = the reason of launch.c (LN_AB_*)
+    const v = translate(lang, k, { why: translate(lang, `alerts.launchAbort.${e.arg}`) });
+    if (v !== k) return v;
+  }
   const v = translate(lang, k);
   return v === k ? e.text : v;
 }
