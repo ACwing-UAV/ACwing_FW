@@ -38,7 +38,8 @@ flowchart LR
 - The app on the USB link (Web Serial): telemetry, Settings and Calibration
   without the flight controls (the firmware side is done, ADR 0009 and
   [ACwing Pilot protocol v2](../firmware/protocol-v2.md#usb-a-ground-link)).
-- GNSS (ACwing GPS board): NAV, home, RTH, distance geofence, GPS compass.
+- GNSS (ACwing GPS board): input done in 0.15 (M10 on Qwiic, NAV, checks; ADR 0014); next the horizontal estimator
+  with home and compass selection, then POS_HOLD outdoors, RTH, distance geofence, then the app map.
 - ELRS receiver: input arbitration, radio failsafe, STICKS calibration.
 
 ## Estimation

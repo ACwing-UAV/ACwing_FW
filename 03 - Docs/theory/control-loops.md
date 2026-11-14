@@ -251,8 +251,9 @@ flowchart LR
 `host_test` (`test_pos_hold_flags`) checks the flags through the flight core: TAKEOFF and LAND hold the position,
 POS_HOLD follows the stick and brakes a drift, ANGLE and ALT_HOLD leave it off, a lost flow falls back to level.
 
-**Outdoor (GNSS)** is not a position source yet: with a GPS board and no flow, POS_HOLD holds the height and the
-angles come from the sticks (`pos_hold` = 0). It comes with the GNSS work (u-blox M10, position estimator).
+**Outdoor (GNSS)** is not a position source yet. The M10 is read from firmware 0.15 (ADR 0014), but its solution is
+not fused: with a GPS board and no flow POS_HOLD is refused (`SENSOR_MISSING`) and the takeoff ends in ALT_HOLD,
+rather than a POS_HOLD that would not hold the position. It comes with the horizontal estimator (GNSS step 2).
 
 ### TAKEOFF (automatic)
 
@@ -328,7 +329,7 @@ the hold modes, the last collective in the air in ACRO/ANGLE, idle on the ground
 
 ## Limits of the present design
 
-- Horizontal position only from the optical flow (indoor); GNSS pending. No heading hold.
+- Horizontal position only from the optical flow (indoor); the GNSS is read but not fused yet (ADR 0014). No heading hold.
 - The flow position is dead reckoning: it drifts with the flow scale error (FLOW_TOF calibration) over long holds.
 - Gains from assumed numbers: to be tuned on a tether and from the logs; a calibration / auto-calibration procedure
   is planned (issue #42).

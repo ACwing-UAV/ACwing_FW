@@ -38,7 +38,16 @@ typedef struct {
     float    hover;            /**< hover thrust in use, normalised (item 13)       */
     uint8_t  rc_ever, rc_valid;/**< RC receiver seen / link up (item 6)             */
     uint8_t  rc_lq;            /**< link quality %, 0xFF = n/a (link up = 100)      */
+    /* GNSS (items 4, 5) */
+    uint8_t  gnss_fix;         /**< NAV fix code 0 / 2 / 3 of a fresh solution (0 if stale) */
+    uint8_t  gnss_sats;
+    uint8_t  home_set;         /**< home recorded (none before the position estimator)     */
+    uint8_t  gnss_nav;         /**< the GNSS is a navigation source (0 until the position
+                                    estimator fuses it): only then an uncalibrated compass is a FAIL */
 } checks_in_t;
+
+/** item 4: WARN below this many satellites */
+#define CHECKS_GNSS_MIN_SATS 8u
 
 /** item 13: WARN when hovering needs more than this fraction of the thrust left at the present voltage */
 #define CHECKS_THRUST_MARGIN 0.80f

@@ -13,14 +13,20 @@ SRC  = $(APP)/telemetry/telemetry.c $(APP)/telemetry/proto_v2.c $(APP)/telemetry
        $(APP)/control/rc_input.c $(APP)/drivers/rc/rc_crsf.c $(APP)/drivers/rc/rc_sbus.c $(APP)/drivers/rc/rc_ibus.c \
        $(APP)/drivers/rc/rc_dsm.c $(APP)/control/input_arb.c $(APP)/control/radio_fs.c $(APP)/control/cal_sticks.c $(APP)/control/rc_switches.c $(APP)/control/pos_ctrl.c $(APP)/control/launch.c $(APP)/control/flip.c $(APP)/control/ctl_io.c $(APP)/control/ctl_law_cascade.c \
        $(APP)/drivers/vl53l1x/vl53l1x.c $(APP)/drivers/flow_bridge/flow_bridge.c \
+       $(APP)/drivers/ublox/ubx.c $(APP)/app/gnss_nav.c \
        host_stubs.c test_main.c
 INC  = -I$(APP)/log -I$(APP)/drivers/w25q -I$(APP)/telemetry -I$(APP)/app -I$(APP)/control -I$(APP)/bsp -I$(APP)/filters/altitude_kf -I$(APP)/filters/hover_est -I$(APP)/drivers/rc \
-       -I$(APP)/drivers/common -I$(APP)/drivers/vl53l1x -I$(APP)/drivers/flow_bridge
+       -I$(APP)/drivers/common -I$(APP)/drivers/vl53l1x -I$(APP)/drivers/flow_bridge \
+       -I$(APP)/drivers/ublox -I$(APP)/drivers/iis2mdc
 CFLAGS = -std=c11 -O1 -g -Wall -Wextra -Wno-unused-parameter -DHOST_TEST \
          -DAPP_BLE_STATE_DECIM_DEFAULT=4 -fsanitize=address,undefined
 
 FLOW = ../../../01 - FLOW_FW
+GNSS_SRC = $(APP)/app/ext_sens.c $(APP)/drivers/vl53l1x/vl53l1x.c $(APP)/drivers/flow_bridge/flow_bridge.c \
+           $(APP)/drivers/ublox/ubx.c $(APP)/drivers/ublox/m10.c $(APP)/drivers/iis2mdc/iis2mdc.c \
+           $(APP)/app/gnss_nav.c $(APP)/control/checks.c test_gnss.c
 EXT_SRC = $(APP)/app/ext_sens.c $(APP)/drivers/vl53l1x/vl53l1x.c $(APP)/drivers/flow_bridge/flow_bridge.c \
+          $(APP)/drivers/ublox/ubx.c $(APP)/drivers/ublox/m10.c $(APP)/drivers/iis2mdc/iis2mdc.c \
           "$(FLOW)/Core/Src/bridge.c" test_ext.c
 
 PWR_SRC = $(filter-out test_main.c,$(SRC)) test_power.c
@@ -42,9 +48,10 @@ IEKF_CFLAGS = -std=c11 -O2 -g -Wall -Wextra -Wno-unused-parameter -DHOST_TEST -f
 all: run
 host_test: $(SRC) $(wildcard $(APP)/*/*.h)
 	$(CC) $(CFLAGS) $(INC) $(SRC) -lm -o $@
-run: host_test ext_test power_test log_test link_test iekf_test ctrl_test hover_test rc_test pos_test launch_test flip_test
+run: host_test ext_test gnss_test power_test log_test link_test iekf_test ctrl_test hover_test rc_test pos_test launch_test flip_test
 	./host_test
 	./ext_test
+	./gnss_test
 	./power_test
 	./log_test
 	./link_test
@@ -80,6 +87,8 @@ iekf_test: $(sort $(IEKF_SRC)) $(wildcard $(APP)/*/*.h $(APP)/filters/iekf/*.h)
 	$(CC) $(IEKF_CFLAGS) $(IEKF_INC) $(sort $(IEKF_SRC)) -lm -o $@
 ext_test:
 	$(CC) $(CFLAGS) $(INC) -I"$(FLOW)/Core/Inc" $(EXT_SRC) -lm -o $@
+gnss_test: $(GNSS_SRC) $(wildcard $(APP)/drivers/ublox/*.h $(APP)/drivers/iis2mdc/*.h $(APP)/app/ext_sens.h $(APP)/app/gnss_nav.h)
+	$(CC) $(CFLAGS) $(INC) $(GNSS_SRC) -lm -o $@
 clean:
-	rm -f host_test ext_test power_test log_test link_test iekf_test ctrl_test hover_test rc_test pos_test launch_test flip_test frames.bin power_frames.bin log_sample.bin
+	rm -f host_test ext_test gnss_test power_test log_test link_test iekf_test ctrl_test hover_test rc_test pos_test launch_test flip_test frames.bin power_frames.bin log_sample.bin
 .PHONY: all run clean ext_test

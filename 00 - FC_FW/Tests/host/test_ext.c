@@ -75,7 +75,8 @@ static int drain(int *tof, int *flow, int *flow_new, ext_sample_t *last_flow)
 
 int main(void)
 {
-    ext_buses_t b = { { v_wr, v_rd, NULL, NULL }, { b_wr, b_rd, NULL, NULL } };
+    ext_buses_t b = { { v_wr, v_rd, NULL, NULL }, { b_wr, b_rd, NULL, NULL },
+                      { NULL, NULL, NULL, NULL }, { NULL, NULL, NULL, NULL } };   /* no GPS board */
     v_reset_model(); bridge_init();
     v_present = 0; b_present = 0;
     ext_init(&b);

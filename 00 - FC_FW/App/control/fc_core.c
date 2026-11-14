@@ -188,7 +188,12 @@ static void event(uint8_t level, uint16_t code, int32_t arg)
 }
 
 static uint8_t has(uint16_t bits) { return (uint8_t)((s_sensors & bits) != 0u); }
-static uint8_t gnss(void)         { return has(PV2_S_GNSS); }
+/* GNSS usable for navigation. The GPS board found (PV2_S_GNSS, CAPS) is not enough: without a position estimate
+ * that fuses it, POS_HOLD would fly as ALT_HOLD and RTH would have no position. 0 until the horizontal estimator
+ * exists (GNSS step 2); then: board found, 3D fix, accuracy within the limits. */
+static uint8_t gnss(void)         { return 0u; }
+/* a horizontal position source for POS_HOLD: the GNSS solution outdoors, the optical flow indoors */
+static uint8_t pos_source(void)   { return (uint8_t)(gnss() || has(PV2_S_FLOW)); }
 static uint8_t home_set(void)     { return 0u; }   /* no GNSS on this hardware yet */
 static uint8_t alt_sensor(void)   { return has(PV2_S_BARO | PV2_S_TOF); }
 static uint8_t alt_ok(void)       { return (uint8_t)(alt_sensor() && s_have_v && s_v.valid); }
@@ -475,7 +480,7 @@ static void exec(const fc_cmd_t *c, uint32_t now, uint8_t est_running)
     case PV2_OP_SET_MODE: {
         if (c->len < 1u || p[0] > PV2_MODE_POS_HOLD) { INVALID(PV2_R_NONE); return; }
         const uint8_t m = p[0];
-        if (m == PV2_MODE_POS_HOLD && !has(PV2_S_GNSS | PV2_S_FLOW)) { REJ(PV2_R_SENSOR_MISSING); return; }
+        if (m == PV2_MODE_POS_HOLD && !pos_source()) { REJ(PV2_R_SENSOR_MISSING); return; }
         if (m == PV2_MODE_ALT_HOLD && !alt_sensor())                { REJ(PV2_R_SENSOR_MISSING); return; }
         if (m == PV2_MODE_ACRO && PARAM(P_BEGINNER) > 0.5f)         { REJ(PV2_R_NONE); return; }
         if (m != s_mode && (m == PV2_MODE_ALT_HOLD || m == PV2_MODE_POS_HOLD)) s_h_sp = s_v.h;
@@ -775,7 +780,7 @@ static void air_ground(uint32_t now, uint32_t dt)
         if (s_v.h >= s_to_target - 0.05f) {
             /* target reached: hold it in the mode the sensors allow (§7.2) */
             s_auto = PV2_AUTO_NONE;
-            s_mode = has(PV2_S_GNSS | PV2_S_FLOW) ? PV2_MODE_POS_HOLD : PV2_MODE_ALT_HOLD;
+            s_mode = pos_source() ? PV2_MODE_POS_HOLD : PV2_MODE_ALT_HOLD;
             s_h_sp = s_to_target;
             event(PV2_EV_INFO, PV2_E_MODE_CHANGED, s_mode);
         }
@@ -1004,7 +1009,7 @@ static void setpoints(uint32_t now, uint32_t dt_ms)
 static void launch_done(void)
 {
     s_auto = PV2_AUTO_NONE;
-    s_mode = has(PV2_S_GNSS | PV2_S_FLOW) ? PV2_MODE_POS_HOLD : PV2_MODE_ALT_HOLD;   /* as after TAKEOFF */
+    s_mode = pos_source() ? PV2_MODE_POS_HOLD : PV2_MODE_ALT_HOLD;   /* as after TAKEOFF */
     s_h_sp = s_v.h;                                    /* the height reached (the law enters its loop fresh) */
     event(PV2_EV_INFO, PV2_E_MODE_CHANGED, s_mode);
 }

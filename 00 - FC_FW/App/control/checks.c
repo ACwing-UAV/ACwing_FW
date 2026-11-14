@@ -41,13 +41,20 @@ uint8_t checks_build(const checks_in_t *in, pv2_check_t *it, uint8_t *ready, uin
         const int32_t i = (int32_t)(in->mag_interf_pct + 0.5f);
         const uint8_t never = !(done & (1u << (PV2_CAL_COMPASS - 1u)));
         uint8_t st = (i > 15 || never) ? PV2_CK_WARN : PV2_CK_OK;
-        if (never && (S & PV2_S_GNSS)) st = PV2_CK_FAIL;      /* GNSS models need it */
+        if (never && (S & PV2_S_GNSS) && in->gnss_nav) st = PV2_CK_FAIL;   /* GNSS navigation needs it */
         put(&it[n++], PV2_CHK_COMPASS, st, i);
     }
 
-    /* 4 GNSS, 5 home: not fitted yet */
-    put(&it[n++], PV2_CHK_GNSS,  PV2_CK_NA, 0);
-    put(&it[n++], PV2_CHK_HOME,  PV2_CK_NA, 0);
+    /* 4 GNSS: WARN below a 3D fix or CHECKS_GNSS_MIN_SATS; 5 home: WARN until set. N/A without the GPS board.
+     * Both are WARN, never FAIL: the GNSS is no position source yet, so it cannot be a condition to fly. */
+    if (!(S & PV2_S_GNSS)) {
+        put(&it[n++], PV2_CHK_GNSS, PV2_CK_NA, 0);
+        put(&it[n++], PV2_CHK_HOME, PV2_CK_NA, 0);
+    } else {
+        put(&it[n++], PV2_CHK_GNSS,
+            (in->gnss_fix < 3u || in->gnss_sats < CHECKS_GNSS_MIN_SATS) ? PV2_CK_WARN : PV2_CK_OK, in->gnss_sats);
+        put(&it[n++], PV2_CHK_HOME, in->home_set ? PV2_CK_OK : PV2_CK_WARN, 0);
+    }
     /* 6 RC receiver: N/A until one has been seen; WARN with the link lost or LQ < 70 % */
     if (!in->rc_ever) put(&it[n++], PV2_CHK_RADIO, PV2_CK_NA, 0);
     else {
