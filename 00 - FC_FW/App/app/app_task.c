@@ -349,6 +349,8 @@ static void send_system(void)
     s.mag_interf_pct = (uint8_t)(e.mag_interf_pct > 100.0f ? 100.0f : e.mag_interf_pct);
     s.log_pct = s_cfg.log_pct ? s_cfg.log_pct() : 0u;
     if (s.log_pct == 0xFFu) s.log_pct = 0u;
+    s.heap_min_free = s.stack_min_free = 0xFFFFu;
+    if (s_cfg.mem_health) s_cfg.mem_health(&s.heap_min_free, &s.stack_min_free, s.stack_min_task);
     tx(s_frame, pv2_frame(PV2_FT_SYSTEM, &s, sizeof s, s_frame, sizeof s_frame));
 }
 

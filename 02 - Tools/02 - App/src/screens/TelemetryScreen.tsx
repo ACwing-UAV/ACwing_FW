@@ -130,6 +130,8 @@ export function TelemetryScreen() {
         [t("telemetry.cpu"), y ? `${y.cpuPct}%` : "–"],
         [t("telemetry.loop"), y ? `${y.loopHz} Hz · jitter ${y.jitterUs} µs` : "–"],
         [t("telemetry.flashLog"), y ? `${y.logPct}%` : "–"],
+        [t("telemetry.heapMin"), y && y.heapMinFree != null ? `${(y.heapMinFree / 1024).toFixed(1)} kB` : "–"],
+        [t("telemetry.stackMin"), y && y.stackMinFree != null ? `${y.stackMinFree} B · ${y.stackMinTask || "?"}` : "–"],
         [t("telemetry.imuTemp"), y ? `${y.imuTempC.toFixed(1)} °C` : "–"],
         [t("telemetry.accClip"), y ? String(y.accClip) : "–"],
       ])}

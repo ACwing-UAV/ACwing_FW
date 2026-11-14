@@ -3,7 +3,8 @@
 #   firmware  host tests of 00 - FC_FW (flight core, AppTask, links, battery, log, IEKF, control loops, hover
 #             estimate, RC input, position hold), ASan/UBSan; the 1-D design estimates of ADR 0011/0012
 #   firmware-target  cross-build of the STM32WB55 firmware with arm-none-eabi-gcc from the CubeIDE project
-#             (.cproject include paths, defines and sources), Debug and Release; fails above 90 % of RAM or FLASH
+#             (.cproject include paths, defines and sources), Debug and Release on the bench board (90 % of RAM or
+#             FLASH), and the rev A flight board (80 % of RAM)
 #   app       ACwing Pilot: typecheck, unit tests (protocol, simulator, log decoder), production build
 #   python    acwing_tools: log decoder (the reference of the app's), telemetry, filters
 #   matlab    flight-log decoder and download client in GNU Octave (same tests as Python)
@@ -55,6 +56,11 @@ jobs:
       - name: Release
         working-directory: "00 - FC_FW"
         run: python3 Tests/target/build_fw.py --config Release
+      - name: ACwing FC rev A (the flight board), tighter RAM budget
+        # the bench build keeps the flight log in RAM (48 KB); rev A logs to the W25Q flash, so its RAM is the real
+        # figure. 80 % leaves the boot / interrupt stack and room for the GPS work.
+        working-directory: "00 - FC_FW"
+        run: python3 Tests/target/build_fw.py --config Debug --define "APP_HW_REV='A'" --out revA --max-ram-pct 80
 
   app:
     name: app (typecheck, tests, build)

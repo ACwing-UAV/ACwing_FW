@@ -72,7 +72,7 @@ const de: Translation = {
     powerDraw: "Leistungsaufnahme", usedMah: "Verbraucht", cellAvg: "Mittlere Zellenspannung", thresholds: "Warn‑ / RTH‑Schwellen",
     raw: "Rohsensoren", gyro: "Gyro (°/s)", acc: "Beschleunigungssensor (g)", mag: "Magnetometer (µT)", vibration: "Vibration (RMS)",
     imuTemp: "IMU‑Temp.", accClip: "Beschl.‑Übersteuerung", system: "Funk und System", elrs: "ELRS RSSI / SNR", bleDrop: "Verlorene BLE‑Frames",
-    rxRate: "Empfangene Daten", cpu: "CPU‑Last", loop: "Regelschleife", flashLog: "Flash‑Log", messages: "Meldungen", time: "Zeit",
+    rxRate: "Empfangene Daten", cpu: "CPU‑Last", loop: "Regelschleife", flashLog: "Flash‑Log", heapMin: "Freier Heap (Minimum)", stackMin: "Stack-Reserve (Minimum)", messages: "Meldungen", time: "Zeit",
     level: "Stufe", message: "Meldung", vertShort: "vertikal {v}", headingShort: "Kurs {h}°", noData: "Warte auf Daten…",
     chartAlt: "Höhe", chartBatt: "Akku", chartMotors: "Motoren", rotateHint: "Smartphone drehen für ein breiteres Diagramm",
   },

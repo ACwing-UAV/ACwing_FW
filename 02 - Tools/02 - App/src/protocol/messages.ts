@@ -284,6 +284,11 @@ export interface SystemMsg {
   attUncDeg: number; // wire cdeg u16 (1σ of the attitude estimate)
   estFlags: number; // bit0 EKF ok, bit1 acc gated, bit2 mag gated, bit3 mag interference
   magInterfPct: number; // u8
+  /** firmware >= 0.14 (appended to SYSTEM): lowest free RTOS heap since boot, bytes; null = n/a or older firmware */
+  heapMinFree?: number | null;
+  /** smallest stack margin of any task since boot, bytes, and that task (first 4 chars) */
+  stackMinFree?: number | null;
+  stackMinTask?: string;
 }
 
 export function decodeSystem(p: Uint8Array): SystemMsg {
@@ -293,7 +298,14 @@ export function decodeSystem(p: Uint8Array): SystemMsg {
     lq: lq === 0xff ? null : lq, rssi: r.i8(), snr: r.i8(), pktRateHz: r.u16(), txPowerMw: r.u16(), cpuPct: r.u8_(),
     loopHz: r.u16(), jitterUs: r.u16(), logPct: r.u8_(), imuTempC: r.i16() / 100, vibrationG: r.u16() / 1000,
     accClip: r.u16(), attUncDeg: r.u16() / 100, estFlags: r.u8_(), magInterfPct: r.u8_(),
+    ...(r.left >= 8 ? sysMem(r) : {}),
   };
+}
+
+/* the memory-health tail of SYSTEM (firmware >= 0.14); 0xFFFF = not available */
+function sysMem(r: Reader) {
+  const heap = r.u16(), stack = r.u16();
+  return { heapMinFree: heap === 0xffff ? null : heap, stackMinFree: stack === 0xffff ? null : stack, stackMinTask: r.str(4) };
 }
 
 export function encodeSystem(m: SystemMsg): Uint8Array {
@@ -301,6 +313,7 @@ export function encodeSystem(m: SystemMsg): Uint8Array {
     .u8(m.lq ?? 0xff).i8(m.rssi).i8(m.snr).u16(m.pktRateHz).u16(m.txPowerMw).u8(m.cpuPct).u16(m.loopHz).u16(m.jitterUs)
     .u8(m.logPct).i16(m.imuTempC * 100).u16(m.vibrationG * 1000).u16(m.accClip).u16(m.attUncDeg * 100).u8(m.estFlags)
     .u8(m.magInterfPct)
+    .u16(m.heapMinFree ?? 0xffff).u16(m.stackMinFree ?? 0xffff).str(m.stackMinTask ?? "", 4)
     .done();
 }
 

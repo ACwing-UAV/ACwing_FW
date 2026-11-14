@@ -32,7 +32,15 @@ describe("payload sizes match the handover", () => {
     expect(M.encodeFlight({ arm: 1, mode: 3, auto: 0, failsafe: 0, flags: 0, input: 1, flightTimeS: 1, altRelM: 1, vzMs: 0, groundSpeedMs: 0, headingDeg: 0, homeDistM: null, homeBearingDeg: 0, rthEtaS: null }).length).toBe(25);
     expect(M.encodePower({ vbatV: 15.6, currentA: 11.4, usedMah: 812, cells: 4, cellV: 3.9, pct: 78, remainS: null, warn: 0 }).length).toBe(13);
     expect(M.encodeNav({ fix: 3, sats: 14, hdop: 0.8, lat: 40.85, lon: 14.27, altMslM: 61.3, velNed: [0, 0, 0], tofM: null, flowQ: null, baroHpa: 1006.8, windMs: null }).length).toBe(31);
-    expect(M.encodeSystem({ lq: 100, rssi: -68, snr: 9, pktRateHz: 250, txPowerMw: 100, cpuPct: 46, loopHz: 960, jitterUs: 6, logPct: 12, imuTempC: 38.4, vibrationG: 0.21, accClip: 0, attUncDeg: 0.6, estFlags: 1, magInterfPct: 18 }).length).toBe(23);
+    expect(M.encodeSystem({ lq: 100, rssi: -68, snr: 9, pktRateHz: 250, txPowerMw: 100, cpuPct: 46, loopHz: 960, jitterUs: 6, logPct: 12, imuTempC: 38.4, vibrationG: 0.21, accClip: 0, attUncDeg: 0.6, estFlags: 1, magInterfPct: 18 }).length).toBe(31);
+    // SYSTEM memory health (firmware >= 0.14): read only when present; a 23-byte frame of an older firmware has none
+    const sys = { lq: 100, rssi: -68, snr: 9, pktRateHz: 250, txPowerMw: 100, cpuPct: 46, loopHz: 960, jitterUs: 6, logPct: 12, imuTempC: 38.4, vibrationG: 0.21, accClip: 0, attUncDeg: 0.6, estFlags: 1, magInterfPct: 18 };
+    const full = M.decodeSystem(M.encodeSystem({ ...sys, heapMinFree: 19400, stackMinFree: 412, stackMinTask: "imu" }));
+    expect([full.heapMinFree, full.stackMinFree, full.stackMinTask]).toEqual([19400, 412, "imu"]);
+    const old = M.decodeSystem(M.encodeSystem(sys).subarray(0, 23));
+    expect(old.heapMinFree).toBeUndefined();
+    expect(old.magInterfPct).toBe(18);
+    expect(M.decodeSystem(M.encodeSystem({ ...sys, heapMinFree: null, stackMinFree: null })).heapMinFree).toBeNull();
     expect(M.encodeParam({ id: 1, value: 1, flags: 0, index: 0, count: 1 }).length).toBe(11);
     expect(M.encodeAck({ op: 0, seq: 0, result: 0, reason: 0 }).length).toBe(4);
   });
