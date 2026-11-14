@@ -58,6 +58,7 @@
 #define FC_LAND_OL_RAMP_MS   1000u   /**< ... reached in 1 s ...                    */
 #define FC_LAND_OL_MS        20000u  /**< ... for at most 20 s, then touchdown      */
 #define FC_GF_BRAKE_A        2.5f    /**< m/s^2: manual modes slow down below the ceiling */
+#define FC_INDOOR_HSPEED     2.0f    /**< m/s: maxHSpeed cap of the indoor models (HANDOVER_FW §8) */
 
 /* ---- battery (§6): signals from the BattTask ---- */
 #define FC_BATT_STALE_MS     1000u   /**< no BattTask heartbeat: battery unknown   */
@@ -128,21 +129,25 @@ typedef struct {
     uint8_t flow_usable;             /* flow valid: above the PMW3901 minimum
                                         height (80 mm; landed it is ~11 mm)      */
     float   a_up;                    /**< m/s^2, + up, gravity and accelerometer bias removed, ~10 Hz low-pass */
+    float   vel_b[2];                /**< m/s, horizontal velocity from the flow, body x forward, y left (valid with flow_usable) */
+    float   yaw;                     /**< rad, heading of the attitude (NWU, + counter-clockwise) */
 } fc_vert_t;
 
 /** setpoints for the attitude / rate loops (phase 3) and the motor mixer */
 typedef struct {
     uint8_t armed, mode, autom;
-    uint8_t alt_ctrl;                /**< 1: thrust from the altitude loop         */
+    uint8_t alt_ctrl;                /**< 1: thrust from the altitude loop (h_sp, vz_sp valid)            */
     float   thrust;                  /**< collective 0..1                          */
     float   roll, pitch;             /**< rad (ANGLE-type modes)                   */
     float   roll_rate, pitch_rate;   /**< rad/s (ACRO), FLU: + = right wing down / nose down */
     float   yaw_rate;                /**< rad/s, FLU: + = counter-clockwise from above (stick right = negative) */
     float   h_sp, vz_sp;             /**< m, m/s (when alt_ctrl)                   */
     uint8_t in_air;                  /**< airborne: the rate loop may integrate      */
-    uint8_t pos_hold;                /* hold the horizontal position (POS_HOLD or HOLD with
-                                        a usable position source); 0 near the floor, where
-                                        the flow is below its minimum height: level attitude */
+    uint8_t pos_hold;                /* 1: roll / pitch from the horizontal position loop (pos_ctrl.c):
+                                        POS_HOLD, or an automatic action (TAKEOFF, LAND, RTH, HOLD,
+                                        failsafe), with a usable flow and the altitude loop on
+                                        (pos_hold implies alt_ctrl). 0: roll / pitch from the sticks
+                                        (centred = level), e.g. near the floor below the flow range */
 } fc_setpoint_t;
 
 void    fc_init(const fc_config_t *cfg);

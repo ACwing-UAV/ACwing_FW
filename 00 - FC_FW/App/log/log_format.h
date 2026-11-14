@@ -92,7 +92,7 @@ typedef struct {          /**< LR_VERT */
     uint16_t tof_mm;      /**< 0xFFFF n/a                                       */
     uint8_t  flow_q;      /**< 0xFF n/a                                         */
     uint32_t baro_pa;     /**< 0 n/a                                            */
-    uint8_t  flags;       /**< bit0 alt valid, 1 ToF valid, 2 ToF ground, 3 flow usable, 4 alt loop */
+    uint8_t  flags;       /**< bit0 alt valid, 1 ToF valid, 2 ToF ground, 3 flow usable, 4 alt loop, 5 pos hold */
 } log_vert_t;             /**< 25 */
 
 typedef struct {          /**< LR_FLIGHT */

@@ -441,6 +441,8 @@ static void flight_service(uint32_t *lastSvc)
     v.flow_q = s_flow_q;
     v.flow_usable = s_flow_usable;
     v.a_up = s_a_up_lp - s_alt.x[3];                /* accelerometer bias of the altitude filter removed */
+    v.vel_b[0] = s_flow_v[0]; v.vel_b[1] = s_flow_v[1];  /* flow ground speed, body axes (0 when not usable) */
+    v.yaw = atan2f(2.0f * (q[0]*q[3] + q[1]*q[2]), 1.0f - 2.0f * (q[2]*q[2] + q[3]*q[3]));
     fc_service(now, est_ok, &v);
     (void)ctrl_service(now);              /* rate loop stalled while armed: motors off */
     {

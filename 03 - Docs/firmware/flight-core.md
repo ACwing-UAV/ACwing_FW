@@ -12,7 +12,7 @@ host-tested against a vertical plant ([Testing](testing.md)).
 flowchart LR
   RC["app_link<br/>RC seqlock, silence"] --> CORE
   CMD["core commands<br/>(SPSC from AppTask)"] --> CORE
-  VERT["fc_vert_t<br/>h, vz, ToF, flow usable"] --> CORE
+  VERT["fc_vert_t<br/>h, vz, ToF, flow usable,<br/>flow velocity, yaw"] --> CORE
   GROUND["ground info<br/>(CHECKS ready, calibrating)"] --> CORE
   CORE["fc_core<br/>fc_service()"] --> SP["fc_setpoint()<br/>thrust, angles, rates,<br/>pos_hold"]
   CORE --> SNAP["snapshot (seqlock)<br/>FLIGHT, MOTORS"]
@@ -150,10 +150,16 @@ details are in [Battery and failsafes](battery.md#failsafes).
 - **HOLD** holds the current height. Moving a stick by more than 30 % gives
   control back.
 - **ALT_HOLD / POS_HOLD**: the stick commands the climb rate (`maxClimb`), and
-  the centre holds the height.
+  the centre holds the height. In POS_HOLD, and in the automatic actions, the
+  horizontal position loop (`pos_ctrl.c`, firmware 0.8) gives roll and pitch
+  while the optical flow is usable: the roll/pitch sticks command a velocity,
+  centred they hold the point where the drone stopped
+  ([Control loops](../theory/control-loops.md#pos_hold)).
 - **Setpoints** (`fc_setpoint()`): thrust, roll and pitch angles, rates and
-  yaw rate for the attitude and rate loops of phase 3. **Until those loops and
-  the motor outputs exist (`MOTORS_ENABLE = 0`) the thrust reaches no motor.**
+  yaw rate for the attitude and rate loops ([Attitude control and mixer](control.md)), and two flags:
+  `alt_ctrl` (collective from the vertical loop) and `pos_hold` (angles from
+  the position loop; it implies `alt_ctrl`). `MOTORS_ENABLE = 0` keeps the
+  PWM off on the bench.
 
 ## Height loop
 
