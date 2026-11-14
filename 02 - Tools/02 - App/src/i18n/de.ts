@@ -122,7 +122,7 @@ const de: Translation = {
     gamepadNone: "Kein Gamepad verbunden", alwaysOn: "Immer aktiv", limits: "Fluglimits", automatic: "Automatischer Flug",
     beginnerHint: "Halbiert alle Limits, blendet ACRO aus", indoorCap: "Indoor‑Modelle: begrenzt auf 2 m/s",
     helpTitle: "Flugsteuerung", helpIntro: "Gleiche Logik bei Touch, Gamepad, Tastatur und ELRS‑Funk. Der Funk hat immer Vorrang vor der App.",
-    keyboard: "Tastatur (PC)", keyboardHelp: "W/S Gas · A/D Gieren · Pfeile Nicken/Rollen · T Start · L Landung · H RTH · Leertaste Pause",
+    keyboard: "Tastatur (PC)", keyboardHelp: "W/S Gas (ANGLE/ACRO: verstellt und bleibt; Hold-Modi: steigen/sinken) · A/D Gieren · Pfeile Nicken/Rollen · T Start · L Landung · H RTH · Leertaste Pause",
     touchHelp: "Virtuelle Sticks, haptischer Klick in der Mitte und an den Anschlägen", gamepadHelp: "Xbox / PlayStation / MFi über die Gamepad‑API",
     elrsHelp: "Höchste Priorität: wenn aktiv, zeigt die App nur noch Telemetrie",
   },

@@ -34,7 +34,12 @@ UI languages: English (default), Italiano, Français, Deutsch, Español
 
 Every screen has a phone layout and a tablet/PC layout. Inputs: touch sticks,
 keyboard (W/S, A/D, arrows, T takeoff, L land, H RTH, Space pause), gamepad
-(Gamepad API); the ELRS radio always overrides the app.
+(Gamepad API); the ELRS radio always overrides the app. The throttle follows
+the source moved last (`ThrottleArbiter` in `src/input/controls.ts`): in ANGLE /
+ACRO the touch stick rests at the bottom, the keyboard and a gamepad at the
+centre, so merging by magnitude would let the touch stick win. On the keyboard
+W/S move a collective that stays where it is left (ANGLE / ACRO), or climb and
+descend while held (ALT / POS HOLD).
 
 Indoor models (no GPS) are detected from the drone's CAPS frame: every
 GPS-only item (RTH, home, distance geofence, GPS failsafe, GPS compass)
