@@ -24,7 +24,16 @@
    It compiles every source folder of the configuration with the same paths and defines (at `-O2`), links with
    `STM32WB55RGVX_FLASH.ld` and prints the memory usage. It fails above 90 % of the static RAM or of the flash
    (`--max-ram-pct`, `--max-flash-pct`): the RAM left is the boot stack, which the interrupts use after the kernel
-   starts, and the margin for growth (83 % in firmware 0.10). It does not replace the IDE build (optimisation and
+   starts, and the margin for growth. `--define "APP_HW_REV='A'"` builds the rev A flight board, whose flight log is
+   on the W25Q flash instead of a 48 KB RAM buffer; the CI holds it to 80 % of the RAM.
+
+   | Firmware 0.14 | Flash (504 KB) | RAM (192 KB) |
+   |---|---|---|
+   | rev A (flight) | 168 KB, 33.5 % | 114 KB, 59.5 % |
+   | NUCLEO bench (log in RAM) | 159 KB, 31.6 % | 162 KB, 84.1 % |
+
+   The static RAM includes the FreeRTOS heap (52 KB, task stacks and queues). What is really used of it, and the
+   stack margin of each task, is in the SYSTEM frame (HANDOVER_FW §4, `heapMinFree`, `stackMinFree`). It does not replace the IDE build (optimisation and
    warning flags may differ), it catches missing paths, missing files and link errors.
 3. Linker: library `arm_cortexM4lf_math` from `App/third_party/cmsis_dsp/Lib`
    (the **GCC** `.a`, not the Keil `.lib`). FPU: FPv4-SP-D16, hard ABI.

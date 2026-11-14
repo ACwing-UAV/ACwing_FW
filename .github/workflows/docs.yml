@@ -50,6 +50,12 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
+      - name: Math macros every renderer accepts
+        # GitHub's math renderer refuses \operatorname ("macros are not allowed"): use \mathrm{...} or \arctan
+        run: |
+          if grep -rn --include=*.md '\\operatorname' "03 - Docs" README.md; then
+            echo "::error::\\operatorname is not allowed by GitHub's math renderer: use \\mathrm{...}"; exit 1
+          fi
       - name: MkDocs
         run: pip install -r "03 - Docs/requirements.txt"
       - name: Build the site (strict)

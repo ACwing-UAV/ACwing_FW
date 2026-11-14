@@ -88,7 +88,7 @@ The desired attitude is $R_d = R_z(\psi)R_y(\theta_{sp})R_x(\phi_{sp})$ around t
 error is the rotation that takes the body $z$ axis onto the desired one (**reduced attitude**):
 
 $$
-e = \frac{z_b \times z_d}{\lVert z_b \times z_d\rVert}\,\operatorname{atan2}(\lVert z_b\times z_d\rVert,\ z_b\cdot z_d)
+e = \frac{z_b \times z_d}{\lVert z_b \times z_d\rVert}\,\mathrm{atan2}(\lVert z_b\times z_d\rVert,\ z_b\cdot z_d)
 \quad\text{(in body axes)},\qquad
 \omega_{sp,xy} = k_{att}\,e_{xy},\ \lvert\omega_{sp,xy}\rvert \le 6\ \text{rad/s}
 $$
@@ -114,7 +114,7 @@ $$
 hover feed-forward, divided by $\cos(\text{tilt})$ so the vertical thrust does not drop in a tilt:
 
 $$
-v_{z,sp} = \operatorname{clamp}\big(k_{p,h}(h_{sp} - h),\ -v_{dn},\ v_{up}\big),\qquad
+v_{z,sp} = \mathrm{clamp}\big(k_{p,h}(h_{sp} - h),\ -v_{dn},\ v_{up}\big),\qquad
 t = \frac{\hat t_h + k_{p,v}(v_{z,sp} - v_z) + I}{\cos(\text{tilt})},\quad \dot I = k_{i,v}(v_{z,sp} - v_z),\ \lvert I\rvert \le 0.15
 $$
 
@@ -201,12 +201,12 @@ slowly with the flow scale error, used only to come back to a point held recentl
 $$
 v_{sp} = \begin{cases} \text{stick}\cdot v_{max} & \text{stick outside ±5 \%}\\
 0 & \text{braking after the release, until } \lvert v\rvert < 0.2\ \text{m/s (at most 1.5 s)}\\
-\operatorname{sat}_{1\,\text{m/s}}\big(k_{p,pos}(p_{sp} - p)\big) & \text{holding the point where it stopped}\end{cases}
+\mathrm{sat}_{1\,\text{m/s}}\big(k_{p,pos}(p_{sp} - p)\big) & \text{holding the point where it stopped}\end{cases}
 $$
 
 $$
 a = k_{p,vel}(v_{sp} - v) + I,\quad \dot I = k_{i,vel}(v_{sp} - v)\ \text{(world frame)},\qquad
-\text{tilt} = \operatorname{atan}\frac{\min(\lvert a\rvert, g\tan\text{maxTilt})}{g}\ \text{along } a
+\text{tilt} = \arctan\frac{\min(\lvert a\rvert, g\tan\text{maxTilt})}{g}\ \text{along } a
 $$
 
 - The point is latched after braking, not at the instant of the release: the drone stops where it can and stays

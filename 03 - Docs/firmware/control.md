@@ -44,7 +44,7 @@ Body FLU, world NWU ([Vehicle model](../theory/vehicle-model.md)). Every setpoin
 
 The desired attitude is built from the roll and pitch setpoints around the **current** heading,
 $R_d = R_z(\psi)R_y(\theta_{sp})R_x(\phi_{sp})$. The error is the rotation that brings the body $z$ axis onto the
-desired one (reduced attitude): axis $z_b \times z_d$, angle $\operatorname{atan2}(\lvert z_b\times z_d\rvert,
+desired one (reduced attitude): axis $z_b \times z_d$, angle $\mathrm{atan2}(\lvert z_b\times z_d\rvert,
 z_b\cdot z_d)$, expressed in the body frame. The heading therefore never enters roll and pitch, and the loop is
 well defined at any tilt.
 

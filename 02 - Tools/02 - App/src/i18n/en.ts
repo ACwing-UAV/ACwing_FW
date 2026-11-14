@@ -70,7 +70,7 @@ const en = {
     powerDraw: "Power draw", usedMah: "Used", cellAvg: "Average cell voltage", thresholds: "Warning / RTH thresholds",
     raw: "Raw sensors", gyro: "Gyro (°/s)", acc: "Accelerometer (g)", mag: "Magnetometer (µT)", vibration: "Vibration (RMS)",
     imuTemp: "IMU temp", accClip: "Accel clipping", system: "Radio and system", elrs: "ELRS RSSI / SNR", bleDrop: "BLE dropped frames",
-    rxRate: "Data received", cpu: "CPU load", loop: "Control loop", flashLog: "Flash log", messages: "Messages", time: "Time",
+    rxRate: "Data received", cpu: "CPU load", loop: "Control loop", flashLog: "Flash log", heapMin: "Free heap (lowest)", stackMin: "Stack margin (lowest)", messages: "Messages", time: "Time",
     level: "Level", message: "Message", vertShort: "vertical {v}", headingShort: "heading {h}°", noData: "Waiting for data…",
     chartAlt: "Altitude", chartBatt: "Battery", chartMotors: "Motors", rotateHint: "Rotate the phone for a wider chart",
   },

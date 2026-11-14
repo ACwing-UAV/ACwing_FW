@@ -245,7 +245,11 @@ typedef struct {                  /**< 0x0A SYSTEM */
     uint16_t att_unc_cdeg;
     uint8_t  est_flags;           /**< bit0 EKF ok, bit1 acc gated, bit2 mag gated, bit3 mag interference */
     uint8_t  mag_interf_pct;
-} pv2_system_t;                   /**< 23 */
+    /* firmware 0.14: memory health (appended; a 23-byte frame from an older firmware has none of it) */
+    uint16_t heap_min_free;       /**< bytes, lowest free RTOS heap since boot; 0xFFFF n/a */
+    uint16_t stack_min_free;      /**< bytes, smallest stack margin of any task since boot; 0xFFFF n/a */
+    char     stack_min_task[4];   /**< name of that task, first 4 chars, NUL padded */
+} pv2_system_t;                   /**< 31 */
 
 typedef struct {                  /**< 0x0B EVENT header, then text[len] */
     uint8_t  level;
@@ -305,7 +309,7 @@ _Static_assert(sizeof(pv2_flight_t)      == 25, "FLIGHT layout");
 _Static_assert(sizeof(pv2_power_t)       == 13, "POWER layout");
 _Static_assert(sizeof(pv2_nav_t)         == 31, "NAV layout");
 _Static_assert(sizeof(pv2_motor_t)       == 4,  "MOTORS entry layout");
-_Static_assert(sizeof(pv2_system_t)      == 23, "SYSTEM layout");
+_Static_assert(sizeof(pv2_system_t)      == 31, "SYSTEM layout");
 _Static_assert(sizeof(pv2_event_hdr_t)   == 8,  "EVENT header layout");
 _Static_assert(sizeof(pv2_param_t)       == 11, "PARAM layout");
 _Static_assert(sizeof(pv2_calib_hdr_t)   == 6,  "CALIB header layout");

@@ -118,7 +118,7 @@ CRC-16/CCITT-FALSE (poly 0x1021, init 0xFFFF, no reflection, no xor-out) over
 | `0x07` | **POWER** | 13 B | 5 Hz (1–10) | new |
 | `0x08` | **NAV** | 31 B | 5 Hz (1–10) | new |
 | `0x09` | **MOTORS** | 1 + 4·n B | 5 Hz (1–10) | new |
-| `0x0A` | **SYSTEM** | 23 B | 2 Hz (1–5) | new |
+| `0x0A` | **SYSTEM** | 31 B | 2 Hz (1–5) | new |
 | `0x0B` | **EVENT** | 8 + text (≤ 40) B | on event; level ≥ ERROR repeated ×3, 100 ms apart | new |
 | `0x0C` | **PARAM** | 11 B | answer to PARAM_GET/SET/LIST/SAVE/DEFAULTS | new |
 | `0x0D` | **CALIB** | 6 + data B | 10 Hz while a calibration is active + on every state change | new |
@@ -223,7 +223,7 @@ the mixer applies while armed (0 when disarmed, the test output during MOTOR_TES
 `rpm u16` (`0xFFFF` = n/a, e.g. brushed motors), `temp i8` °C (`-128` = n/a),
 `out u8` commanded output 0…100 %.
 
-### 0x0A SYSTEM (23 B)
+### 0x0A SYSTEM (31 B; 23 B before firmware 0.14)
 
 | off | type | field | unit / notes |
 |---|---|---|---|
@@ -242,6 +242,13 @@ the mixer applies while armed (0 when disarmed, the test output during MOTOR_TES
 | 19 | u16 | attUnc | cdeg, 1σ attitude uncertainty from the estimator |
 | 21 | u8 | estFlags | bit0 EKF ok, bit1 acc update gated, bit2 mag update gated, bit3 magnetic interference |
 | 22 | u8 | magInterf | % |
+| 23 | u16 | heapMinFree | bytes, lowest free RTOS heap since boot; `0xFFFF` n/a — firmware 0.14 |
+| 25 | u16 | stackMinFree | bytes, smallest stack margin of any task since boot; `0xFFFF` n/a |
+| 27 | char[4] | stackMinTask | that task's name, first 4 characters, NUL padded |
+
+The memory fields are appended: a decoder reads them only when the frame is longer than 23 bytes. The firmware lists
+the tasks once and measures one stack per SYSTEM frame (no scheduler suspension), so a margin settles after one
+round of all the tasks (about 8 s at 2 Hz).
 
 ### 0x0B EVENT (8 + len B)
 
@@ -1010,7 +1017,7 @@ With 6 bytes of framing per frame, at the default rates:
 | MOTORS (quad) | 23 × 5 | 115 |
 | CHECKS (13 items, disarmed) | 60 × 2 | 120 |
 | POWER | 19 × 5 | 95 |
-| SYSTEM | 29 × 2 | 58 |
+| SYSTEM | 37 × 2 | 74 |
 | CAPS | 45 × 0.2 | 9 |
 | **total** | | **≈ 3.1 kB/s** |
 

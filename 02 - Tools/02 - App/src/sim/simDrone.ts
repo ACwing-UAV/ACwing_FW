@@ -1072,6 +1072,7 @@ export class SimDrone {
       lq: this.elrsLinked ? 100 : null, rssi: -68, snr: 9, pktRateHz: this.elrsLinked ? 250 : 0, txPowerMw: this.elrsLinked ? 100 : 0, cpuPct: 46,
       loopHz: 960, jitterUs: 6, logPct: this.logPct(), imuTempC: 38.4, vibrationG: this.inAir ? 0.21 : 0.02, accClip: 0, attUncDeg: 0.6,
       estFlags: 0x01 | (this.compassCalibrated ? 0 : 0x08), magInterfPct: this.compassCalibrated ? 4 : 18,
+      heapMinFree: 19400, stackMinFree: 412, stackMinTask: "imu",
     }));
   }
 

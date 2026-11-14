@@ -49,11 +49,14 @@ def main():
     ap.add_argument("-j", type=int, default=os.cpu_count() or 2)
     ap.add_argument("--max-ram-pct", type=float, default=90.0, help="fail above this RAM use (static), %%")
     ap.add_argument("--max-flash-pct", type=float, default=90.0, help="fail above this FLASH use, %%")
+    ap.add_argument("--define", action="append", default=[], metavar="NAME=VALUE",
+                    help="extra preprocessor define, e.g. \"APP_HW_REV='A'\" (the board); may repeat")
+    ap.add_argument("--out", default=None, help="build folder name (default: the configuration)")
     a = ap.parse_args()
     cfg = config(a.config)
 
     incs = [path(p) for p in values(cfg, "includepaths", "c.compiler")]
-    defs = values(cfg, "definedsymbols", "c.compiler")
+    defs = values(cfg, "definedsymbols", "c.compiler") + a.define
     missing = [p for p in incs if not os.path.isdir(p)]
     if missing:
         sys.exit("include paths in .cproject that do not exist:\n  " + "\n  ".join(missing))
@@ -77,7 +80,7 @@ def main():
     libdirs = [path(p) for p in values(cfg, "directories", "c.linker")]
     ld = os.path.join(ROOT, "STM32WB55RGVX_FLASH.ld")
 
-    out = os.path.join(ROOT, "Tests", "target", "build", a.config)
+    out = os.path.join(ROOT, "Tests", "target", "build", a.out or a.config)
     shutil.rmtree(out, ignore_errors=True)
     os.makedirs(out)
     cflags = CPU + ["-std=gnu11", "-O2", "-g", "-ffunction-sections", "-fdata-sections", "-Wall",
