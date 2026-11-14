@@ -548,8 +548,10 @@ static void ImuTask(void *arg)
      * (916 Hz measured on the board instead of 960): integrating the gyro with
      * the nominal dt scales every rotation by that error. The period is the
      * DWT time between two INT1 edges >= 2 s apart divided by the gyro samples
-     * read in between (counted from the FIFO tags), smoothed; until the first
-     * window the nominal value is used (static calibration, board still).
+     * read in between (counted from the FIFO tags), smoothed. Until the first
+     * window the ODR of the factory trim is used (INTERNAL_FREQ_FINE, read by
+     * imu_init: 0.13 % per LSB), so the first 2 s, the static calibration, are
+     * integrated with the right period too.
      * A per-read measurement is not used: drain reads have no edge of their own
      * and fell back to the nominal dt (filter time 1.3 % behind real time). */
     const float dtNom = 1.0f / s_imu.odr_hz;

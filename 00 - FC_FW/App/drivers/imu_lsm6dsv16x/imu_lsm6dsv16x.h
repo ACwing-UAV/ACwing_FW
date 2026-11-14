@@ -71,7 +71,9 @@ typedef struct {
 typedef struct {
     stmdev_ctx_t ctx;
     sensor_bus_t bus;
-    float        odr_hz;
+    float        odr_hz;            /**< nominal ODR trimmed by INTERNAL_FREQ_FINE (imu_odr_trimmed) */
+    float        odr_nom_hz;        /**< nominal ODR (960 / 1920 Hz)                                 */
+    int8_t       odr_fine;          /**< INTERNAL_FREQ_FINE read at start-up (0 if the read failed)   */
     uint8_t      mag_enabled;
     uint8_t      last_mag_raw[6];   /**< to discard sensor-hub duplicates       */
     uint8_t      have_mag;
@@ -81,6 +83,18 @@ typedef struct {
 } imu_t;
 
 int32_t imu_init(imu_t *imu, const sensor_bus_t *bus, const imu_config_t *cfg);
+
+/** LSM6DSV16X INTERNAL_FREQ_FINE (0x4F): deviation of the real ODR from the typical one, 0.13 % per LSB, two's
+ * complement (datasheet). The sensor runs on its own RC oscillator; the trimmed value seeds the sample period
+ * from the first sample, before the measurement against the MCU clock (app_main.c, 2 s windows) takes over.
+ * A value beyond +-10 % is not plausible for this part: the nominal ODR is kept. */
+#define IMU_ODR_FINE_STEP   0.0013f
+#define IMU_ODR_FINE_MAX    0.10f
+static inline float imu_odr_trimmed(float nominal_hz, int8_t fine)
+{
+    const float k = IMU_ODR_FINE_STEP * (float)fine;
+    return (k > IMU_ODR_FINE_MAX || k < -IMU_ODR_FINE_MAX) ? nominal_hz : nominal_hz * (1.0f + k);
+}
 
 /** Number of 7-byte words in the FIFO */
 int32_t imu_fifo_level(imu_t *imu, uint16_t *words);

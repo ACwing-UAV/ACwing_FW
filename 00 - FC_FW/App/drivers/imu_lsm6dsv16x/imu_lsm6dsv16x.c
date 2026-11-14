@@ -209,7 +209,11 @@ int32_t imu_init(imu_t *imu, const sensor_bus_t *bus, const imu_config_t *cfg)
     ret |= lsm6dsv16x_gy_data_rate_set(&imu->ctx, odr);
     if (ret) return IMU_ERR_BUS;
 
-    imu->odr_hz = fast ? 1920.0f : 960.0f;
+    imu->odr_nom_hz = fast ? 1920.0f : 960.0f;
+    /* the real ODR of this part (its RC oscillator), from the factory trim: a failed read keeps the nominal one */
+    imu->odr_fine = 0;
+    if (lsm6dsv16x_odr_cal_reg_get(&imu->ctx, &imu->odr_fine)) imu->odr_fine = 0;
+    imu->odr_hz = imu_odr_trimmed(imu->odr_nom_hz, imu->odr_fine);
     return IMU_OK;
 }
 
