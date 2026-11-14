@@ -151,7 +151,8 @@ All little-endian, packed. `off` = byte offset in the payload.
 | 27 | char[12] | serial | ASCII, zero padded |
 
 `sensors` bits: `0` IMU, `1` BARO, `2` MAG_FC, `3` MAG_GPS, `4` GNSS, `5` FLOW,
-`6` TOF, `7` ESC_TLM (RPM/temperature), `8` CURRENT, `9` ELRS, `10` LEDS,
+`6` TOF, `7` ESC_TLM (RPM/temperature), `8` CURRENT, `9` ELRS (from firmware 0.7.0: **any RC receiver**
+that has sent valid frames, whatever its protocol, see parameter 100), `10` LEDS,
 `11` FLASH_LOG. **Set a bit only if the part is detected at boot**, not if it
 is merely supported: the app hides every feature whose sensor bit is 0.
 
@@ -226,7 +227,7 @@ the mixer applies while armed (0 when disarmed, the test output during MOTOR_TES
 
 | off | type | field | unit / notes |
 |---|---|---|---|
-| 0 | u8 | lq | ELRS link quality %, `0xFF` = no receiver or not linked |
+| 0 | u8 | lq | RC receiver link quality % (any protocol, see CHECKS item 6), `0xFF` = no receiver seen; 0 = link lost |
 | 1 | i8 | rssi | dBm (ELRS) |
 | 2 | i8 | snr | dB (ELRS) |
 | 3 | u16 | pktRate | Hz (ELRS) |
@@ -492,6 +493,39 @@ drone acts on its own timers above.
 2. **App** (RC frames) otherwise.
 3. **None**: no input → in air, failsafe as above.
 
+Firmware 0.7.0 (`control/input_arb.c`, `control/radio_fs.c`), for **any** RC receiver (parameter 100), the
+"ELRS" input above meaning the radio:
+
+- **Taking control:** the receiver link is up and the pilot uses the radio: arm switch AUX1 above 1700 µs, a
+  roll/pitch/yaw stick beyond 15 %, or the throttle above the bottom. EVENT 43 once. A radio lying at rest (switch
+  off, sticks centred, throttle down) never takes control from the app.
+- **Keeping it:** while armed, the radio keeps control, also with its link lost. Disarmed, control goes back to
+  the app after 1 s with the radio idle, or at once when its link is lost.
+- **While the radio has control:** the app RC is ignored, app ARM → `REJECTED/RADIO_OVERRIDE`, the app-link
+  failsafe does not act (FLIGHT.input = 2). LAND, RTH, HOLD and KILL from the app still work.
+- **Radio failsafe:** no valid radio frame for 1 s in the air → `fsRadio` (RTH without GNSS + home = land),
+  FLIGHT.failsafe bit 1, EVENT 21 ERROR once; RC values older than 0.25 s are already replaced by the neutral
+  sticks. Link back (< 0.5 s): a HOLD gives control back, LAND/RTH are kept until the pilot changes mode. Armed on
+  the ground with the link lost for 3 s → disarm.
+
+**Radio switches** — firmware 0.8.0 (`control/rc_switches.c`). Edges, never levels; tracked whenever the radio link
+is valid, acting only while the radio has control. The commands run through the same checks as the app ones but
+send no ACK: a refusal is **EVENT 9 WARN RADIO_REFUSED**, arg = `op << 8 | reason`.
+
+| Switch | Edge | Action |
+|---|---|---|
+| AUX1 (arm) | off → on (> 1700 µs) | ARM, only if the switch was seen off before: a switch left on at power-up never arms |
+| AUX1 | on → off, on the ground | DISARM |
+| AUX1 | on → off, in the air | KILL with `rcArmSwKill` = 1 (default, as Betaflight); with 0 a DISARM, refused (NOT_LANDED) |
+| AUX2 (modes) | position change, or the radio taking control | SET_MODE from `rcModeMap`: 1 = low ANGLE / mid ALT_HOLD / high POS_HOLD, 2 = ACRO / ANGLE / ALT_HOLD; **0 = off (default)** |
+
+- The radio taking control with the arm switch off never disarms a drone the app armed (no level is acted on).
+- After a link loss the first valid frame sets the positions again without an edge: a switch moved while the link was
+  down does nothing until it is moved again.
+- The mode switch is off by default because receivers send 1500 µs (mid) on the channels without a switch: a map
+  always on would change the mode whenever the radio takes control.
+- Positions: low < 1300 µs, mid, high > 1700 µs, no signal < 800 µs.
+
 **RC mapping** (same as the ELRS mapping, after the app's own
 deadband/expo/sensitivity):
 
@@ -647,6 +681,10 @@ reuse). Stored in flash with a version/CRC; on a bad CRC load defaults.
 | 97 | dtermLpf | 70 | 20 | 250 | Hz | D-term low-pass |
 | 98 | gyroNotch | 0 | 0 | 400 | Hz | gyro notch, 0 = off |
 | 99 | motorIdle | 0.05 | 0 | 0.15 | – | thrust of each motor when armed (fraction of the maximum) |
+| 100 | rcProtocol | 1 | 0 | 4 | enum | RC receiver on the FC: 0 none, 1 CRSF (ExpressLRS, TBS Crossfire/Tracer), 2 SBUS (FrSky, Futaba…), 3 i-BUS (FlySky), 4 DSM2/DSMX (Spektrum) — firmware 0.7.0 |
+| 101 | rcMap | 0 | 0 | 1 | enum | channel order: 0 AETR, 1 TAER |
+| 102 | rcArmSwKill | 1 | 0 | 1 | enum | arm switch off in the air: 1 motors off (KILL), 0 refused — firmware 0.8.0 |
+| 103 | rcModeMap | 0 | 0 | 2 | enum | mode switch AUX2: 0 off, 1 ANGLE/ALT_HOLD/POS_HOLD, 2 ACRO/ANGLE/ALT_HOLD — firmware 0.8.0 |
 
 The loop gains (90–95) are in **normalised thrust per motor**: a roll torque of 0.1 raises the left motors and lowers
 the right ones by 0.1 of the maximum thrust. The mixer compensates the battery and the thrust curve, so the gains do
@@ -675,7 +713,7 @@ no item in FAIL.
 | 3 | Compass | interference % | WARN > 15 % or compass recommended; FAIL if uncalibrated on GNSS models |
 | 4 | GNSS | satellites | N/A without GNSS; WARN < 3D or < 8 sats |
 | 5 | Home | horizontal accuracy dm (value/10 = m) | N/A without GNSS; WARN not set |
-| 6 | ELRS radio | LQ % | N/A without receiver/not bound; WARN LQ < 70 |
+| 6 | ELRS radio | LQ % | N/A without receiver/not bound; WARN LQ < 70. From firmware 0.7.0 any RC receiver: LQ from CRSF link statistics, from the SBUS lost frames, 100 for i-BUS/DSM while frames arrive, 0 when the link is lost |
 | 7 | EKF | 0 | FAIL if not converged; WARN if attUnc > 3° |
 | 8 | Geofence · failsafe | geofence radius m (gfMaxDist), or gfMaxAlt without GNSS | WARN if a failsafe action cannot be executed |
 | 9 | Optical flow | quality % | N/A without FLOW; WARN < 50 |
@@ -794,6 +832,14 @@ step 2, RUNNING: track `min`/`max` per channel while the user moves the
 sticks; detect AUX switch positions (`auxPos`). `CAL_CAPTURE` → DONE, step 3.
 CAL_SAVE.
 
+Firmware 0.8.0 (`control/cal_sticks.c`): the first CAPTURE is refused while no valid frame has arrived; the second
+one is refused with `OUT_OF_RANGE` unless every stick moved at least **350 µs** each side of its centre (throttle:
+700 µs over its range). 350 µs takes Spektrum at 100 % travel (1100–1900 µs) and refuses a calibration with the
+sticks moved only part of the way, which would scale a full deflection far beyond 1000. The result is applied at
+once (the receiver input uses it from its next frame) and at every boot; a sticks-calibrated drone maps centre →
+0 and each end → ±1000, throttle min → −1000. Configuration image version 3 (v2 images are migrated, sticks not
+calibrated).
+
 ## 11. Events
 
 | code | level | name | arg | when |
@@ -806,6 +852,7 @@ CAL_SAVE.
 | 6 | INFO | RTH_STARTED | – | command or failsafe |
 | 7 | INFO | HOME_SET | – | |
 | 8 | WARN | TAKEOFF_ABORTED | – | no lift-off within 6 s, back on the ground — firmware 0.5.0 |
+| 9 | WARN | RADIO_REFUSED | op << 8 \| reason | a radio-switch command refused (§6 radio switches) — firmware 0.8.0 |
 | 20 | ERROR | FAILSAFE_APP_LINK | action | long app-link failsafe |
 | 21 | ERROR | FAILSAFE_RADIO | action | |
 | 22 | ERROR | FAILSAFE_BATTERY | action | |

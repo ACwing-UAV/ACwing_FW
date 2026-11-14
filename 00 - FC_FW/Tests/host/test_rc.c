@@ -1,0 +1,362 @@
+/**
+ * Host tests of the RC receiver input: the CRSF, SBUS, i-BUS and DSM parsers (drivers/rc) and rc_input
+ * (protocol selection, channel map, normalisation, failsafe, staleness, link statistics). Frames are built here
+ * the way the receivers send them.
+ */
+#include "rc_input.h"
+#include "rc_crsf.h"
+#include "rc_sbus.h"
+#include "rc_ibus.h"
+#include "rc_dsm.h"
+#include "input_arb.h"
+#include "radio_fs.h"
+#include "cal_sticks.h"
+#include "rc_switches.h"
+#include "proto_v2.h"
+#include <stdio.h>
+#include <string.h>
+
+static int s_fail, s_pass;
+#define CHECK(c, ...) do { if (c) s_pass++; else { s_fail++; printf("FAIL %s:%d: ", __FILE__, __LINE__); printf(__VA_ARGS__); printf("\n"); } } while (0)
+
+/* us -> 11-bit value (CRSF / SBUS: us = v * 5/8 + 880) and packing LSB first */
+static uint16_t to11(uint16_t us) { return (uint16_t)(((uint32_t)(us - 880u) * 8u + 4u) / 5u); }
+static void pack11(const uint16_t *us, uint8_t n, uint8_t *dst)
+{
+    memset(dst, 0, (n * 11u + 7u) / 8u);
+    uint32_t bit = 0;
+    for (uint8_t c = 0; c < n; ++c) {
+        const uint16_t v = to11(us[c]);
+        for (int k = 0; k < 11; ++k, ++bit) if (v & (1u << k)) dst[bit / 8u] |= (uint8_t)(1u << (bit % 8u));
+    }
+}
+
+static uint8_t crsf_channels(const uint16_t *us, uint8_t *f)
+{
+    f[0] = CRSF_ADDR_FC; f[1] = 24; f[2] = CRSF_T_RC_CHANNELS;
+    pack11(us, 16, &f[3]);
+    f[25] = rc_crsf_crc8(&f[2], 23);
+    return 26;
+}
+static uint8_t crsf_link(uint8_t rssi_neg, uint8_t lq, int8_t snr, uint8_t pwr, uint8_t *f)
+{
+    f[0] = CRSF_ADDR_FC; f[1] = 12; f[2] = CRSF_T_LINK_STATS;
+    const uint8_t pl[10] = { rssi_neg, 120, lq, (uint8_t)snr, 0, 2, pwr, 90, 100, 5 };
+    memcpy(&f[3], pl, 10);
+    f[13] = rc_crsf_crc8(&f[2], 11);
+    return 14;
+}
+static void sbus_frame(const uint16_t *us, uint8_t flags, uint8_t *f)
+{
+    f[0] = 0x0F; pack11(us, 16, &f[1]); f[23] = flags; f[24] = 0x00;
+}
+static void ibus_frame(const uint16_t *us, uint8_t *f)
+{
+    f[0] = 0x20; f[1] = 0x40;
+    for (int c = 0; c < 14; ++c) { f[2 + 2 * c] = (uint8_t)us[c]; f[3 + 2 * c] = (uint8_t)(us[c] >> 8); }
+    uint16_t s = 0xFFFF;
+    for (int i = 0; i < 30; ++i) s = (uint16_t)(s - f[i]);
+    f[30] = (uint8_t)s; f[31] = (uint8_t)(s >> 8);
+}
+
+static const uint16_t k_us[16] = { 1100, 1700, 1300, 1950, 1000, 1500, 2000, 1250, 1500, 1500, 1500, 1500, 1500, 1500, 1500, 1500 };
+
+static void test_crsf(void)
+{
+    rc_crsf_t p; rc_crsf_init(&p);
+    rc_frame_t fr; rc_link_t ln; memset(&ln, 0, sizeof ln);
+    uint8_t f[64];
+    const uint8_t n = crsf_channels(k_us, f);
+    uint8_t got = 0;
+    for (uint8_t i = 0; i < n; ++i) got |= rc_crsf_feed(&p, f[i], &fr, &ln);
+    int ok = (got == RC_GOT_CHANNELS && fr.n == 16);
+    for (int c = 0; c < 16; ++c) ok &= (fr.us[c] >= k_us[c] - 1 && fr.us[c] <= k_us[c] + 1);
+    CHECK(ok, "CRSF channels decoded within 1 us");
+    f[10] ^= 0x40;                                         /* corrupt a payload byte */
+    got = 0;
+    for (uint8_t i = 0; i < n; ++i) got |= rc_crsf_feed(&p, f[i], &fr, &ln);
+    CHECK(got == RC_NONE, "CRSF bad CRC rejected");
+    const uint8_t m = crsf_link(65, 97, 9, 3, f);
+    got = 0;
+    for (uint8_t i = 0; i < m; ++i) got |= rc_crsf_feed(&p, f[i], &fr, &ln);
+    CHECK(got == RC_GOT_LINK && ln.rssi == -65 && ln.lq == 97 && ln.snr == 9 && ln.tx_power_mw == 100, "CRSF link statistics");
+}
+
+static void test_sbus(void)
+{
+    rc_sbus_t p; rc_sbus_init(&p);
+    rc_frame_t fr;
+    uint8_t f[25], noise[7] = { 0x33, 0x0F, 0x12, 0x99, 0x00, 0x0F, 0x01 };
+    sbus_frame(k_us, 0x00, f);
+    uint8_t got = 0;
+    for (int i = 0; i < 7; ++i) got |= rc_sbus_feed(&p, noise[i], &fr);   /* garbage first */
+    for (int i = 0; i < 25; ++i) got |= rc_sbus_feed(&p, f[i], &fr);
+    for (int i = 0; i < 25; ++i) got |= rc_sbus_feed(&p, f[i], &fr);
+    CHECK(got == RC_GOT_CHANNELS && fr.us[3] >= 1949 && fr.us[3] <= 1951 && !fr.failsafe, "SBUS resyncs after noise and decodes");
+    sbus_frame(k_us, 0x0C, f);                             /* frame lost + failsafe */
+    for (int i = 0; i < 25; ++i) (void)rc_sbus_feed(&p, f[i], &fr);
+    CHECK(fr.failsafe && fr.frame_lost, "SBUS failsafe and frame-lost flags");
+}
+
+static void test_ibus(void)
+{
+    rc_ibus_t p; rc_ibus_init(&p);
+    rc_frame_t fr;
+    uint8_t f[32];
+    ibus_frame(k_us, f);
+    uint8_t got = 0;
+    for (int i = 0; i < 32; ++i) got |= rc_ibus_feed(&p, f[i], &fr);
+    CHECK(got == RC_GOT_CHANNELS && fr.n == 14 && fr.us[0] == 1100 && fr.us[13] == 1500, "i-BUS decoded");
+    f[5] ^= 1;
+    got = 0;
+    for (int i = 0; i < 32; ++i) got |= rc_ibus_feed(&p, f[i], &fr);
+    CHECK(got == RC_NONE, "i-BUS bad checksum rejected");
+}
+
+static void test_dsm(void)
+{
+    rc_dsm_t p; rc_dsm_init(&p);
+    rc_frame_t fr;
+    /* DSMX 2048: channel 0 = 1024 (1500 us), channel 2 = 200 (~1020 us), slot unused = 0xFFFF */
+    uint8_t f[16] = { 0, 0xB2 };
+    const uint16_t w[7] = { (0u << 11) | 1024u, (2u << 11) | 200u, (1u << 11) | 1700u, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF };
+    for (int i = 0; i < 7; ++i) { f[2 + 2 * i] = (uint8_t)(w[i] >> 8); f[3 + 2 * i] = (uint8_t)w[i]; }
+    uint8_t got = 0; uint32_t t = 100;
+    for (int i = 0; i < 16; ++i) got |= rc_dsm_feed(&p, f[i], t, &fr);
+    CHECK(got == RC_GOT_CHANNELS && fr.us[0] >= 1498 && fr.us[0] <= 1501 && fr.us[2] >= 1018 && fr.us[2] <= 1021, "DSMX 2048 decoded (%u %u)", fr.us[0], fr.us[2]);
+    /* DSM2 1024 after an 11 ms gap: channel 3 = 512 -> ~1500 us */
+    uint8_t g[16] = { 0, 0x01 };
+    const uint16_t x = (3u << 10) | 512u;
+    for (int i = 0; i < 7; ++i) { g[2 + 2 * i] = 0xFF; g[3 + 2 * i] = 0xFF; }
+    g[2] = (uint8_t)(x >> 8); g[3] = (uint8_t)x;
+    got = 0; t += 11;
+    for (int i = 0; i < 16; ++i) got |= rc_dsm_feed(&p, g[i], t, &fr);
+    CHECK(got == RC_GOT_CHANNELS && fr.us[3] >= 1498 && fr.us[3] <= 1502 && fr.us[0] >= 1498, "DSM2 1024 decoded, other channels kept");
+}
+
+static void test_input(void)
+{
+    rc_input_init();
+    rc_state_t s;
+    CHECK(rc_input_read(&s) == 0, "no receiver before the first frame");
+    (void)rc_input_configure(RC_PROTO_CRSF, RC_MAP_AETR);
+    uint8_t f[64];
+    /* AETR: ch1 roll 1100, ch2 pitch 1700, ch3 throttle 1300, ch4 yaw 1950, AUX1 1000 */
+    const uint8_t n = crsf_channels(k_us, f);
+    rc_input_feed(f, n, 1000);
+    CHECK(rc_input_read(&s) && s.valid, "valid after one frame");
+    CHECK(s.roll == -800 && s.pitch == 400 && s.thr == -400 && s.yaw == 900 && s.aux_us[0] >= 999 && s.aux_us[0] <= 1001,
+          "AETR: roll %d pitch %d thr %d yaw %d", s.roll, s.pitch, s.thr, s.yaw);
+    (void)rc_input_configure(RC_PROTO_CRSF, RC_MAP_TAER);
+    rc_input_feed(f, n, 1004);
+    (void)rc_input_read(&s);
+    CHECK(s.thr == -800 && s.roll == 400 && s.pitch == -400 && s.yaw == 900, "TAER: thr %d roll %d pitch %d", s.thr, s.roll, s.pitch);
+    /* staleness */
+    rc_input_service(1004 + RC_STALE_MS + 1);
+    (void)rc_input_read(&s);
+    CHECK(!s.valid && s.ever, "no frame for %u ms: not valid, receiver still known", RC_STALE_MS);
+    /* CRSF link stats with LQ 0: the transmitter is gone */
+    rc_input_feed(f, n, 2000);
+    const uint8_t m = crsf_link(110, 0, -5, 1, f);
+    rc_input_feed(f, m, 2002);
+    (void)rc_input_read(&s);
+    CHECK(!s.valid && s.link.lq == 0, "CRSF LQ 0: not valid");
+    /* SBUS with the failsafe flag: not valid; LQ from the lost frames */
+    CHECK(rc_input_configure(RC_PROTO_SBUS, RC_MAP_AETR) == 1, "protocol change reported (UART to reconfigure)");
+    uint8_t sb[25];
+    uint32_t t = 3000;
+    for (int k = 0; k < 100; ++k) { sbus_frame(k_us, (k % 10 == 0) ? 0x04 : 0x00, sb); t += 9; rc_input_feed(sb, 25, t); }
+    (void)rc_input_read(&s);
+    CHECK(s.valid && s.link.lq == 90, "SBUS: 10 %% lost frames -> LQ 90 (%u)", s.link.lq);
+    sbus_frame(k_us, 0x08, sb); t += 9; rc_input_feed(sb, 25, t);
+    (void)rc_input_read(&s);
+    CHECK(!s.valid, "SBUS failsafe flag: not valid");
+    rc_input_service(t + 1000);
+    (void)rc_input_read(&s);
+    CHECK(s.link.pkt_rate_hz > 0, "packet rate measured (%u Hz)", s.link.pkt_rate_hz);
+    /* resync after a pause: half a frame, a pause, then a whole frame */
+    sbus_frame(k_us, 0, sb);
+    rc_input_feed(sb, 12, t + 1100);
+    const uint32_t fr0 = s.frames;
+    rc_input_feed(sb, 25, t + 1110);
+    (void)rc_input_read(&s);
+    CHECK(s.frames == fr0 + 1 && s.valid, "a pause restarts the parser: the next whole frame is decoded");
+    /* serial settings */
+    rc_uart_cfg_t u;
+    rc_input_uart_cfg(RC_PROTO_SBUS, &u);
+    CHECK(u.baud == 100000 && u.parity_even && u.stop2 && u.inverted, "SBUS 100k 8E2 inverted");
+    rc_input_uart_cfg(RC_PROTO_CRSF, &u);
+    CHECK(u.baud == 420000 && !u.inverted, "CRSF 420k 8N1");
+    CHECK(rc_throttle_from_us(1000) == -1000 && rc_throttle_from_us(2000) == 1000 && rc_stick_from_us(1500) == 0, "scales");
+}
+
+
+static void test_arbitration(void)
+{
+    ia_init();
+    ia_sticks_t app = { 1, -1000, 0, 0, 300, 10 };
+    rc_state_t r; memset(&r, 0, sizeof r);
+    ia_out_t o;
+    ia_step(100, 0, &app, &r, &o);
+    CHECK(!o.radio && o.sticks.roll == 300, "no receiver: the app's sticks");
+    r.ever = 1; r.valid = 1; r.thr = -1000; r.aux_us[0] = 1000; r.t_ms = 100;
+    ia_step(110, 0, &app, &r, &o);
+    CHECK(!o.radio, "radio at rest: still the app");
+    r.yaw = 200;                                                  /* 20 % yaw */
+    ia_step(120, 0, &app, &r, &o);
+    CHECK(o.radio && o.took_control && o.sticks.yaw == 200, "a stick beyond 15 %%: the radio takes control");
+    ia_step(130, 0, &app, &r, &o);
+    CHECK(o.radio && !o.took_control, "took_control only once");
+    r.yaw = 0;
+    ia_step(140, 1, &app, &r, &o);
+    ia_step(5000, 1, &app, &r, &o);
+    CHECK(o.radio, "armed: the radio keeps control even idle");
+    ia_step(5100, 0, &app, &r, &o);
+    ia_step(6050, 0, &app, &r, &o);
+    CHECK(o.radio, "disarmed, idle 0.95 s: not yet released");
+    ia_step(6150, 0, &app, &r, &o);
+    CHECK(!o.radio, "disarmed, idle 1 s: back to the app");
+    r.aux_us[0] = 1800;
+    ia_step(6200, 0, &app, &r, &o);
+    CHECK(o.radio && o.arm_sw, "arm switch on: radio control, arm_sw");
+    r.valid = 0;
+    ia_step(6210, 0, &app, &r, &o);
+    CHECK(!o.radio && !o.arm_sw, "disarmed and the link lost: back to the app");
+
+    rfs_init();
+    CHECK(rfs_step(1, 900, 1, 1) == RFS_NONE && rfs_step(1, 1100, 1, 1) == RFS_TRIGGER && rfs_active(), "radio failsafe after 1 s in the air");
+    CHECK(rfs_step(1, 2000, 1, 1) == RFS_NONE, "triggered once");
+    CHECK(rfs_step(1, 100, 1, 1) == RFS_BACK && !rfs_active(), "link back");
+    CHECK(rfs_step(0, 5000, 1, 1) == RFS_NONE, "the app flies: no radio failsafe");
+    CHECK(rfs_step(1, 2900, 1, 0) == RFS_NONE && rfs_step(1, 3100, 1, 0) == RFS_DISARM, "on the ground: disarm after 3 s");
+}
+
+/* STICKS calibration: the procedure (cal_sticks) and its use in rc_input */
+static void test_cal_sticks(void)
+{
+    cs_proc_t p;
+    cs_start(&p);
+    uint16_t st[4] = { 0, 0, 0, 0 }, aux[4] = { 1000, 1000, 1000, 0 };
+    CHECK(cs_capture(&p) == 0 && p.step == 1, "step 1 without a reading: refused");
+    const uint16_t rest[4] = { 1010, 1490, 1520, 1505 };          /* throttle down, centres off by a few us */
+    cs_sample(&p, rest, aux);
+    CHECK(cs_progress(&p) == 0 && cs_capture(&p) == 1 && p.step == 2, "centres captured");
+    CHECK(p.r.centre[1] == 1490 && p.r.centre[2] == 1520, "centres stored");
+    CHECK(cs_capture(&p) == 0 && p.step == 2, "no travel: refused");
+    /* half the ends */
+    memcpy(st, rest, sizeof st); st[0] = 1900; st[1] = 1100; cs_sample(&p, st, aux);
+    const uint8_t half = cs_progress(&p);
+    CHECK(half > 0 && half < 100, "progress partial (%u)", half);
+    /* every end, AUX1 two positions, AUX2 three positions, AUX3 unused, AUX4 no signal */
+    const uint16_t ends[4][4] = { { 1990, 1050, 1040, 1060 }, { 1000, 1950, 1980, 1970 },
+                                  { 1500, 1500, 1500, 1500 }, { 1010, 1490, 1520, 1505 } };
+    const uint16_t ax[4][4] = { { 2000, 1000, 1000, 0 }, { 1000, 1500, 1000, 0 }, { 2000, 2000, 1000, 0 }, { 1000, 1000, 1000, 0 } };
+    for (int k = 0; k < 4; ++k) cs_sample(&p, ends[k], ax[k]);
+    CHECK(cs_progress(&p) == 100, "every end reached");
+    CHECK(cs_capture(&p) == 1 && p.step == 3 && cs_valid(&p.r), "done, valid");
+    CHECK(p.r.min[0] == 1000 && p.r.max[0] == 1990 && p.r.min[3] == 1060 && p.r.max[3] == 1970, "ranges");
+    CHECK(p.r.aux_pos[0] == 2 && p.r.aux_pos[1] == 3 && p.r.aux_pos[2] == 0 && p.r.aux_pos[3] == 0, "AUX kinds %u %u %u %u",
+          p.r.aux_pos[0], p.r.aux_pos[1], p.r.aux_pos[2], p.r.aux_pos[3]);
+    cal_sticks_t bad = p.r; bad.max[2] = (uint16_t)(bad.centre[2] + 100u);
+    CHECK(!cs_valid(&bad), "too little travel on one side: not valid");
+    /* sticks moved 40 % of the way (+-200 us): refused, it would scale a full deflection to 250 % */
+    cal_sticks_t part = { { 1000, 1500, 1500, 1500 }, { 1000, 1300, 1300, 1300 }, { 1400, 1700, 1700, 1700 }, { 0, 0, 0, 0 } };
+    CHECK(!cs_valid(&part), "partial travel: not valid");
+    /* Spektrum at 100 % travel (1100-1900 us): valid */
+    cal_sticks_t dsm = { { 1100, 1500, 1500, 1500 }, { 1100, 1100, 1100, 1100 }, { 1900, 1900, 1900, 1900 }, { 0, 0, 0, 0 } };
+    CHECK(cs_valid(&dsm), "1100-1900 us: valid");
+
+    /* the scales with a calibration */
+    CHECK(rc_stick_cal(1490, 1050, 1490, 1950) == 0 && rc_stick_cal(1950, 1050, 1490, 1950) == 1000 &&
+          rc_stick_cal(1050, 1050, 1490, 1950) == -1000 && rc_stick_cal(2100, 1050, 1490, 1950) == 1000,
+          "stick: centre 0, ends +-1000, clamped");
+    CHECK(rc_throttle_cal(1000, 1000, 1990) == -1000 && rc_throttle_cal(1990, 1000, 1990) == 1000 &&
+          rc_throttle_cal(1495, 1000, 1990) == 0, "throttle over its range");
+
+    /* rc_input: the calibration is taken over at the next frame */
+    rc_input_init();
+    (void)rc_input_configure(RC_PROTO_CRSF, RC_MAP_TAER);
+    rc_cal_t c;
+    memcpy(c.centre, p.r.centre, sizeof c.centre); memcpy(c.min, p.r.min, sizeof c.min); memcpy(c.max, p.r.max, sizeof c.max);
+    CHECK(rc_cal_valid(&c), "valid calibration");
+    rc_input_set_cal(&c);
+    /* TAER: ch1 throttle, ch2 roll (aileron), ch3 pitch (elevator), ch4 yaw (rudder) */
+    uint16_t us[16]; for (int i = 0; i < 16; ++i) us[i] = 1500;
+    us[0] = 1000; us[1] = 1505; us[2] = 1520; us[3] = 1490;
+    uint8_t f[64];
+    rc_input_feed(f, crsf_channels(us, f), 5000);
+    rc_state_t s;
+    (void)rc_input_read(&s);
+    CHECK(s.thr == -1000 && s.roll == 0 && s.pitch == 0 && s.yaw == 0, "off-centre rest reads 0 (thr %d roll %d pitch %d yaw %d)",
+          s.thr, s.roll, s.pitch, s.yaw);
+    CHECK(s.stick_us[0] >= 999 && s.stick_us[0] <= 1001 && s.stick_us[2] >= 1519 && s.stick_us[2] <= 1521, "raw us kept");
+    rc_cal_t none; memset(&none, 0, sizeof none);
+    CHECK(!rc_cal_valid(&none), "zeros: not valid");
+    rc_input_set_cal(&none);
+    rc_input_feed(f, crsf_channels(us, f), 5010);
+    (void)rc_input_read(&s);
+    CHECK(s.pitch != 0, "without a calibration: the default scale (pitch %d)", s.pitch);
+}
+
+/* arm and mode switches: edges only, acting only while the radio has control */
+static rsw_out_t sw(uint8_t link, uint8_t ctrl, uint8_t took, uint16_t a1, uint16_t a2, uint8_t armed, uint8_t air,
+                    uint8_t kill, uint8_t map)
+{
+    const rsw_in_t in = { link, ctrl, took, a1, a2, armed, air, kill, map };
+    rsw_out_t o;
+    rsw_step(&in, &o);
+    return o;
+}
+static void test_switches(void)
+{
+    rsw_init();
+    CHECK(rsw_position(500) == -1 && rsw_position(1000) == 0 && rsw_position(1500) == 1 && rsw_position(2000) == 2, "positions");
+    CHECK(rsw_mode_of(1, 0) == -1 && rsw_mode_of(2, 1) == PV2_MODE_POS_HOLD && rsw_mode_of(0, 2) == PV2_MODE_ACRO,
+          "maps (0 off)");
+    /* a switch left on at power-up never arms */
+    CHECK(sw(1, 1, 1, 2000, 1500, 0, 0, 1, 0).action == RSW_NONE, "on at the first frame: no edge");
+    CHECK(sw(1, 1, 0, 2000, 1500, 0, 0, 1, 0).action == RSW_NONE, "still on: nothing");
+    CHECK(sw(1, 1, 0, 1000, 1500, 0, 0, 1, 0).action == RSW_NONE, "off, disarmed: nothing");
+    CHECK(sw(1, 1, 0, 2000, 1500, 0, 0, 1, 0).action == RSW_ARM, "off -> on: ARM");
+    /* off: DISARM on the ground, KILL in the air (rcArmSwKill 1), DISARM in the air with 0 */
+    CHECK(sw(1, 1, 0, 1000, 1500, 1, 0, 1, 0).action == RSW_DISARM, "on -> off on the ground: DISARM");
+    (void)sw(1, 1, 0, 2000, 1500, 1, 1, 1, 0);
+    CHECK(sw(1, 1, 0, 1000, 1500, 1, 1, 1, 0).action == RSW_KILL, "on -> off in the air: KILL");
+    (void)sw(1, 1, 0, 2000, 1500, 1, 1, 0, 0);
+    CHECK(sw(1, 1, 0, 1000, 1500, 1, 1, 0, 0).action == RSW_DISARM, "rcArmSwKill 0: DISARM (refused in the air)");
+    /* the app flies: the switch is tracked but does nothing; the radio taking control by it arms */
+    CHECK(sw(1, 0, 0, 1000, 1500, 1, 1, 1, 0).action == RSW_NONE, "radio not in control: no action");
+    CHECK(sw(1, 1, 1, 2000, 1500, 0, 0, 1, 0).action == RSW_ARM, "switch on takes control and arms (tracked before)");
+    /* the radio taking control with the switch off never disarms the drone the app armed */
+    (void)sw(1, 0, 0, 1000, 1500, 1, 1, 1, 0);
+    CHECK(sw(1, 1, 1, 1000, 1500, 1, 1, 1, 0).action == RSW_NONE, "take-over with the switch off: no disarm");
+    /* link lost: failsafe values are no edge, the first frame after it neither */
+    (void)sw(1, 1, 0, 2000, 1500, 1, 1, 1, 0);
+    CHECK(sw(0, 1, 0, 1000, 1500, 1, 1, 1, 0).action == RSW_NONE, "link lost: nothing");
+    CHECK(sw(1, 1, 0, 1000, 1500, 1, 1, 1, 0).action == RSW_NONE, "first frame after the loss: no edge");
+    /* AUX1 not used (no signal): never an action */
+    CHECK(sw(1, 1, 0, 0, 1500, 0, 0, 1, 0).action == RSW_NONE && sw(1, 1, 0, 2000, 1500, 0, 0, 1, 0).action == RSW_NONE,
+          "no signal -> on: no edge");
+    /* mode switch */
+    rsw_init();
+    CHECK(sw(1, 1, 1, 1000, 1500, 0, 0, 1, 0).mode == -1, "map 0: no mode, even at the take-over");
+    CHECK(sw(1, 1, 1, 1000, 1500, 0, 0, 1, 1).mode == PV2_MODE_ALT_HOLD, "map 1, take-over at mid: ALT_HOLD");
+    CHECK(sw(1, 1, 0, 1000, 1500, 0, 0, 1, 1).mode == -1, "same position: nothing");
+    CHECK(sw(1, 1, 0, 1000, 2000, 0, 0, 1, 1).mode == PV2_MODE_POS_HOLD, "high: POS_HOLD");
+    CHECK(sw(1, 0, 0, 1000, 1000, 0, 0, 1, 1).mode == -1, "app in control: no mode");
+    CHECK(sw(1, 1, 1, 1000, 1000, 0, 0, 1, 2).mode == PV2_MODE_ACRO, "map 2 low: ACRO");
+}
+
+int main(void)
+{
+    test_crsf();
+    test_sbus();
+    test_ibus();
+    test_dsm();
+    test_input();
+    test_arbitration();
+    test_cal_sticks();
+    test_switches();
+    printf("rc: %d passed, %d failed\n", s_pass, s_fail);
+    return s_fail ? 1 : 0;
+}

@@ -55,6 +55,7 @@
 #include "log_flash_ram.h"
 #include "usb_cdc.h"
 #include "usb_link.h"
+#include "rc_task.h"
 #include <string.h>
 #include <math.h>
 
@@ -601,7 +602,9 @@ static void ImuTask(void *arg)
  * BLE with its own selection */
 static void tx_frame(const uint8_t *f, uint16_t len)
 {
+#if APP_TLM_UART
     (void)tlm_uart_send(f, len, APP_TLM_TX_TIMEOUT_MS);
+#endif
 #if APP_USB_CDC && APP_USB_TLM
     if (usbl_open(osKernelGetTickCount())) (void)usbl_put_frame(USBL_SRC_TLM, f, len);
 #endif
@@ -652,7 +655,9 @@ static void TelemetryTask(void *arg)
     static tlm_msg_t msg;
     uint8_t  frame[128];
     uint32_t n = 0;
+#if APP_TLM_UART
     (void)tlm_uart_init(&huart1);
+#endif
 
     uint32_t nextStatus = osKernelGetTickCount();
     for (;;) {
@@ -762,6 +767,9 @@ void app_start(void)
         app_task_start(&ac);
     }
     ext_sens_start();
+#if APP_RC_UART
+    rc_task_start();                     /* the receiver on USART1 (J5): its own task */
+#endif
     if (batt) {
         batt_task_cfg_t bc;
         memset(&bc, 0, sizeof bc);

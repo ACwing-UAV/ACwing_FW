@@ -22,6 +22,7 @@
 #include "log_task.h"
 #include "usb_link.h"
 #include "control_hooks.h"
+#include "rc_input.h"
 #include <string.h>
 #include <math.h>
 
@@ -129,6 +130,7 @@ static const char *ev_text(uint16_t code)
     case PV2_E_RTH_STARTED:        return "Return to home";
     case PV2_E_HOME_SET:           return "Home set";
     case PV2_E_TAKEOFF_ABORTED:    return "Takeoff aborted: no lift-off";
+    case PV2_E_RADIO_REFUSED:      return "Radio switch refused";
     case PV2_E_FAILSAFE_APP_LINK:  return "App link lost: failsafe";
     case PV2_E_FAILSAFE_RADIO:     return "Radio lost: failsafe";
     case PV2_E_FAILSAFE_BATTERY:   return "Battery failsafe";
@@ -143,6 +145,7 @@ static const char *ev_text(uint16_t code)
     case PV2_E_HIGH_VIBRATION:     return "High vibration";
     case PV2_E_MOTOR_HOT:          return "Motor hot";
     case PV2_E_RADIO_OVERRIDE:     return "Radio took control";
+    case PV2_E_HOVER_THRUST:       return "Hover thrust abnormal";
     case PV2_E_CALIB_DONE:         return "Calibration saved";
     case PV2_E_CALIB_FAILED:       return "Calibration failed";
     case PV2_E_PARAMS_SAVED:       return "Settings saved";
@@ -182,7 +185,9 @@ static uint16_t sensors_now(void)
     fsh_est_t e;
     memset(&e, 0, sizeof e);
     fsh_est_read(&e);
-    return (uint16_t)(e.sensors | ext_sensors() | s_cfg.board_sensors);
+    rc_state_t rc;
+    const uint16_t radio = rc_input_read(&rc) ? PV2_S_ELRS : 0u;     /* any RC receiver seen (CAPS bit 9) */
+    return (uint16_t)(e.sensors | ext_sensors() | s_cfg.board_sensors | radio);
 }
 
 static batt_state_t batt_now(void)
@@ -317,6 +322,16 @@ static void send_system(void)
     pv2_system_t s;
     memset(&s, 0, sizeof s);
     s.lq = 0xFFu;
+    {
+        rc_state_t rc;
+        if (rc_input_read(&rc)) {                                   /* RC receiver link (CRSF carries all of it) */
+            s.lq = rc.valid ? (rc.link.lq == 0xFFu ? 100u : rc.link.lq) : 0u;
+            s.rssi = rc.link.rssi;
+            s.snr = rc.link.snr;
+            s.pkt_rate_hz = rc.link.pkt_rate_hz;
+            s.tx_power_mw = rc.link.tx_power_mw;
+        }
+    }
     s.cpu_pct = (uint8_t)(e.cpu_pct > 100.0f ? 100.0f : e.cpu_pct);
     s.loop_hz = (uint16_t)(e.loop_hz + 0.5f);
     s.jitter_us = (uint16_t)(e.jitter_us > 65535.0f ? 65535.0f : e.jitter_us);
@@ -391,6 +406,12 @@ static void build_checks(pv2_check_t *it, uint8_t *n)
     }
     in.usb_host = usbl_host();
     in.hover = f.hover;
+    {
+        rc_state_t rc;
+        memset(&rc, 0, sizeof rc);
+        in.rc_ever = rc_input_read(&rc);
+        in.rc_valid = rc.valid; in.rc_lq = rc.link.lq;
+    }
     *n = checks_build(&in, it, &s_ready, &s_batt_fail);
 }
 
@@ -462,10 +483,32 @@ static int image_commit(void)
 }
 
 /* calibration apply hook (calib_mgr -> ImuTask, BATTERY -> BattTask) */
+/* STICKS calibration -> rc_input (taken over by the RcTask) */
+static void sticks_apply(const cal_sticks_t *c)
+{
+    rc_cal_t r;
+    memcpy(r.centre, c->centre, sizeof r.centre);
+    memcpy(r.min, c->min, sizeof r.min);
+    memcpy(r.max, c->max, sizeof r.max);
+    rc_input_set_cal(&r);
+}
+
 static void cal_apply(uint8_t type, const cal_set_t *set)
 {
     if (type == PV2_CAL_BATTERY) (void)batt_task_post_scales(set->battery.scale_v, set->battery.scale_i);
+    else if (type == PV2_CAL_STICKS) sticks_apply(&set->sticks);
     else (void)fsh_apply_post(type, set);
+}
+
+/* RC receiver readings for the STICKS calibration */
+static uint8_t cal_rc(uint16_t stick_us[4], uint16_t aux_us[4])
+{
+    rc_state_t r;
+    memset(&r, 0, sizeof r);
+    if (!rc_input_read(&r) || !r.valid) return 0u;
+    memcpy(stick_us, r.stick_us, sizeof r.stick_us);
+    memcpy(aux_us, r.aux_us, sizeof r.aux_us);
+    return 1u;
 }
 
 /* BATTERY calibration readings */
@@ -859,6 +902,7 @@ const cal_set_t *app_task_boot(const float mag_hi_default[3])
     (void)fsh_apply_post(PV2_CAL_ACCEL, &s_cal);
     (void)fsh_apply_post(PV2_CAL_COMPASS, &s_cal);
     (void)fsh_apply_post(PV2_CAL_LEVEL, &s_cal);
+    sticks_apply(&s_cal.sticks);                    /* invalid (never calibrated) = the default scale */
     return &s_cal;
 }
 
@@ -870,7 +914,7 @@ void app_init(const app_task_cfg_t *cfg)
     fc_set_sensors(s_sensors);
     ackc_reset();
     const cal_config_t cc = { s_sensors, s_cfg.motors_built, cal_apply,
-                              s_cfg.batt_monitor ? cal_batt : NULL };
+                              s_cfg.batt_monitor ? cal_batt : NULL, cal_rc };
     cal_init(&cc, &s_cal);
     s_pend = 0u; s_list_next = -1;
     memset(s_rep, 0, sizeof s_rep);

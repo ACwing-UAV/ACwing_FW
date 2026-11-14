@@ -49,6 +49,10 @@ const param_def_t g_param_def[PARAM_COUNT] = {
     [P_DTERM_LPF]          = { 97, 70.0f,  20.0f,  250.0f,    0 },   /* Hz                             */
     [P_GYRO_NOTCH]         = { 98, 0.0f,    0.0f,  400.0f,    0 },   /* Hz, 0 = off                    */
     [P_MOTOR_IDLE]         = { 99, 0.05f,   0.0f,    0.15f,   0 },   /* normalised thrust when armed   */
+    [P_RC_PROTOCOL]        = { 100, 1.0f,   0.0f,    4.0f,    0 },   /* 0 none, 1 CRSF (ELRS), 2 SBUS, 3 i-BUS, 4 DSM */
+    [P_RC_MAP]             = { 101, 0.0f,   0.0f,    1.0f,    0 },   /* channel order: 0 AETR, 1 TAER */
+    [P_RC_ARM_SW_KILL]     = { 102, 1.0f,   0.0f,    1.0f,    0 },   /* arm switch off in the air: 1 motors off (KILL), 0 refused */
+    [P_RC_MODE_MAP]        = { 103, 0.0f,   0.0f,    2.0f,    0 },   /* AUX2 modes: 0 off, 1 ANGLE/ALT_HOLD/POS_HOLD, 2 ACRO/ANGLE/ALT_HOLD */
     [P_HOVER_THR]          = { 80, 0.51f,   0.25f,   0.85f,   0 },   /* hover thrust seed (ADR 0010): T400 0.51, T800 0.58, T1200 0.65, +0.04 GPS */
 };
 

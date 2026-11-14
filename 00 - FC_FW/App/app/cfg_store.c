@@ -39,6 +39,34 @@ typedef struct {
     uint32_t     crc;
 } cfg_image_v1_t;
 
+/* ---- version 2 layout (firmware 0.5-0.6): cal_set_t without the sticks ---- */
+typedef struct {
+    cal_accel_t   accel;
+    cal_level_t   level;
+    cal_gyro_t    gyro;
+    cal_compass_t compass;
+    cal_motors_t  motors;
+    cal_battery_t battery;
+    uint32_t      done_mask;
+} cal_set_v2_t;
+typedef struct {
+    uint32_t     magic;
+    uint16_t     version;
+    uint16_t     size;
+    uint32_t     seq;
+    cfg_param_t  params[CFG_PARAM_SLOTS];
+    char         name[16];
+    cal_set_v2_t cal, bak;
+    uint32_t     bak_mask;
+    float        batt_used_mah;
+    float        batt_used_scale_i;
+    uint8_t      reserved[56];
+    uint32_t     crc;
+} cfg_image_v2_t;
+
+/* every parameter must have a slot, or cfg_params_put() drops the last ones without a word */
+_Static_assert(PARAM_COUNT <= CFG_PARAM_SLOTS, "more parameters than image slots: raise CFG_PARAM_SLOTS (new version)");
+
 /* 0 = not valid, else the version */
 static int valid_version(const void *page)
 {
@@ -46,6 +74,9 @@ static int valid_version(const void *page)
     if (!im || im->magic != CFG_MAGIC) return 0;
     if (im->version == CFG_VERSION && im->size == sizeof(cfg_image_t) &&
         im->crc == cfg_crc32(im, offsetof(cfg_image_t, crc))) return CFG_VERSION;
+    const cfg_image_v2_t *v2 = (const cfg_image_v2_t *)page;
+    if (v2->version == 2u && v2->size == sizeof(cfg_image_v2_t) &&
+        v2->crc == cfg_crc32(v2, offsetof(cfg_image_v2_t, crc))) return 2;
     const cfg_image_v1_t *v1 = (const cfg_image_v1_t *)page;
     if (v1->version == 1u && v1->size == sizeof(cfg_image_v1_t) &&
         v1->crc == cfg_crc32(v1, offsetof(cfg_image_v1_t, crc))) return 1;
@@ -63,6 +94,13 @@ static int latest_page(void)
         if (best < 0 || (int32_t)(im->seq - seq) > 0) { best = p; seq = im->seq; }
     }
     return best;
+}
+
+static void cal_from_v2(cal_set_t *d, const cal_set_v2_t *s)
+{
+    memset(d, 0, sizeof *d);
+    d->accel = s->accel; d->level = s->level; d->gyro = s->gyro; d->compass = s->compass;
+    d->motors = s->motors; d->battery = s->battery; d->done_mask = s->done_mask;   /* sticks: not calibrated */
 }
 
 static void cal_from_v1(cal_set_t *d, const cal_set_v1_t *s)
@@ -97,7 +135,22 @@ int cfg_load(cfg_image_t *out)
     const int p = latest_page();
     if (p < 0) return -1;
     const void *pg = cfg_flash_page(p);
-    if (valid_version(pg) == CFG_VERSION) { memcpy(out, pg, sizeof *out); return 0; }
+    const int ver = valid_version(pg);
+    if (ver == CFG_VERSION) { memcpy(out, pg, sizeof *out); return 0; }
+    if (ver == 2) {
+        /* version 2 -> 3: the same fields, the calibration sets gain the sticks */
+        const cfg_image_v2_t *v2 = (const cfg_image_v2_t *)pg;
+        memset(out, 0, sizeof *out);
+        out->magic = CFG_MAGIC; out->version = 2u; out->size = sizeof *out; out->seq = v2->seq;
+        memcpy(out->params, v2->params, sizeof out->params);
+        memcpy(out->name, v2->name, sizeof out->name);
+        cal_from_v2(&out->cal, &v2->cal);
+        cal_from_v2(&out->bak, &v2->bak);
+        out->bak_mask = v2->bak_mask;
+        out->batt_used_mah = v2->batt_used_mah;
+        out->batt_used_scale_i = v2->batt_used_scale_i;
+        return 0;
+    }
 
     /* version 1 -> 2 */
     const cfg_image_v1_t *v1 = (const cfg_image_v1_t *)pg;

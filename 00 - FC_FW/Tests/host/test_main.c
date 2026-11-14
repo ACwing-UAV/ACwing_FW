@@ -22,6 +22,8 @@
 #include "checks.h"
 #include "control_hooks.h"
 #include "mixer.h"
+#include "rc_input.h"
+#include "rc_crsf.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -624,6 +626,180 @@ static void test_ctrl_loop(void)
     (void)post(PV2_OP_DISARM, 4, NULL, 0, &v);
 }
 
+
+/* ------------------------------------------------------------ RC radio: arbitration and failsafe (input_arb.c, radio_fs.c) */
+static uint16_t s_aux2 = 1500;      /* AUX2 (mode switch) sent by radio_send() */
+static void radio_send(int16_t thr, int16_t yaw, int16_t pitch, int16_t roll, uint16_t aux1)
+{
+    /* AETR: ch1 roll, ch2 pitch, ch3 throttle, ch4 yaw, ch5 AUX1; us -> CRSF 11-bit (us = v * 5/8 + 880) */
+    uint16_t us[16];
+    for (int c = 0; c < 16; ++c) us[c] = 1500;
+    us[0] = (uint16_t)(1500 + roll / 2); us[1] = (uint16_t)(1500 + pitch / 2);
+    us[2] = (uint16_t)(1000 + (thr + 1000) / 2); us[3] = (uint16_t)(1500 + yaw / 2); us[4] = aux1; us[5] = s_aux2;
+    uint8_t f[26] = { CRSF_ADDR_FC, 24, CRSF_T_RC_CHANNELS };
+    memset(&f[3], 0, 22);
+    uint32_t bit = 0;
+    for (int c = 0; c < 16; ++c) {
+        const uint16_t v = (uint16_t)(((uint32_t)(us[c] - 880u) * 8u + 4u) / 5u);
+        for (int k = 0; k < 11; ++k, ++bit) if (v & (1u << k)) f[3 + bit / 8u] |= (uint8_t)(1u << (bit % 8u));
+    }
+    f[25] = rc_crsf_crc8(&f[2], 23);
+    rc_input_feed(f, 26, now);
+}
+
+/* ms of flight core with the radio sending (aux1 0: radio silent) and the app sending heartbeats (app 0: silent) */
+static void radio_run(uint32_t ms, int16_t thr, int16_t roll, uint16_t aux1, int app, const fc_vert_t *v)
+{
+    for (uint32_t k = 0; k < ms / 4u; ++k) {
+        now += 4;
+        if (aux1 && k % 2 == 0) radio_send(thr, 0, 0, roll, aux1);
+        if (app && k % 25 == 0) heartbeat();
+        rc_input_service(now);
+        fc_service(now, 1, v);
+    }
+}
+
+static int count_events(uint16_t code, int *level)
+{
+    fc_event_t e; int n = 0;
+    while (fc_take_event(&e)) if (e.code == code) { n++; if (level) *level = e.level; }
+    return n;
+}
+
+static void test_radio(void)
+{
+    const uint8_t arm[2] = { 0xA5, 0x5A };
+    fc_state_t s; fc_setpoint_t sp; fc_res_t r;
+    fc_setup(PV2_S_IMU);
+    rc_input_init(); (void)rc_input_configure(RC_PROTO_CRSF, RC_MAP_AETR);
+    now = 1000;
+    fc_vert_t v = { 0 };
+    /* 1. a radio at rest (throttle bottom, sticks centred, arm switch off): the app flies */
+    radio_run(500, -1000, 0, 1000, 1, NULL);
+    fc_snapshot(&s);
+    CHECK(s.input == PV2_INPUT_APP, "radio at rest: the app has control (input %u)", s.input);
+    r = post(PV2_OP_ARM, 1, arm, 2, NULL);
+    CHECK(r.result == PV2_ACK_OK, "app ARM with an idle radio");
+    (void)drain_events(0);
+    /* 2. the pilot uses the radio: it takes control, EVENT 43 once, the sticks come from it */
+    g_fc_dbg_in_air = 1;
+    radio_run(300, -200, 500, 1000, 1, NULL);
+    fc_snapshot(&s); fc_setpoint(&sp);
+    int lvl = -1;
+    CHECK(s.input == PV2_INPUT_ELRS && count_events(PV2_E_RADIO_OVERRIDE, &lvl) == 1 && lvl == PV2_EV_WARN, "radio stick moved: radio in control, EVENT 43 WARN once");
+    CHECK(sp.roll > 0.1f, "radio roll right -> roll setpoint %.3f rad", sp.roll);
+    /* 4. in the air, the radio link is lost; the app is silent too: only the radio failsafe acts */
+    radio_run(200, -200, 0, 1000, 1, NULL);
+    (void)drain_events(0);
+    radio_run(1500, 0, 0, 0, 0, NULL);                       /* both silent */
+    fc_snapshot(&s);
+    lvl = -1;
+    CHECK((s.failsafe & PV2_FS_RADIO) && !(s.failsafe & PV2_FS_APP_LINK) && s.autom == PV2_AUTO_LAND,
+          "radio lost 1.5 s in the air: FS RADIO, fsRadio RTH -> LAND without GNSS (fs %02X auto %u)", s.failsafe, s.autom);
+    CHECK(count_events(PV2_E_FAILSAFE_RADIO, &lvl) == 1 && lvl == PV2_EV_ERROR, "EVENT 21 ERROR once");
+    /* 5. fsRadio = hover: the link back gives the control back */
+    (void)post(PV2_OP_SET_MODE, 4, (const uint8_t[1]){ PV2_MODE_ANGLE }, 1, NULL);   /* the pilot cancels the LAND */
+    { uint8_t why; (void)params_set(12, 0.0f, &why); }
+    radio_run(300, -200, 0, 1000, 1, NULL);
+    radio_run(1200, 0, 0, 0, 1, NULL);
+    fc_snapshot(&s);
+    CHECK(s.autom == PV2_AUTO_HOLD && (s.failsafe & PV2_FS_RADIO), "fsRadio hover: HOLD");
+    radio_run(200, -200, 0, 1000, 1, NULL);
+    fc_snapshot(&s);
+    CHECK(s.autom == PV2_AUTO_NONE && !(s.failsafe & PV2_FS_RADIO), "radio back: control back to the pilot");
+    /* 6. on the ground, armed, radio lost 3 s: disarm */
+    g_fc_dbg_in_air = 0;
+    radio_run(100, -1000, 0, 1000, 1, NULL);
+    radio_run(3200, 0, 0, 0, 1, NULL);
+    fc_snapshot(&s);
+    CHECK(!s.armed, "armed on the ground, radio lost 3 s: disarmed");
+    /* 3. the radio still has control (disarmed, not idle long enough): app ARM refused */
+    radio_run(100, -1000, 0, 1800, 1, NULL);                   /* arm switch on */
+    r = post(PV2_OP_ARM, 3, arm, 2, NULL);
+    CHECK(r.result == PV2_ACK_REJECTED && r.reason == PV2_R_RADIO_OVERRIDE, "app ARM refused while the radio has control (%u/%u)", r.result, r.reason);
+    /* 7. disarmed, the radio idle for 1 s: control back to the app */
+    radio_run(1200, -1000, 0, 1000, 1, NULL);
+    fc_snapshot(&s);
+    CHECK(s.input == PV2_INPUT_APP, "disarmed and the radio idle 1 s: the app has control again (input %u)", s.input);
+    { uint8_t why; (void)params_set(12, 2.0f, &why); }
+    rc_input_init();
+    (void)v;
+}
+
+/* the radio switches: arm, disarm, kill, modes; no ACK, a refusal is EVENT 9 */
+static int count_event_arg(uint16_t code, int32_t *arg)
+{
+    fc_event_t e; int n = 0;
+    while (fc_take_event(&e)) if (e.code == code) { n++; if (arg) *arg = e.arg; }
+    return n;
+}
+static void test_radio_switches(void)
+{
+    fc_state_t s; fc_res_t r; int32_t arg = -1;
+    fc_setup(PV2_S_IMU);
+    rc_input_init(); (void)rc_input_configure(RC_PROTO_CRSF, RC_MAP_AETR);
+    now = 1000;
+    radio_run(300, -1000, 0, 1000, 1, NULL);                  /* switch seen off */
+    radio_run(100, -1000, 0, 1900, 1, NULL);
+    fc_snapshot(&s);
+    CHECK(s.armed && s.input == PV2_INPUT_ELRS, "arm switch on: radio in control, armed");
+    CHECK(!fc_take_result(&r), "no ACK for a radio command");
+    radio_run(100, -1000, 0, 1000, 1, NULL);
+    fc_snapshot(&s);
+    CHECK(!s.armed, "arm switch off on the ground: disarmed");
+    (void)count_event_arg(0, NULL);
+    /* throttle up: refused, EVENT 9 with the op and the reason */
+    radio_run(100, -200, 0, 1900, 1, NULL);
+    fc_snapshot(&s);
+    CHECK(!s.armed && count_event_arg(PV2_E_RADIO_REFUSED, &arg) == 1 &&
+          arg == (int32_t)((PV2_OP_ARM << 8) | PV2_R_THROTTLE_NOT_LOW), "throttle up: ARM refused, EVENT 9 (arg %04X)", (unsigned)arg);
+    /* in the air: switch off = KILL */
+    radio_run(100, -1000, 0, 1000, 1, NULL);
+    radio_run(100, -1000, 0, 1900, 1, NULL);
+    g_fc_dbg_in_air = 1;
+    radio_run(100, -200, 0, 1900, 1, NULL);
+    (void)count_event_arg(0, NULL);
+    radio_run(20, -200, 0, 1000, 1, NULL);
+    fc_snapshot(&s);
+    CHECK(!s.armed && count_event_arg(PV2_E_MOTOR_KILLED, NULL) == 1, "switch off in the air: KILL");
+    g_fc_dbg_in_air = 0;
+    /* rcArmSwKill 0: refused in the air */
+    { uint8_t why; (void)params_set(102, 0.0f, &why); }
+    radio_run(100, -1000, 0, 1900, 1, NULL);
+    g_fc_dbg_in_air = 1;
+    radio_run(100, -200, 0, 1900, 1, NULL);
+    (void)count_event_arg(0, NULL);
+    radio_run(20, -200, 0, 1000, 1, NULL);
+    fc_snapshot(&s);
+    CHECK(s.armed && count_event_arg(PV2_E_RADIO_REFUSED, &arg) == 1 && arg == (int32_t)((PV2_OP_DISARM << 8) | PV2_R_NOT_LANDED),
+          "rcArmSwKill 0: switch off in the air refused (NOT_LANDED)");
+    g_fc_dbg_in_air = 0;
+    radio_run(100, -1000, 0, 1900, 1, NULL);
+    radio_run(100, -1000, 0, 1000, 1, NULL);
+    fc_snapshot(&s);
+    CHECK(!s.armed, "landed: the next switch off disarms");
+    { uint8_t why; (void)params_set(102, 1.0f, &why); }
+    /* mode switch: off by default (a channel at 1500 us is no switch) */
+    fc_snapshot(&s);
+    const uint8_t m0 = s.mode;
+    s_aux2 = 1000; radio_run(100, -1000, 0, 1000, 1, NULL);
+    fc_snapshot(&s);
+    CHECK(s.mode == m0, "rcModeMap 0: AUX2 ignored");
+    { uint8_t why; (void)params_set(103, 1.0f, &why); }
+    s_aux2 = 2000; radio_run(100, -1000, 0, 1000, 1, NULL);
+    (void)count_event_arg(0, NULL);
+    s_aux2 = 1000; radio_run(100, -1000, 0, 1000, 1, NULL);
+    fc_snapshot(&s);
+    CHECK(s.mode == PV2_MODE_ANGLE, "map 1 low: ANGLE (mode %u)", s.mode);
+    s_aux2 = 2000; radio_run(100, -1000, 0, 1000, 1, NULL);
+    fc_snapshot(&s);
+    CHECK(s.mode == PV2_MODE_ANGLE && count_event_arg(PV2_E_RADIO_REFUSED, &arg) == 1 &&
+          arg == (int32_t)((PV2_OP_SET_MODE << 8) | PV2_R_SENSOR_MISSING), "map 1 high: POS_HOLD without sensors refused");
+    { uint8_t why; (void)params_set(103, 0.0f, &why); }
+    s_aux2 = 1500;
+    rc_input_init();
+}
+
 static void test_alt_est(void)
 {
     alt_est_cfg_t c; alt_est_default_cfg(&c);
@@ -911,6 +1087,38 @@ static void test_app(void)
     f0 = s_nf;
     app_run(2000, &v, 1);
     CHECK(count_type(f0, PV2_FT_FLIGHT) >= 18, "new session: FLIGHT back at 10 Hz (%d in 2 s)", count_type(f0, PV2_FT_FLIGHT));
+
+    /* an ELRS receiver (CRSF): CAPS radio bit, SYSTEM link statistics, CHECKS item 6 */
+    {
+        rc_input_init();
+        (void)rc_input_configure(RC_PROTO_CRSF, RC_MAP_AETR);
+        uint8_t fr[26] = { CRSF_ADDR_FC, 24, CRSF_T_RC_CHANNELS };
+        for (int b = 0; b < 22; ++b) fr[3 + b] = 0;            /* all channels 172 (stick bottom) is fine */
+        fr[25] = rc_crsf_crc8(&fr[2], 23);
+        uint8_t ls[14] = { CRSF_ADDR_FC, 12, CRSF_T_LINK_STATS, 62, 70, 88, 7, 0, 2, 3, 80, 100, 6 };
+        ls[13] = rc_crsf_crc8(&ls[2], 11);
+        f0 = s_nf;
+        for (int k = 0; k < 300; ++k) {                        /* 600 ms of frames at 500 Hz, link stats at 10 Hz */
+            rc_input_feed(fr, 26, now);
+            if (k % 50 == 0) rc_input_feed(ls, 14, now);
+            rc_input_service(now);
+            app_run(2, &v, 1);
+        }
+        app_run(1000, &v, 1);                                  /* the receiver keeps sending */
+        int caps_radio = 0, lq = -1, rssi = 0, item6 = -1, val6 = -1;
+        for (int i = f0; i < s_nf; ++i) {
+            if (s_f[i].type == PV2_FT_CAPS) { pv2_caps_t c; memcpy(&c, s_f[i].p, sizeof c); caps_radio = !!(c.sensors & PV2_S_ELRS); }
+            if (s_f[i].type == PV2_FT_SYSTEM) { pv2_system_t y; memcpy(&y, s_f[i].p, sizeof y); lq = y.lq; rssi = y.rssi; }
+            if (s_f[i].type == PV2_FT_CHECKS) {
+                const uint8_t n = s_f[i].p[1];
+                for (uint8_t k = 0; k < n; ++k) if (s_f[i].p[2 + 4 * k] == PV2_CHK_RADIO) { item6 = s_f[i].p[3 + 4 * k]; int16_t vv; memcpy(&vv, &s_f[i].p[4 + 4 * k], 2); val6 = vv; }
+            }
+        }
+        CHECK(caps_radio, "receiver seen: CAPS radio bit");
+        CHECK(lq == 88 && rssi == -62, "SYSTEM lq %d rssi %d from the CRSF link statistics", lq, rssi);
+        CHECK(item6 == PV2_CK_OK && val6 == 88, "CHECKS 6 radio OK, LQ %d", val6);
+        rc_input_init();                                       /* no receiver for the following tests */
+    }
 }
 
 static void test_ble_priority(void)
@@ -948,6 +1156,8 @@ int main(void)
     test_manual_collective();
     test_no_alt_estimate();
     test_ctrl_loop();
+    test_radio();
+    test_radio_switches();
     test_alt_est();
     test_drivers();
     test_checks_flow();

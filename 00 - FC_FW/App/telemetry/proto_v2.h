@@ -140,6 +140,7 @@ enum {
     PV2_E_ARMED = 1, PV2_E_DISARMED = 2, PV2_E_TAKEOFF_STARTED = 3, PV2_E_LANDED = 4,
     PV2_E_MODE_CHANGED = 5, PV2_E_RTH_STARTED = 6, PV2_E_HOME_SET = 7,
     PV2_E_TAKEOFF_ABORTED = 8,      /**< firmware extension (WARN): no lift-off; the app shows the text */
+    PV2_E_RADIO_REFUSED = 9,        /**< firmware 0.8 (WARN): a radio-switch command refused, arg = op << 8 | reason */
     PV2_E_FAILSAFE_APP_LINK = 20, PV2_E_FAILSAFE_RADIO = 21, PV2_E_FAILSAFE_BATTERY = 22,
     PV2_E_GEOFENCE_BREACH = 23, PV2_E_GPS_LOST = 24, PV2_E_FLOW_LOST = 25,
     PV2_E_BATTERY_LOW = 30, PV2_E_BATTERY_CRITICAL = 31, PV2_E_BATTERY_EMERGENCY = 32,
