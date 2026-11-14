@@ -9,8 +9,20 @@
    DMA RX and event/error IRQs; USART1 921600 baud with DMA TX (**Memory increment
    enabled**) and global IRQ; PA15 EXTI rising edge (`IMU_INT1`); FreeRTOS
    CMSIS_V2, 1 kHz tick, 52 KB heap; HAL timebase on a TIM; Serial Wire debug;
-   STM32_WPAN (BLE) with HSEM, IPCC, RTC, RNG, RF ([CubeMX configuration](ble.md#cubemx-configuration)).
+   STM32_WPAN (BLE) with HSEM, IPCC, RTC, RNG, RF ([CubeMX configuration](ble.md#cubemx-configuration));
+   TIM2 CH1–CH4 PWM on PA0–PA3 for the motors (prescaler 0, period 1999: 32 kHz).
    Interrupts that call RTOS functions need priority ≥ 5.
+
+   **Rules for a regeneration** (checked by `Tests/target/check_cubemx.py` in the CI):
+   - **leave the USB peripheral disabled** (Connectivity → USB). USB belongs to `App/bsp/usb` (ST device library,
+     HSI48 trimmed by the CRS, the CPU2 clock semaphore). PA11/PA12 stay as plain `USB_DM`/`USB_DP` signals.
+     Enabling it generates a second `hpcd_USB_FS` and `HAL_PCD_MspInit`: the link fails. It also moves PLLSAI1 to
+     48 MHz, and the ADC clock with it;
+   - **HAL time base TIM17 at priority 15** (NVIC → `TIM1_TRG_COM_TIM17`): FreeRTOS and the IMU interrupt must
+     preempt it;
+   - TIM1 cannot replace TIM2 for the motors: its CH4 exists only on PA11 (USB_DM);
+   - commit with LF line endings: `.gitattributes` converts them, and `git add --renormalize .` fixes a commit
+     made before it.
 2. Include paths: they are in `.cproject` (Debug and Release), among them `App/app`, `App/control`,
    `App/filters/iekf`, `App/filters/altitude_kf`, `App/filters/hover_est`, `App/telemetry`, `App/bsp`, `App/log`,
    the drivers and the third-party folders. A new source folder with headers must be added to **both**

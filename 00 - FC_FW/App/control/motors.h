@@ -1,22 +1,24 @@
 /**
  * @file  motors.h
- * @brief PWM for 4 brushed coreless motors (8520, 1S) - PREPARED, unused in phase 1.
+ * @brief PWM for 4 brushed coreless motors (8520, 1S): duty, arming, MOTOR_TEST. Off unless MOTORS_ENABLE = 1.
  *
- * TIM1 CH1..CH4, 64 MHz timer clock, ARR = 1999 -> 32 kHz, 2000 levels.
+ * The outputs are bound per board in bsp/motor_pwm.c: TIM2 CH1..CH4 on PA0..PA3 (bench and ACwing FC rev A),
+ * 64 MHz timer clock, ARR = 1999 -> 32 kHz, 2000 levels.
  * The WB55 pins can NOT drive the motors: a power stage is required
  * (low-side logic-level N-MOSFET + freewheeling diode per motor), see
- * 03 - Docs/firmware/architecture.md. Check in CubeMX that the TIM1 pins do not clash with those used
- * by the IKS4A1 on the Arduino connector.
+ * 03 - Docs/firmware/architecture.md. On the bench PA0..PA3 are A3, A2, D1, D0 of the Arduino connector.
  */
 #ifndef MOTORS_H
 #define MOTORS_H
 
 #include <stdint.h>
 
-#define MOTORS_ENABLE    0        /**< 1 only with the power stage connected */
+#ifndef MOTORS_ENABLE
+#define MOTORS_ENABLE    0        /**< 1 only with the power stage connected (the CI also builds it with 1) */
+#endif
 #define MOTORS_PWM_TOP   1999u
 
-/** Motors of this board: one PWM output each (TIM1 CH1..CH4 here). The single
+/** Motors of this board: one PWM output each (bsp/motor_pwm.c). The single
  * source for the flight core, CAPS.nMotors and the MOTORS frame (app_main.c).
  * A board with more outputs raises it and adds its channels in motors.c. */
 #ifndef MOTORS_N

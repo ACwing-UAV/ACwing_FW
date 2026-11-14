@@ -57,6 +57,9 @@ jobs:
       - uses: actions/checkout@v6
       - name: Install the ARM toolchain
         run: sudo apt-get update -qq && sudo apt-get install -y -qq --no-install-recommends gcc-arm-none-eabi libnewlib-arm-none-eabi
+      - name: CubeMX project invariants (USB owned by the app, tick priority, TIM2 motor PWM, LF endings)
+        working-directory: "00 - FC_FW"
+        run: python3 Tests/target/check_cubemx.py
       - name: Debug (as STM32CubeIDE)
         working-directory: "00 - FC_FW"
         run: python3 Tests/target/build_fw.py --config Debug
@@ -68,6 +71,13 @@ jobs:
         # figure. 80 % leaves the boot / interrupt stack and room for the GPS work.
         working-directory: "00 - FC_FW"
         run: python3 Tests/target/build_fw.py --config Debug --define "APP_HW_REV='A'" --out revA --max-ram-pct 80
+      - name: Motors enabled (bench and rev A), the PWM binding must link
+        # MOTORS_ENABLE stays 0 in the sources until the power stage is connected; these builds keep the motor
+        # outputs (bsp/motor_pwm.c, TIM2 from CubeMX) from rotting while it is off
+        working-directory: "00 - FC_FW"
+        run: |
+          python3 Tests/target/build_fw.py --config Debug --define MOTORS_ENABLE=1 --out motors
+          python3 Tests/target/build_fw.py --config Debug --define MOTORS_ENABLE=1 --define "APP_HW_REV='A'" --out motorsA --max-ram-pct 80
 
   app:
     name: app (typecheck, tests, build)
