@@ -30,17 +30,67 @@ export function shape(v: number, deadbandPct: number, expoPct: number, gain = 1)
   return Math.sign(v) * Math.min(1, ((1 - e) * x + e * x * x * x) * gain);
 }
 
-/** Merges sources (largest magnitude wins per axis) and applies the stick feel. Throttle keeps its full range. */
-export function toRc(sources: Axes[], s: Pick<AppSettings, "deadband" | "expo" | "sensitivity">): RcInput {
+/** Merges sources (largest magnitude wins per axis) and applies the stick feel. Throttle keeps its full range;
+ * `throttle`, when given, replaces the merged one (ThrottleArbiter). */
+export function toRc(sources: Axes[], s: Pick<AppSettings, "deadband" | "expo" | "sensitivity">, throttle?: number): RcInput {
   const pick = (k: keyof Axes) => sources.reduce((best, src) => (Math.abs(src[k]) > Math.abs(best) ? src[k] : best), 0);
   const g = s.sensitivity / 100 / 0.7; // 70 % = nominal gain 1
   return {
-    throttle: Math.round(shape(pick("throttle"), s.deadband, 0) * 1000),
+    throttle: Math.round(shape(throttle ?? pick("throttle"), s.deadband, 0) * 1000),
     yaw: Math.round(shape(pick("yaw"), s.deadband, s.expo, g) * 1000),
     pitch: Math.round(shape(pick("pitch"), s.deadband, s.expo, g) * 1000),
     roll: Math.round(shape(pick("roll"), s.deadband, s.expo, g) * 1000),
     buttons: 0,
   };
+}
+
+/* ---------- throttle arbitration ---------- */
+
+/**
+ * Which source drives the throttle. The other axes rest at 0 on every source, so "largest magnitude wins" is right
+ * for them. The throttle is not: in ANGLE / ACRO it is the collective, and the sources rest at different places:
+ * the touch stick stays where it was left (at the bottom on the ground), and the keyboard and a spring-loaded
+ * gamepad stick rest at the centre. Merged by magnitude, the touch stick at the bottom would win over W or the
+ * gamepad. So the throttle follows the source the pilot moved last:
+ * - touch / gamepad: absolute positions; a source takes over when its value changes (beyond the noise threshold);
+ * - keyboard, hold modes: W / S = climb / descend while held, centre (hold the height) when released;
+ * - keyboard, ANGLE / ACRO: W / S move a collective that stays where it is left, at KEY_THR_RATE per second,
+ *   starting from the throttle in use when the keyboard takes over (no jump).
+ * reset(y): the screen moved the touch stick itself (mode change); the keyboard collective follows it.
+ */
+export const KEY_THR_RATE = 0.8; // per s: bottom to top in 2.5 s
+const TOUCH_EPS = 0.02;
+const PAD_EPS = 0.06; // gamepad sticks are noisy at rest
+
+export type ThrSource = "touch" | "pad" | "key";
+
+export class ThrottleArbiter {
+  source: ThrSource = "touch";
+  private lastTouch = NaN;
+  private lastPad = NaN;
+  private key = -1;
+  private out = -1;
+
+  reset(y: number) { this.key = y; this.out = y; this.lastTouch = NaN; this.source = "touch"; }
+
+  /** touch, pad: -1..1 (pad null without a gamepad); keyDir: W - S; hold: ALT_HOLD / POS_HOLD; dt in s */
+  step(touch: number, pad: number | null, keyDir: number, hold: boolean, dt: number): number {
+    if (!Number.isNaN(this.lastTouch) && Math.abs(touch - this.lastTouch) > TOUCH_EPS) this.source = "touch";
+    this.lastTouch = touch;
+    if (pad === null) { this.lastPad = NaN; if (this.source === "pad") this.source = "touch"; }
+    else {
+      if (!Number.isNaN(this.lastPad) && Math.abs(pad - this.lastPad) > PAD_EPS) this.source = "pad";
+      this.lastPad = pad;
+    }
+    if (keyDir !== 0 && this.source !== "key") { this.source = "key"; this.key = this.out; }
+    let v: number;
+    if (this.source === "touch") v = touch;
+    else if (this.source === "pad") v = pad ?? touch;
+    else if (hold) v = keyDir;                      // momentary: climb / descend / hold
+    else { this.key = Math.max(-1, Math.min(1, this.key + keyDir * KEY_THR_RATE * Math.max(0, Math.min(dt, 0.1)))); v = this.key; }
+    this.out = v;
+    return v;
+  }
 }
 
 /* ---------- keyboard ---------- */

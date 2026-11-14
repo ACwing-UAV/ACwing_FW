@@ -120,7 +120,7 @@ const en = {
     gamepadNone: "No gamepad connected", alwaysOn: "Always on", limits: "Flight limits", automatic: "Automatic flight",
     beginnerHint: "Halves every limit, hides ACRO", indoorCap: "Indoor models: capped at 2 m/s",
     helpTitle: "Flight controls", helpIntro: "Same logic on touch, gamepad, keyboard and ELRS radio. The radio always takes priority over the app.",
-    keyboard: "Keyboard (PC)", keyboardHelp: "W/S throttle · A/D yaw · arrows pitch/roll · T takeoff · L land · H RTH · Space pause",
+    keyboard: "Keyboard (PC)", keyboardHelp: "W/S throttle (ANGLE/ACRO: moves and stays; hold modes: climb/descend) · A/D yaw · arrows pitch/roll · T takeoff · L land · H RTH · Space pause",
     touchHelp: "Virtual sticks, haptic tick at centre and end stops", gamepadHelp: "Xbox / PlayStation / MFi via the Gamepad API",
     elrsHelp: "Top priority: when active, the app switches to telemetry only",
   },

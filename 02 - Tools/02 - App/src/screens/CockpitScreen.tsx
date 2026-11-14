@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useT } from "../i18n";
 import { drone } from "../link/drone";
 import { ArmState, AutoAction, FlightMode, InputSource, SENSOR, BattWarn, FS, FF } from "../protocol/ids";
-import { attachKeyboard, gamepad, keyboardAxes, sticksToAxes, toRc } from "../input/controls";
+import { attachKeyboard, gamepad, keyboardAxes, sticksToAxes, ThrottleArbiter, toRc } from "../input/controls";
 import { go, useDrone, useSettings, useViewport } from "../ui/hooks";
 import { Icon, Mark } from "../ui/icons";
 import { Confirm, HoldButton, SlideToConfirm, useCommand } from "../ui/kit";
@@ -66,16 +66,21 @@ export function CockpitScreen() {
   const prevHold = useRef(holdMode);
   const inAirRef = useRef(inAir);
   inAirRef.current = inAir;
+  const holdRef = useRef(holdMode);
+  holdRef.current = holdMode;
+  const thrArb = useRef(new ThrottleArbiter());
   useEffect(() => {
     if (prevHold.current !== holdMode) {
       prevHold.current = holdMode;
       const y = holdMode || inAirRef.current ? 0 : -1;
       if (throttleIsLeft) setLeft((v) => ({ ...v, y }));
       else setRight((v) => ({ ...v, y }));
+      thrArb.current.reset(y);          // keyboard and gamepad start from the same place, not from their own rest
     }
   }, [holdMode, throttleIsLeft]);
   useEffect(() => {
-    if (!holdMode) (throttleIsLeft ? setLeft : setRight)((v) => ({ ...v, y: -1 }));
+    if (!holdMode) { (throttleIsLeft ? setLeft : setRight)((v) => ({ ...v, y: -1 })); thrArb.current.reset(-1); }
+    else thrArb.current.reset(0);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -84,11 +89,16 @@ export function CockpitScreen() {
   latest.current = { left, right };
   useEffect(() => {
     let raf = 0;
-    const loop = () => {
+    let tPrev = 0;
+    const loop = (t: number) => {
+      const dt = tPrev ? (t - tPrev) / 1000 : 0;
+      tPrev = t;
       const touch = sticksToAxes(latest.current.left, latest.current.right, appMode());
       const g = gamepad();
-      const pad = g ? sticksToAxes(g.left, g.right, appMode()) : touch;
-      drone.setRc(toRc([touch, pad, keyboardAxes()], currentSettings()));
+      const pad = g ? sticksToAxes(g.left, g.right, appMode()) : null;
+      const keys = keyboardAxes();
+      const thr = thrArb.current.step(touch.throttle, pad ? pad.throttle : null, keys.throttle, holdRef.current, dt);
+      drone.setRc(toRc(pad ? [touch, pad, keys] : [touch, keys], currentSettings(), thr));
       raf = requestAnimationFrame(loop);
     };
     raf = requestAnimationFrame(loop);

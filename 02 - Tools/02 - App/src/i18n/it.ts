@@ -122,7 +122,7 @@ const it: Translation = {
     gamepadNone: "Nessun gamepad collegato", alwaysOn: "Sempre attivo", limits: "Limiti di volo", automatic: "Volo automatico",
     beginnerHint: "Dimezza ogni limite, nasconde ACRO", indoorCap: "Modelli indoor: limitato a 2 m/s",
     helpTitle: "Comandi di volo", helpIntro: "Stessa logica su touch, gamepad, tastiera e radio ELRS. La radio ha sempre la precedenza sull'app.",
-    keyboard: "Tastiera (PC)", keyboardHelp: "W/S gas · A/D imbardata · frecce beccheggio/rollio · T decollo · L atterraggio · H RTH · Spazio pausa",
+    keyboard: "Tastiera (PC)", keyboardHelp: "W/S gas (ANGLE/ACRO: si sposta e resta; modi hold: sali/scendi) · A/D imbardata · frecce beccheggio/rollio · T decollo · L atterraggio · H RTH · Spazio pausa",
     touchHelp: "Stick virtuali, scatto aptico al centro e ai fine corsa", gamepadHelp: "Xbox / PlayStation / MFi tramite Gamepad API",
     elrsHelp: "Priorità massima: quando è attiva, l'app passa alla sola telemetria",
   },

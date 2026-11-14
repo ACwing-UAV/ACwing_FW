@@ -122,7 +122,7 @@ const fr: Translation = {
     gamepadNone: "Aucune manette connectée", alwaysOn: "Toujours actif", limits: "Limites de vol", automatic: "Vol automatique",
     beginnerHint: "Divise chaque limite par deux, masque ACRO", indoorCap: "Modèles intérieurs : limité à 2 m/s",
     helpTitle: "Commandes de vol", helpIntro: "Même logique au tactile, à la manette, au clavier et à la radio ELRS. La radio passe toujours avant l'app.",
-    keyboard: "Clavier (PC)", keyboardHelp: "W/S gaz · A/D lacet · flèches tangage/roulis · T décollage · L atterrissage · H RTH · Espace pause",
+    keyboard: "Clavier (PC)", keyboardHelp: "W/S gaz (ANGLE/ACRO : se déplace et reste ; modes hold : monter/descendre) · A/D lacet · flèches tangage/roulis · T décollage · L atterrissage · H RTH · Espace pause",
     touchHelp: "Manches virtuels, clic haptique au centre et en butée", gamepadHelp: "Xbox / PlayStation / MFi via l'API Gamepad",
     elrsHelp: "Priorité maximale : quand elle est active, l'app passe en télémétrie seule",
   },
