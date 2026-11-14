@@ -1,15 +1,20 @@
 # Attitude control and mixer
 
-Firmware 0.7.0 (phase 3). The flight core ([Flight core](flight-core.md)) decides *what* the drone should do and
-publishes setpoints; this layer makes the motors do it. It runs in the ImuTask, the same task as the estimator and
-the flight core, so there are no locks between them.
+Firmware 0.12. The flight core ([Flight core](flight-core.md)) decides *what* the drone should do and publishes a
+**reference**; the **control law** decides how; the **actuator layer** drives the motors. The law is swappable
+behind `App/control/ctl_api.h` ([Writing a control law](control-api.md), ADR 0013). Everything runs in the ImuTask,
+the same task as the estimator and the flight core, so there are no locks between them.
 
-| File | Rate | What |
-|---|---|---|
-| `App/control/att_ctrl.c` | 240 Hz / 960 Hz | tilt loop (P) and body-rate loops (PID), gyro filters |
-| `App/control/mixer.c` | 960 Hz | quad-X mixer: priorities, airmode, thrust curve, battery compensation |
-| `App/app/ctrl_loop.c` | 240 / 960 / 250 Hz | glue: setpoints from `fc_setpoint()`, gains from the parameters, `motors_set()`, stall watchdog |
-| `App/control/pos_ctrl.c` | 250 Hz (fc_core) | horizontal position hold from the optical flow: roll / pitch setpoints when `pos_hold` |
+| File | Layer | Rate | What |
+|---|---|---|---|
+| `App/control/ctl_api.h` | interface | – | reference, getters, setters, the law's hooks |
+| `App/control/ctl_io.c` | interface | – | vehicle state, reference, command, registry (`ctlLaw`) |
+| `App/control/ctl_law_cascade.c` | default law | 250 / 240 / 960 Hz | maps the reference onto the loops below |
+| `App/control/alt_ctrl.c` | default law | 250 Hz | vertical: height P, climb-rate PI around the hover thrust |
+| `App/control/pos_ctrl.c` | default law | 250 Hz | horizontal position hold from the optical flow |
+| `App/control/att_ctrl.c` | default law | 240 Hz / 960 Hz | tilt loop (P) and body-rate loops (PID), gyro filters |
+| `App/control/mixer.c` | actuators | 960 Hz | quad-X mixer: priorities, airmode, thrust curve, battery compensation |
+| `App/app/ctrl_loop.c` | actuators | 240 / 960 Hz | hooks, allocation, `motors_set()`, motors_off, stall watchdog |
 
 The theory, the design numbers and the block diagrams of every loop and flight condition are in
 [Control loops](../theory/control-loops.md).

@@ -373,6 +373,8 @@ export const PARAMS: ParamDef[] = [
   { id: 103, key: "rcModeMap", def: 0, min: 0, max: 2, step: 1, options: [0, 1, 2] },
   // hand launch (firmware 0.11, ADR 0011)
   { id: 104, key: "launchDrop", def: 0, min: 0, max: 1, step: 1, options: [0, 1] },
+  // control law (firmware 0.12, ADR 0013): 0 the default cascade, 1-3 laws registered in the firmware
+  { id: 105, key: "ctlLaw", def: 0, min: 0, max: 3, step: 1, options: [0, 1, 2, 3] },
 ];
 
 export const PARAM_BY_KEY: Record<string, ParamDef> = Object.fromEntries(PARAMS.map((p) => [p.key, p]));
@@ -394,4 +396,5 @@ export const ACTION = {
   rcArmSwKill: { 0: "swRefused", 1: "swKill" },
   rcModeMap: { 0: "modeMapOff", 1: "modeMapHold", 2: "modeMapAcro" },
   launchDrop: { 0: "launchTossOnly", 1: "launchDropToo" },
+  ctlLaw: { 0: "ctlLawCascade", 1: "ctlLawUser1", 2: "ctlLawUser2", 3: "ctlLawUser3" },
 } as Record<string, Record<number, string>>;

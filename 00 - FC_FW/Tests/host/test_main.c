@@ -12,6 +12,7 @@
 #include "ack_cache.h"
 #include "fc_core.h"
 #include "launch.h"
+#include "ctl_api.h"
 #include "params.h"
 #include "cfg_store.h"
 #include "fc_shared.h"
@@ -973,6 +974,79 @@ static void test_launch_core(void)
     CHECK(r.result == PV2_ACK_OK && !s.armed && !sp.motors_off, "DISARM in the hand");
 }
 
+/* ------------------------------------------------------------ control-law interface (ADR 0013): a probe law */
+static int s_pr_init, s_pr_outer;
+static ctl_ref_t s_pr_ref;
+static float s_pr_q[4], s_pr_w[3], s_pr_h, s_pr_hover;
+static uint8_t s_pr_cmd;                   /* 0 thrust + torque, 1 per-motor thrust, 2 no command */
+static void pr_init(void)  { s_pr_init++; }
+static void pr_reset(void) { }
+static void pr_outer(float dt)
+{
+    (void)dt; s_pr_outer++;
+    ctl_get_ref(&s_pr_ref);
+    s_pr_h = ctl_get_height(); s_pr_hover = ctl_get_hover_thrust();
+    ctl_status_t st; memset(&st, 0, sizeof st); st.collective = 0.3f; ctl_set_status(&st);
+}
+static void pr_attitude(float dt) { (void)dt; ctl_get_attitude(s_pr_q); }
+static void pr_rate(float dt)
+{
+    (void)dt;
+    ctl_get_rates(s_pr_w);
+    static const float zero[3] = { 0, 0, 0 }, mt[4] = { 0.2f, 0.4f, 0.6f, 0.8f };
+    if (s_pr_cmd == 0) ctl_set_thrust_torque(0.3f, zero);
+    else if (s_pr_cmd == 1) ctl_set_motor_thrust(mt);
+}
+static const ctl_law_t k_probe = { "probe", pr_init, pr_reset, pr_outer, pr_attitude, pr_rate };
+
+static uint8_t pct_of(float t) { return (uint8_t)(mixer_curve_inv(t, 1.0f) * 100.0f + 0.5f); }
+
+static void test_ctl_api(void)
+{
+    const uint8_t arm[2] = { 0xA5, 0x5A };
+    const float qt[4] = { 0.9962f, 0.0872f, 0, 0 }, g1[3] = { 0.1f, -0.2f, 0.3f };
+    fc_setup(PV2_S_IMU | PV2_S_BARO);
+    ctrl_init();
+    now = 1000;
+    fc_vert_t v = { 1, 1.25f, 0, 0, 0, 0, 1.0f, 0xFF, 0, 0, { 0, 0 }, 0, 1.0f, { 0, 0, 0 }, 0, 0, 0 };
+    CHECK(ctl_active() == 0 && !strcmp(ctl_active_name(), "cascade_pid"), "default law: cascade_pid");
+    CHECK(ctl_register(&k_probe) == 1 && ctl_register(&k_probe) == 1, "a second law registered as index 1 (once)");
+    { uint8_t why; (void)params_set(105, 1.0f, &why); }
+    s_pr_init = s_pr_outer = 0; s_pr_cmd = 0;
+    run_plant(NULL, &v, 40, -1000);
+    CHECK(ctl_active() == 1 && s_pr_init == 1 && s_pr_outer > 0, "ctlLaw 1 while disarmed: the probe is active, init once");
+    /* getters */
+    ctrl_steps(8, qt, g1);
+    { fc_state_t fs; fc_snapshot(&fs);
+      CHECK(fabsf(s_pr_h - 1.25f) < 1e-6f && fabsf(s_pr_hover - fs.hover) < 1e-6f, "height and the flight core's hover estimate read (%.2f, %.2f)", s_pr_h, s_pr_hover); }
+    CHECK(s_pr_q[1] == qt[1] && s_pr_w[0] == g1[0] && s_pr_w[2] == g1[2], "attitude and rates read");
+    CHECK(!s_pr_ref.armed && s_pr_ref.vert == CTL_V_COLLECTIVE, "reference: disarmed, open loop");
+    /* disarmed: a command never reaches the motors */
+    CHECK(ctrl_motor_pct(0) == 0 && ctrl_motor_pct(3) == 0, "disarmed: the probe's command not written");
+    /* armed: thrust + torque through the mixer, then per-motor thrust, then no command */
+    fc_res_t r = post(PV2_OP_ARM, 1, arm, 2, &v);
+    CHECK(r.result == PV2_ACK_OK, "arm");
+    ctrl_steps(8, qt, g1);
+    CHECK(s_pr_ref.armed && ctrl_motor_pct(0) == pct_of(0.3f) && ctrl_motor_pct(3) == pct_of(0.3f),
+          "thrust + torque: every motor at the collective (%u %%)", ctrl_motor_pct(0));
+    fc_setpoint_t sp; fc_setpoint(&sp);
+    CHECK(fabsf(sp.thrust - 0.3f) < 1e-6f, "the law's status reaches the flight core (thrust %.2f)", sp.thrust);
+    s_pr_cmd = 1; ctrl_steps(8, qt, g1);
+    CHECK(ctrl_motor_pct(0) == pct_of(0.2f) && ctrl_motor_pct(1) == pct_of(0.4f) && ctrl_motor_pct(3) == pct_of(0.8f),
+          "per-motor thrust: own allocation, thrust curve applied");
+    s_pr_cmd = 2; ctrl_steps(8, qt, g1);
+    CHECK(ctrl_motor_pct(0) == 0 && ctrl_motor_pct(3) == 0, "a rate step without a command: duty 0");
+    s_pr_cmd = 0;
+    /* ctlLaw changed while armed: kept until the disarm */
+    { uint8_t why; (void)params_set(105, 0.0f, &why); }
+    run_plant(NULL, &v, 40, -1000);
+    CHECK(ctl_active() == 1, "ctlLaw changed while armed: the probe keeps flying");
+    (void)post(PV2_OP_DISARM, 2, NULL, 0, &v);
+    run_plant(NULL, &v, 40, -1000);
+    CHECK(ctl_active() == 0, "disarmed: back to cascade_pid");
+    ctrl_init();
+}
+
 static void test_alt_est(void)
 {
     alt_est_cfg_t c; alt_est_default_cfg(&c);
@@ -1333,6 +1407,7 @@ int main(void)
     test_radio_switches();
     test_pos_hold_flags();
     test_launch_core();
+    test_ctl_api();
     test_alt_est();
     test_drivers();
     test_checks_flow();

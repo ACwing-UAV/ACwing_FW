@@ -33,6 +33,7 @@ enum {
     P_RC_PROTOCOL, P_RC_MAP,   /* RC receiver (control/rc_input.h) */
     P_RC_ARM_SW_KILL, P_RC_MODE_MAP, /* RC switches (control/rc_switches.h) */
     P_LAUNCH_DROP,             /* hand launch (ADR 0011): accept a drop without the push */
+    P_CTL_LAW,                 /* control law (ADR 0013): index of ctl_register(), 0 = cascade PID */
     PARAM_COUNT
 };
 

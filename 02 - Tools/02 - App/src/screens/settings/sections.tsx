@@ -123,6 +123,7 @@ export function Controls() {
             <h2>{t("controls.tuning")}</h2><span className="small muted">{t("controls.tuningHint")}</span>
           </div>
           <ParamNumber k="hoverThr" hint={t("controls.hoverHint")} />
+          <ParamSelect k="ctlLaw" hint={t("controls.ctlLawHint")} />
           <ParamNumber k="rateP" />
           <ParamNumber k="rateI" />
           <ParamNumber k="rateD" />

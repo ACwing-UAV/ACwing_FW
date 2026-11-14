@@ -45,5 +45,8 @@ float mixer_curve_inv(float t, float theta);
 
 /** collective T and torques (roll, pitch, yaw) -> out; v_cell = 0: battery not known, no compensation */
 void mixer_quadx(float collective, const float torque[3], float v_cell, const mixer_cfg_t *cfg, mixer_out_t *out);
+/** per-motor thrust 0..1 from a law with its own allocation (ctl_set_motor_thrust): only the thrust curve and the
+ *  battery compensation, as mixer_quadx() applies them; no idle floor, no priorities */
+void mixer_direct(const float thrust[MIXER_MOTORS], float v_cell, const mixer_cfg_t *cfg, mixer_out_t *out);
 
 #endif /* MIXER_H */
