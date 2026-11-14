@@ -177,8 +177,20 @@ static result_t run(int moving, double err_deg, const double axis_in[3], int tan
 }
 
 /* ---------------------------------------------------------------- tests */
+/* INTERNAL_FREQ_FINE -> ODR: 0.13 % per LSB, implausible values (> 10 %) ignored */
+static void test_odr_trim(void)
+{
+    CHECK(imu_odr_trimmed(960.0f, 0) == 960.0f, "fine 0: nominal");
+    /* the bench board measured 916 Hz: -4.6 % = fine -35 or -36 */
+    CHECK(fabsf(imu_odr_trimmed(960.0f, -35) - 916.3f) < 0.1f, "fine -35: %.1f Hz", imu_odr_trimmed(960.0f, -35));
+    CHECK(fabsf(imu_odr_trimmed(1920.0f, 20) - 1969.9f) < 0.1f, "fine +20 at 1920 Hz");
+    CHECK(imu_odr_trimmed(960.0f, 77) == 960.0f && imu_odr_trimmed(960.0f, -128) == 960.0f, "beyond 10 %%: nominal");
+    CHECK(fabsf(imu_odr_trimmed(960.0f, 76) - 960.0f * 1.0988f) < 0.1f, "9.88 %% kept");
+}
+
 int main(void)
 {
+    test_odr_trim();
     const double dip = 58.0 * D2R;
     s_m_w[0] = 48.0 * cos(dip); s_m_w[1] = 0.0; s_m_w[2] = -48.0 * sin(dip);
 
