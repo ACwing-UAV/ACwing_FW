@@ -1,0 +1,5 @@
+# Line endings: LF in the repository whatever the editor writes (STM32CubeMX on Windows writes CRLF; a regeneration
+# would otherwise turn every touched file into a full-file diff). Checked by 00 - FC_FW/Tests/target/check_cubemx.py.
+* text=auto eol=lf
+*.bat text eol=crlf
+*.cmd text eol=crlf

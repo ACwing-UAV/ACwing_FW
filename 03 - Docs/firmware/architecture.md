@@ -177,9 +177,10 @@ behind the LSM6DSV16X sensor hub. PA15 is also JTDI, so debug must be *Serial
 Wire*. The ACwing Flow board, if used on the bench, goes on the same
 I²C1 (D14/D15) with a Qwiic cable.
 
-**Motors (prepared, disabled).** `motors.c` uses TIM1 at 64 MHz / 2000 = 32 kHz
-PWM, with 2000 levels, and `MOTORS_ENABLE = 0`. A power stage is required:
-low-side logic-level N-MOSFET, gate resistor, pull-down, Schottky
-freewheeling diode and bulk capacitance. PA8 (TIM1_CH1) is wired to the
-LPS22DF INT1 on the IKS4A1, so the PWM pins have to be chosen together with
-the power stage.
+**Motors (prepared, disabled).** `motors.c` writes the duty through the board binding `bsp/motor_pwm.c`:
+TIM2 CH1–CH4 on PA0–PA3, 64 MHz / 2000 = 32 kHz PWM with 2000 levels. The same pins as M1–M4 of the ACwing FC
+rev A (ESC link A). TIM1 is not usable for four motors on the WB55, because its CH4 exists only on PA11 (USB_DM).
+`MOTORS_ENABLE = 0` until a power stage is connected; the CI also builds with 1, so the binding keeps linking. On
+the bench PA0–PA3 are A3, A2, D1, D0 of the Arduino connector. A power stage is required: low-side logic-level
+N-MOSFET, gate resistor, **pull-down on the gate** (it keeps the motor off while the MCU boots or resets, before
+the timer is configured), Schottky freewheeling diode and bulk capacitance.
