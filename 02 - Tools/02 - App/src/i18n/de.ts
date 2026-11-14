@@ -33,6 +33,7 @@ const de: Translation = {
     state: { 0: "OK", 1: "Prüfen", 2: "Nicht bereit", 3: "k. A." },
   },
   cockpit: {
+    dir: { n: "N", e: "O", s: "S", w: "W" }, mag: "MAG",
     armed: "SCHARF", disarmed: "GESICHERT", slideToDisarm: "SCHARF · wischen zum Sichern", slideToDisarmAria: "Wischen zum Sichern (nur am Boden)",
     flightMode: "Flugmodus", flight: "Flug", autoTakeoff: "Auto‑Start", launch: "Wurfstart", launchHold: "gedrückt halten zum Starten", launchReady: "Mit flacher Hand nach oben werfen · Hand unter der Drohne, nie über den Propellern", autoLand: "Auto‑Landung", rth: "RTH", rthLong: "Rückkehr zum Startpunkt",
     pause: "Pause / Schweben", kill: "MOTOR‑STOPP", killHold: "2 s halten", killConfirm: "Motoren im Flug stoppen? Die Drohne fällt herunter.",

@@ -33,6 +33,7 @@ const it: Translation = {
     state: { 0: "OK", 1: "Verifica", 2: "Non pronto", 3: "n/d" },
   },
   cockpit: {
+    dir: { n: "N", e: "E", s: "S", w: "O" }, mag: "MAG",
     armed: "ARMATO", disarmed: "DISARMATO", slideToDisarm: "ARMATO · scorri per disarmare", slideToDisarmAria: "Scorri per disarmare (solo a terra)",
     flightMode: "Modalità di volo", flight: "Volo", autoTakeoff: "Decollo auto", launch: "Lancio a mano", launchHold: "tieni premuto per iniziare", launchReady: "Lancialo verso l’alto dal palmo aperto · mano sotto il drone, mai sopra le eliche", autoLand: "Atterraggio auto", rth: "RTH", rthLong: "Ritorno a casa",
     pause: "Pausa / hover", kill: "STOP MOTORI", killHold: "tieni premuto 2 s", killConfirm: "Fermare i motori in volo? Il drone cadrà.",

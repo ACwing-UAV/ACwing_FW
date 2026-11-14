@@ -1,12 +1,12 @@
 import { useEffect, useRef, useState } from "react";
 import { useT } from "../i18n";
 import { drone } from "../link/drone";
-import { ArmState, AutoAction, FlightMode, InputSource, SENSOR, BattWarn, FS } from "../protocol/ids";
+import { ArmState, AutoAction, FlightMode, InputSource, SENSOR, BattWarn, FS, FF } from "../protocol/ids";
 import { attachKeyboard, gamepad, keyboardAxes, sticksToAxes, toRc } from "../input/controls";
 import { go, useDrone, useSettings, useViewport } from "../ui/hooks";
 import { Icon, Mark } from "../ui/icons";
 import { Confirm, HoldButton, SlideToConfirm, useCommand } from "../ui/kit";
-import { BatteryIcon, HeadingTape, Hud, Stick } from "../ui/flightWidgets";
+import { BatteryIcon, HeadingTape, HorizonBackdrop, Hud, MiniCompass, Stick } from "../ui/flightWidgets";
 import { fmt } from "../ui/format";
 
 type XY = { x: number; y: number };
@@ -124,6 +124,16 @@ export function CockpitScreen() {
   ];
   const att = s.attitude ?? { rollRight: 0, pitchUp: 0, yaw: 0 };
   const heading = f?.headingDeg ?? 0;
+  // yaw reference: magnetic interference from the estimator, home bearing once the drone has a home
+  const magBad = !!(s.system && s.system.estFlags & 8);
+  const homeBearing = gps && f && f.flags & FF.HOME_SET ? f.homeBearingDeg : null;
+  const hudW = compact ? 260 : Math.min(520, vp.w * 0.46);
+  const hudH = (hudW * 340) / 520;
+  // compass: bottom-right corner of the HUD box on wide screens, left of the HUD on phones (free of the ladder)
+  const cmpSize = compact ? 76 : Math.max(84, Math.min(116, hudW * 0.22));
+  const cmpPos = compact
+    ? { left: `calc(50% - ${hudW / 2 + cmpSize + 8}px)`, top: `calc(50% - ${cmpSize / 2}px)` }
+    : { left: `calc(50% + ${hudW / 2 - cmpSize}px)`, top: `calc(46% + ${hudH / 2 - (cmpSize * 134) / 120}px)` };
   const p = s.power;
   const tof = s.nav?.tofM ?? null;
   const ceiling = drone.param("gfCeiling");
@@ -255,8 +265,13 @@ export function CockpitScreen() {
       )}
       {s.link === "lost" && <div className="override banner crit" style={{ top: compact ? 52 : 70, zIndex: 4 }}>{t("link.lost")}</div>}
 
-      {!compact && <div className="tape"><HeadingTape heading={heading} width={Math.min(520, vp.w * 0.46)} /></div>}
-      <div className="hud"><Hud rollRight={att.rollRight} pitchUp={att.pitchUp} width={compact ? 260 : Math.min(520, vp.w * 0.46)} /></div>
+      <div className="hud horizon"><HorizonBackdrop rollRight={att.rollRight} pitchUp={att.pitchUp} width={hudW} /></div>
+      {!compact && <div className="tape"><HeadingTape heading={heading} width={hudW} /></div>}
+      <div className="hud"><Hud rollRight={att.rollRight} pitchUp={att.pitchUp} width={hudW} /></div>
+      <div className="ck-compass" style={cmpPos}>
+        <MiniCompass heading={heading} homeBearing={homeBearing} magBad={magBad} size={cmpSize}
+          labels={{ n: t("cockpit.dir.n"), e: t("cockpit.dir.e"), s: t("cockpit.dir.s"), w: t("cockpit.dir.w"), mag: t("cockpit.mag") }} />
+      </div>
 
       {compact ? (
         <>
