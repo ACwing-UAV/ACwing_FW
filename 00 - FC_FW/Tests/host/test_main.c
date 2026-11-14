@@ -1443,10 +1443,13 @@ static void test_app(void)
             app_run(2, &v, 1);
         }
         app_run(1000, &v, 1);                                  /* the receiver keeps sending */
-        int caps_radio = 0, lq = -1, rssi = 0, item6 = -1, val6 = -1;
+        int caps_radio = 0, lq = -1, rssi = 0, item6 = -1, val6 = -1, sys_len = -1, heap = -1, stk = -1;
         for (int i = f0; i < s_nf; ++i) {
             if (s_f[i].type == PV2_FT_CAPS) { pv2_caps_t c; memcpy(&c, s_f[i].p, sizeof c); caps_radio = !!(c.sensors & PV2_S_ELRS); }
-            if (s_f[i].type == PV2_FT_SYSTEM) { pv2_system_t y; memcpy(&y, s_f[i].p, sizeof y); lq = y.lq; rssi = y.rssi; }
+            if (s_f[i].type == PV2_FT_SYSTEM) {
+                pv2_system_t y; memcpy(&y, s_f[i].p, sizeof y); lq = y.lq; rssi = y.rssi;
+                sys_len = s_f[i].len; heap = y.heap_min_free; stk = y.stack_min_free;
+            }
             if (s_f[i].type == PV2_FT_CHECKS) {
                 const uint8_t n = s_f[i].p[1];
                 for (uint8_t k = 0; k < n; ++k) if (s_f[i].p[2 + 4 * k] == PV2_CHK_RADIO) { item6 = s_f[i].p[3 + 4 * k]; int16_t vv; memcpy(&vv, &s_f[i].p[4 + 4 * k], 2); val6 = vv; }
@@ -1454,6 +1457,7 @@ static void test_app(void)
         }
         CHECK(caps_radio, "receiver seen: CAPS radio bit");
         CHECK(lq == 88 && rssi == -62, "SYSTEM lq %d rssi %d from the CRSF link statistics", lq, rssi);
+        CHECK(sys_len == 31 && heap == 0xFFFF && stk == 0xFFFF, "SYSTEM 31 B; memory health n/a without an RTOS (len %d)", sys_len);
         CHECK(item6 == PV2_CK_OK && val6 == 88, "CHECKS 6 radio OK, LQ %d", val6);
         rc_input_init();                                       /* no receiver for the following tests */
     }

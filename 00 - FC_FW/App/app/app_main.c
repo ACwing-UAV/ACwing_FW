@@ -30,6 +30,8 @@
 #include "app_main.h"
 #include "app_config.h"
 #include "cmsis_os2.h"
+#include "FreeRTOS.h"
+#include "task.h"
 #include "imu_i2c.h"
 #include "imu_lsm6dsv16x.h"
 #include "est_pipeline.h"
@@ -732,6 +734,38 @@ static size_t get_init(uint8_t *dst, size_t cap)
 
 static void motor_test_hook(uint8_t m, float duty) { motors_test(m, duty); }
 
+/* memory health for SYSTEM (AppTask, 2 Hz). The task handles are listed once; then ONE stack is measured per call
+ * (uxTaskGetStackHighWaterMark does not suspend the scheduler, unlike uxTaskGetSystemState for all of them, which
+ * would delay the ImuTask), and the smallest margin seen per task is kept. */
+#define MEM_TASKS_MAX 20u
+static void mem_health(uint16_t *heap, uint16_t *stack, char task[4])
+{
+    static TaskHandle_t h[MEM_TASKS_MAX];
+    static uint32_t     least[MEM_TASKS_MAX];
+    static UBaseType_t  n, next;
+    const size_t hp = xPortGetMinimumEverFreeHeapSize();
+    *heap = (uint16_t)(hp > 0xFFFFu ? 0xFFFFu : hp);
+    if (n == 0u || n != uxTaskGetNumberOfTasks()) {        /* first call, or a task was created since */
+        static TaskStatus_t ts[MEM_TASKS_MAX];
+        n = (uxTaskGetNumberOfTasks() <= MEM_TASKS_MAX) ? uxTaskGetSystemState(ts, MEM_TASKS_MAX, NULL) : 0u;
+        for (UBaseType_t i = 0; i < n; ++i) {
+            h[i] = ts[i].xHandle;
+            least[i] = (uint32_t)ts[i].usStackHighWaterMark * sizeof(StackType_t);
+        }
+        next = 0u;
+    }
+    if (n == 0u) { *stack = 0xFFFFu; return; }
+    const uint32_t m = (uint32_t)uxTaskGetStackHighWaterMark(h[next]) * sizeof(StackType_t);
+    if (m < least[next]) least[next] = m;
+    next = (next + 1u) % n;
+    UBaseType_t w = 0u;
+    for (UBaseType_t i = 1; i < n; ++i) if (least[i] < least[w]) w = i;
+    *stack = (uint16_t)(least[w] > 0xFFFFu ? 0xFFFFu : least[w]);
+    memset(task, 0, 4);
+    const char *nm = pcTaskGetName(h[w]);
+    for (int i = 0; i < 4 && nm && nm[i]; ++i) task[i] = nm[i];
+}
+
 /* log flash of this board (APP_LOG_FLASH) */
 static const log_flash_t *log_flash(void)
 {
@@ -801,6 +835,7 @@ void app_start(void)
         ac.board_sensors = (uint16_t)((batt && APP_BATT_CURRENT ? PV2_S_CURRENT : 0u) |
                                       (log_flash() ? PV2_S_FLASH_LOG : 0u));
         ac.log_pct = log_task_pct;
+        ac.mem_health = mem_health;
         app_task_start(&ac);
     }
     ext_sens_start();
