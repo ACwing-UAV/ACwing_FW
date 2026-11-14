@@ -53,6 +53,8 @@ extern "C" {
 
 /* USER CODE END EM */
 
+void HAL_TIM_MspPostInit(TIM_HandleTypeDef *htim);
+
 /* Exported functions prototypes ---------------------------------------------*/
 void Error_Handler(void);
 
@@ -69,8 +71,6 @@ void Error_Handler(void);
 #define RCC_OSC32_OUT_GPIO_Port GPIOC
 #define LED2_Pin GPIO_PIN_0
 #define LED2_GPIO_Port GPIOB
-#define USB_DM_Pin GPIO_PIN_11
-#define USB_DM_GPIO_Port GPIOA
 #define USB_DP_Pin GPIO_PIN_12
 #define USB_DP_GPIO_Port GPIOA
 #define JTMS_Pin GPIO_PIN_13
