@@ -10,6 +10,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include "plant6.h"
 
 static int s_fail, s_pass;
 #define CHECK(c, ...) do { if (c) s_pass++; else { s_fail++; printf("FAIL %s:%d: ", __FILE__, __LINE__); printf(__VA_ARGS__); printf("\n"); } } while (0)
@@ -142,67 +143,7 @@ static void test_traces(void)
           ln_tw_available(0.5f, 0.0f) == 0.0f, "T/W available");
 }
 
-/* ------------------------------------------------------------------ closed loop: 6-DOF plant */
-typedef struct {
-    float q[4], w[3], p[3], v[3];          /* body->world, body rates, world position / velocity */
-    float T[4];                            /* rotor thrust, N                                    */
-    float J[3], arm, kappa, tmax, tau, mass, vcell;
-} plant_t;
-
-static void qmul(const float a[4], const float b[4], float o[4])
-{
-    o[0] = a[0]*b[0] - a[1]*b[1] - a[2]*b[2] - a[3]*b[3];
-    o[1] = a[0]*b[1] + a[1]*b[0] + a[2]*b[3] - a[3]*b[2];
-    o[2] = a[0]*b[2] - a[1]*b[3] + a[2]*b[0] + a[3]*b[1];
-    o[3] = a[0]*b[3] + a[1]*b[2] - a[2]*b[1] + a[3]*b[0];
-}
-static void rot(const float q[4], const float b[3], float o[3])
-{
-    const float w = q[0], x = q[1], y = q[2], z = q[3];
-    o[0] = (1 - 2*(y*y + z*z))*b[0] + 2*(x*y - w*z)*b[1] + 2*(x*z + w*y)*b[2];
-    o[1] = 2*(x*y + w*z)*b[0] + (1 - 2*(x*x + z*z))*b[1] + 2*(y*z - w*x)*b[2];
-    o[2] = 2*(x*z - w*y)*b[0] + 2*(y*z + w*x)*b[1] + (1 - 2*(x*x + y*y))*b[2];
-}
-
-static void plant_init(plant_t *pl, float mass, float vcell)
-{
-    memset(pl, 0, sizeof *pl);
-    pl->q[0] = 1.0f;
-    pl->J[0] = pl->J[1] = 3.5e-5f; pl->J[2] = 6e-5f;
-    pl->arm = 0.028f; pl->kappa = 0.012f; pl->tmax = 0.343f; pl->tau = 0.035f; pl->mass = mass; pl->vcell = vcell;
-}
-
-/* duty per motor -> rotor thrust (quadratic in the applied voltage, lag), rigid body */
-static void plant_step(plant_t *pl, const float duty[4], float dt)
-{
-    const float k = pl->vcell / 4.2f;
-    for (int i = 0; i < 4; ++i) {
-        const float u = duty[i] * k;
-        const float tss = pl->tmax * u * u;
-        pl->T[i] += (tss - pl->T[i]) * dt / pl->tau;
-    }
-    const float *T = pl->T;
-    /* M1 RR, M2 FR, M3 RL, M4 FL (mixer.h) */
-    const float tau[3] = { pl->arm * ((T[2] + T[3]) - (T[0] + T[1])),
-                           pl->arm * ((T[0] + T[2]) - (T[1] + T[3])),
-                           pl->kappa * ((T[0] + T[3]) - (T[1] + T[2])) };
-    const float *J = pl->J, *w = pl->w;
-    const float Jw[3] = { J[0]*w[0], J[1]*w[1], J[2]*w[2] };
-    const float c[3] = { w[1]*Jw[2] - w[2]*Jw[1], w[2]*Jw[0] - w[0]*Jw[2], w[0]*Jw[1] - w[1]*Jw[0] };
-    for (int i = 0; i < 3; ++i) pl->w[i] += (tau[i] - c[i]) / J[i] * dt;
-    const float h = 0.5f * dt;
-    const float dq[4] = { 1.0f, pl->w[0] * h, pl->w[1] * h, pl->w[2] * h };
-    float qn[4]; qmul(pl->q, dq, qn);
-    const float n = sqrtf(qn[0]*qn[0] + qn[1]*qn[1] + qn[2]*qn[2] + qn[3]*qn[3]);
-    for (int i = 0; i < 4; ++i) pl->q[i] = qn[i] / n;
-    const float fb[3] = { 0.0f, 0.0f, (T[0] + T[1] + T[2] + T[3]) / pl->mass };
-    float fw[3]; rot(pl->q, fb, fw);
-    for (int i = 0; i < 3; ++i) {
-        const float a = fw[i] - (i == 2 ? G0 : 0.0f) - 0.3f * pl->v[i];
-        pl->v[i] += a * dt; pl->p[i] += pl->v[i] * dt;
-    }
-}
-
+/* ------------------------------------------------------------------ closed loop: 6-DOF plant (plant6.h) */
 typedef struct { float lowest, t_done, t_start, tilt_after, t_level, tilt_start; uint8_t done, started, level; } cl_res_t;
 
 /* a toss (vz0 up) or a drop, released with a tilt (rad, about x then y) and body rates (rad/s) */

@@ -268,6 +268,9 @@ label.choice.sel { border-color: var(--accent); }
 .ck-modes button[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
 .ck-modes button:disabled { opacity: 0.4; }
 .ck-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
+.ck-flip { grid-column: span 2; display: flex; align-items: center; gap: 6px; }
+.ck-flip > span { flex: 1; }
+.ck-actions .ck-flip .btn { min-height: 44px; flex: 0 0 44px; }
 .ck-actions .btn { min-height: 52px; flex-direction: column; gap: 2px; font-size: 13px; padding: 0 6px; white-space: normal; text-align: center; line-height: 1.15; }
 .hud { position: absolute; left: 50%; top: 46%; transform: translate(-50%, -50%); width: min(520px, 46vw); pointer-events: none; }
 /* the horizon is the bottom layer: .cockpit (position: fixed) is a stacking context, so z-index -1 paints it above

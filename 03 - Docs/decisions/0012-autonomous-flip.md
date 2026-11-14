@@ -1,6 +1,6 @@
 # 0012. Autonomous flip: a phased manoeuvre gated on the thrust available now
 
-- **Status:** Accepted (2026-11-13, design); the implementation is accepted after the validation below
+- **Status:** Accepted (2026-11-13); implemented in firmware 0.13.0, host validation below
 - **Date:** 2026-11-13
 
 ## Context
@@ -108,7 +108,7 @@ the rotation goes straight to Recover.
 | op | `0x1B` FLIP, payload `axis u8` |
 | auto | `7` FLIP |
 | events | 13 FLIP_DONE (INFO, arg = height lost in cm), 14 FLIP_ABORTED (WARN, arg = phase << 8 \| reason) |
-| parameters | `flipRate` (105, 600–2000 °/s, 1400), `flipMinH` (106, 1.0–5.0 m, 2.0), `flipMinTw` (107, 1.3–2.5, 1.6) |
+| parameters | `flipRate` (106, 600–2000 °/s, 1400), `flipMinH` (107, 1.0–5.0 m, 2.0), `flipMinTw` (108, 1.3–2.5, 1.6); ids shifted by one from the first draft, 105 went to `ctlLaw` (ADR 0013) |
 | app | a flip button with four directions, enabled only when the gate passes (CHECKS-like reason shown) |
 | radio | a switch mapped only to it, later |
 
@@ -143,3 +143,31 @@ the rotation goes straight to Recover.
 4. **First flips:**
    - outdoors, 3 m up, over grass, T400 on a full battery;
    - then indoors under a 2.5 m ceiling only if the logs show a lowest point within the gate.
+
+## Validation results (host, firmware 0.13)
+
+`make flip_test` (closed loop: `flip.c`, the attitude and rate loops, the mixer, the 6-DOF plant of `plant6.h`) and
+`host_test` (`test_flip_core`, through the flight core). The attitude estimate is taken as exact in the closed loop.
+
+| Case | Result |
+|---|---|
+| 16 flips (4 axes × T400 4.2/3.9 V, T800 4.2 V, and a mass at T/W 1.62); the other cases are refused by the gate | all one full turn (359°), level within 1.2° 0.3 s after, done in 1.21–1.28 s |
+| lowest point | −0.13 m at T/W 1.62; −0.01 m at T/W 1.70; 0.00 at 1.97 |
+| a stick in the rotation, the gyro saturated | cut short, recovered level, reported |
+| not level within 1 s, estimate lost | EVENT 14, LAND |
+| gate | each refusal with its reason (height, ceiling, T/W, tilt, motion, battery, mode, beginner) |
+| through the flight core | climb at full thrust, rotation rate, level recovery, estimator on the gyro during the manoeuvre, the mode and the starting height restored, EVENT 13 with the height lost |
+
+**The closed loop loses less height than the 1-D estimate of the Context.** At T/W 1.70 the 1-D estimate is −0.15 m;
+the closed loop gives −0.01 m. The 1-D model kept the collective at 0.25 during the rotation. The mixer instead
+raises it as far as the torque needs (airmode), so the drone keeps more thrust while it turns. The gate of T/W 1.6
+and 2 m therefore has more margin than the table above suggests. The values stay as they are until flight logs
+show the real loss: the motor lag and the torque authority are still assumed numbers.
+
+**Implementation notes**
+- The estimator gained a `vector_hold` flag (`est_pipeline.h`). The flight core raises it during the manoeuvre
+  (`fc_vector_hold()`), and the IEKF then skips its accelerometer and magnetometer updates, without touching the
+  stillness detector, the acc window or the callbacks.
+- The flip goes through the control-law interface (ADR 0013): `CTL_ATT_RATE` with the rotation rate during the
+  rotation, `CTL_ATT_ANGLE` level otherwise, and `CTL_V_COLLECTIVE` with the collective of the phase. Any law that
+  follows the reference flies it.

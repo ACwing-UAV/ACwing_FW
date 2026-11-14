@@ -55,6 +55,9 @@ const param_def_t g_param_def[PARAM_COUNT] = {
     [P_RC_MODE_MAP]        = { 103, 0.0f,   0.0f,    2.0f,    0 },   /* AUX2 modes: 0 off, 1 ANGLE/ALT_HOLD/POS_HOLD, 2 ACRO/ANGLE/ALT_HOLD */
     [P_LAUNCH_DROP]        = { 104, 0.0f,   0.0f,    1.0f,    0 },   /* hand launch: 1 accepts a drop (no push), T/W >= 1.7 */
     [P_CTL_LAW]            = { 105, 0.0f,   0.0f,    3.0f,    0 },   /* control law (ADR 0013), applied while disarmed */
+    [P_FLIP_RATE]          = { 106, 1400.0f, 600.0f, 2000.0f, 0 },   /* flip: rotation rate, deg/s */
+    [P_FLIP_MIN_H]         = { 107, 2.0f,   1.0f,    5.0f,    0 },   /* flip: least height above the floor / take-off, m */
+    [P_FLIP_MIN_TW]        = { 108, 1.6f,   1.3f,    2.5f,    0 },   /* flip: least thrust-to-weight available now */
     [P_HOVER_THR]          = { 80, 0.51f,   0.25f,   0.85f,   0 },   /* hover thrust seed (ADR 0010): T400 0.51, T800 0.58, T1200 0.65, +0.04 GPS */
 };
 

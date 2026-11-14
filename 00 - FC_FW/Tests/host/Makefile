@@ -11,7 +11,7 @@ SRC  = $(APP)/telemetry/telemetry.c $(APP)/telemetry/proto_v2.c $(APP)/telemetry
        $(APP)/control/att_ctrl.c $(APP)/control/mixer.c $(APP)/control/motors.c $(APP)/app/ctrl_loop.c \
        $(APP)/filters/hover_est/hover_est.c $(APP)/control/hover_track.c \
        $(APP)/control/rc_input.c $(APP)/drivers/rc/rc_crsf.c $(APP)/drivers/rc/rc_sbus.c $(APP)/drivers/rc/rc_ibus.c \
-       $(APP)/drivers/rc/rc_dsm.c $(APP)/control/input_arb.c $(APP)/control/radio_fs.c $(APP)/control/cal_sticks.c $(APP)/control/rc_switches.c $(APP)/control/pos_ctrl.c $(APP)/control/launch.c $(APP)/control/ctl_io.c $(APP)/control/ctl_law_cascade.c \
+       $(APP)/drivers/rc/rc_dsm.c $(APP)/control/input_arb.c $(APP)/control/radio_fs.c $(APP)/control/cal_sticks.c $(APP)/control/rc_switches.c $(APP)/control/pos_ctrl.c $(APP)/control/launch.c $(APP)/control/flip.c $(APP)/control/ctl_io.c $(APP)/control/ctl_law_cascade.c \
        $(APP)/drivers/vl53l1x/vl53l1x.c $(APP)/drivers/flow_bridge/flow_bridge.c \
        host_stubs.c test_main.c
 INC  = -I$(APP)/log -I$(APP)/drivers/w25q -I$(APP)/telemetry -I$(APP)/app -I$(APP)/control -I$(APP)/bsp -I$(APP)/filters/altitude_kf -I$(APP)/filters/hover_est -I$(APP)/drivers/rc \
@@ -42,7 +42,7 @@ IEKF_CFLAGS = -std=c11 -O2 -g -Wall -Wextra -Wno-unused-parameter -DHOST_TEST -f
 all: run
 host_test: $(SRC) $(wildcard $(APP)/*/*.h)
 	$(CC) $(CFLAGS) $(INC) $(SRC) -lm -o $@
-run: host_test ext_test power_test log_test link_test iekf_test ctrl_test hover_test rc_test pos_test launch_test
+run: host_test ext_test power_test log_test link_test iekf_test ctrl_test hover_test rc_test pos_test launch_test flip_test
 	./host_test
 	./ext_test
 	./power_test
@@ -52,14 +52,18 @@ run: host_test ext_test power_test log_test link_test iekf_test ctrl_test hover_
 	./ctrl_test
 	./pos_test
 	./launch_test
+	./flip_test
 	./hover_test
 	./rc_test
 rc_test: $(RC_SRC) $(wildcard $(APP)/drivers/rc/*.h $(APP)/control/rc_input.h)
 	$(CC) $(CFLAGS) -I$(APP)/drivers/rc -I$(APP)/control -I$(APP)/telemetry $(RC_SRC) -lm -o $@
 hover_test: $(HOVER_SRC) $(wildcard $(APP)/control/*.h $(APP)/filters/hover_est/*.h)
 	$(CC) $(CFLAGS) -I$(APP)/control -I$(APP)/filters/hover_est $(HOVER_SRC) -lm -o $@
+FLIP_SRC = $(APP)/control/flip.c $(APP)/control/att_ctrl.c $(APP)/control/mixer.c test_flip.c
+flip_test: $(FLIP_SRC) $(APP)/control/flip.h plant6.h
+	$(CC) $(CFLAGS) -I$(APP)/control -I$(APP)/telemetry $(FLIP_SRC) -lm -o $@
 LAUNCH_SRC = $(APP)/control/launch.c $(APP)/control/att_ctrl.c $(APP)/control/mixer.c test_launch.c
-launch_test: $(LAUNCH_SRC) $(APP)/control/launch.h
+launch_test: $(LAUNCH_SRC) $(APP)/control/launch.h plant6.h
 	$(CC) $(CFLAGS) -I$(APP)/control $(LAUNCH_SRC) -lm -o $@
 POS_SRC = $(APP)/control/pos_ctrl.c test_pos.c
 pos_test: $(POS_SRC) $(APP)/control/pos_ctrl.h
@@ -77,5 +81,5 @@ iekf_test: $(sort $(IEKF_SRC)) $(wildcard $(APP)/*/*.h $(APP)/filters/iekf/*.h)
 ext_test:
 	$(CC) $(CFLAGS) $(INC) -I"$(FLOW)/Core/Inc" $(EXT_SRC) -lm -o $@
 clean:
-	rm -f host_test ext_test power_test log_test link_test iekf_test ctrl_test hover_test rc_test pos_test launch_test frames.bin power_frames.bin log_sample.bin
+	rm -f host_test ext_test power_test log_test link_test iekf_test ctrl_test hover_test rc_test pos_test launch_test flip_test frames.bin power_frames.bin log_sample.bin
 .PHONY: all run clean ext_test

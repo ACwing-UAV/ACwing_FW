@@ -87,8 +87,10 @@ static void on_acc_window(est_t *e, float h_win)
         }
     }
 
-    trace_put(e, EST_OP_ACC, e->acc_mean, 3, e->f.acc_trusted);
-    if (iekf_update_acc(&e->f, e->acc_mean)) e->flags |= EST_F_ACC_GATED;
+    if (!e->vector_hold) {                /* a manoeuvre (flip): gyro only, the vector updates wait */
+        trace_put(e, EST_OP_ACC, e->acc_mean, 3, e->f.acc_trusted);
+        if (iekf_update_acc(&e->f, e->acc_mean)) e->flags |= EST_F_ACC_GATED;
+    }
 
     ctrl_att_in_t in;
     iekf_get_quat(&e->f, in.q);
@@ -121,6 +123,7 @@ static void on_mag(est_t *e, const float m_sensor[3])
         const float wxu = (nm > 1e-6f) ? vec3_norm(wxy) / nm : 0.0f;  /* |omega x u| */
         const float sd  = wxu * e->cfg.mag_latency_std_s;
         e->flags |= EST_F_MAG_NEW;
+        if (e->vector_hold) return;
         const float mv[4] = { y[0], y[1], y[2], sd*sd };
         trace_put(e, EST_OP_MAG, mv, 4, 0);
         if (iekf_update_mag_ex(&e->f, y, sd*sd)) e->flags |= EST_F_MAG_GATED;

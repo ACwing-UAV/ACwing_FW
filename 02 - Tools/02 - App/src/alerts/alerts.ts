@@ -47,6 +47,15 @@ export function eventText(e: { code: number; text: string; arg?: number }, lang 
     const v = translate(lang, k, { why: translate(lang, `alerts.launchAbort.${e.arg}`) });
     if (v !== k) return v;
   }
+  if (e.code === EventCode.FLIP_ABORTED && e.arg !== undefined) {
+    // arg = phase << 8 | the reason of flip.c (FL_AB_*)
+    const v = translate(lang, k, { why: translate(lang, `alerts.flipAbort.${e.arg & 0xff}`) });
+    if (v !== k) return v;
+  }
+  if (e.code === EventCode.FLIP_DONE && e.arg !== undefined) {
+    const v = translate(lang, k, { cm: e.arg });
+    if (v !== k) return v;
+  }
   const v = translate(lang, k);
   return v === k ? e.text : v;
 }

@@ -137,6 +137,7 @@ typedef struct {
     float   w;                       /**< |body rate|, rad/s                                      */
     uint8_t gyro_sat;                /**< a gyro axis saturated since the last call               */
     float   v_cell;                  /**< sagged cell voltage, V (0 = unknown)                    */
+    float   w_b[3];                  /**< body rates, rad/s, bias removed (flip, ADR 0012)        */
 } fc_vert_t;
 
 /** setpoints for the attitude / rate loops (phase 3) and the motor mixer */
@@ -165,6 +166,8 @@ void    fc_set_sensors(uint16_t sensors);
 /** v: NULL = no vertical estimate (in air only via g_fc_dbg_in_air) */
 void    fc_service(uint32_t now_ms, uint8_t est_running, const fc_vert_t *v);
 void    fc_setpoint(fc_setpoint_t *out);         /**< last setpoints, same context */
+/** 1 during a flip: the estimator must skip its accelerometer and magnetometer updates (same context) */
+uint8_t fc_vector_hold(void);
 
 /* ---- BattTask ---- */
 int     fc_batt_signal(const fc_batt_sig_t *s);   /**< 0 = queued, -1 = full   */

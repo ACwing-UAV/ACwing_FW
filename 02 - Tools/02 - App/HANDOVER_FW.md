@@ -162,7 +162,7 @@ is merely supported: the app hides every feature whose sensor bit is 0.
 |---|---|---|---|
 | 0 | u8 | arm | `0` disarmed, `1` armed |
 | 1 | u8 | mode | `0` ACRO, `1` ANGLE, `2` ALT_HOLD, `3` POS_HOLD |
-| 2 | u8 | auto | `0` none, `1` TAKEOFF, `2` LAND, `3` RTH, `4` HOLD (pause), `5` FAILSAFE, `6` LAUNCH (firmware 0.11) |
+| 2 | u8 | auto | `0` none, `1` TAKEOFF, `2` LAND, `3` RTH, `4` HOLD (pause), `5` FAILSAFE, `6` LAUNCH (firmware 0.11), `7` FLIP (firmware 0.13) |
 | 3 | u8 | failsafe | bits: `0` APP_LINK, `1` RADIO, `2` BATTERY, `3` GEOFENCE, `4` GPS, `5` FLOW |
 | 4 | u16 | flags | bits: `0` IN_AIR, `1` LANDED, `2` HOME_SET, `3` GEOFENCE_ON, `4` BEGINNER, `5` ARM_BLOCKED (checks not ready and `armRequireChecks`=1) |
 | 6 | u8 | input | who commands the sticks: `0` none, `1` APP, `2` ELRS |
@@ -334,6 +334,7 @@ INIT) and `0x02 N` (STATE decimation) keep their phase-2 format without seq.
 | `0x17` | HOLD | – | in air: auto = HOLD (pause); on ground: no-op OK |
 | `0x18` | KILL | `4B 49 4C 4C` ("KILL") | **always executed**, any state, in flight too; motors off at once, disarm, EVENT 70 CRITICAL |
 | `0x19` | SET_MODE | `mode u8` | `INVALID` > 3; POS_HOLD without GNSS and FLOW → `SENSOR_MISSING`; ACRO with `beginner`=1 → `REJECTED/NONE` |
+| `0x1B` | FLIP | `axis u8` | autonomous flip (§7.8, firmware 0.13): `0` roll right, `1` roll left, `2` pitch forward, `3` pitch back; `INVALID` > 3; `NOT_ARMED` not in the air; `REJECTED/NONE` in ACRO, beginner, during an automatic action or a failsafe, or with the link not fresh; `SENSOR_MISSING` without altitude; `THRUST_LOW` below `flipMinTw` now; `OUT_OF_RANGE` below `flipMinH` or < 0.6 m to the ceiling; `NOT_STILL` tilted > 10°, rotating, moving; `BATTERY_LOW`; refused over USB |
 | `0x1A` | LAUNCH | `0xA5 0x5A` | hand launch (§7.7, firmware 0.11): the ARM checks, then `SENSOR_MISSING` without an altitude estimate, `THRUST_LOW` below T/W 1.5 now (1.7 with `launchDrop`) or without a battery reading, `REJECTED/NONE` with `beginner`=1 or from the radio; refused over USB |
 | `0x20` | PARAM_GET | `id u16` | answer PARAM frame; `INVALID/UNKNOWN_PARAM` |
 | `0x21` | PARAM_SET | `id u16, value f32` | `INVALID/OUT_OF_RANGE` outside min…max; RAM only (flag dirty), answer PARAM |
@@ -675,6 +676,33 @@ holds the height reached, in POS_HOLD with the flow or ALT_HOLD (EVENT 5).
 The app offers it with a 1.5 s hold button while disarmed, and shows the
 gesture while the drone is in the hand.
 
+### 7.8 FLIP — firmware 0.13, ADR 0012
+
+One full turn about the roll or the pitch axis, then back to the mode and the
+height it started from (`auto` = 7 while it runs):
+
+1. climb: full thrust, level, 0.18 s;
+2. rotate: `flipRate` (106, 1400 °/s) on the axis, collective 0.25; it ends
+   at 360° minus the braking lead;
+3. recover: level, full thrust while falling, then the hover thrust;
+4. done (level within 5°, slow): EVENT 13 INFO (arg = height lost, cm).
+
+During the climb, the rotation and the recovery the attitude estimate runs on
+the gyro only (no accelerometer or compass update), the ToF and the touchdown
+test are ignored, the hover learning and the position hold are off.
+
+- A stick moved by more than 50 %, the link lost or the gyro saturated during
+  the rotation cut it short: straight to the recovery, then EVENT 14 WARN
+  (arg = `2 << 8 | reason`: `1` too slow, `2` stick, `3` link, `4` gyro).
+- Not level within 1 s of recovery (`5`) or the estimate lost (`6`): EVENT 14
+  and LAND.
+- The gate (`0x1B` above) uses the thrust-to-weight available **now**
+  (hover estimate and cell voltage), not the frame: a T400 at the end of its
+  pack is refused like a heavy T1200 (ADR 0012).
+
+The app shows four hold buttons (forward, back, left, right; 0.8 s) while in
+the air.
+
 ## 8. Parameters
 
 Values are **f32 on the wire**, ids are stable forever (add new ids, never
@@ -727,6 +755,9 @@ reuse). Stored in flash with a version/CRC; on a bad CRC load defaults.
 | 103 | rcModeMap | 0 | 0 | 2 | enum | mode switch AUX2: 0 off, 1 ANGLE/ALT_HOLD/POS_HOLD, 2 ACRO/ANGLE/ALT_HOLD — firmware 0.8.0 |
 | 104 | launchDrop | 0 | 0 | 1 | enum | hand launch (§7.7): 0 toss up only, 1 a drop is accepted too — firmware 0.11 |
 | 105 | ctlLaw | 0 | 0 | 3 | enum | control law (ADR 0013): 0 cascade PID (default), 1–3 laws added with `ctl_register()`; applied only while disarmed, an index without a law falls back to 0 — firmware 0.12 |
+| 106 | flipRate | 1400 | 600 | 2000 | °/s | flip rotation rate (§7.8) — firmware 0.13 |
+| 107 | flipMinH | 2.0 | 1.0 | 5.0 | m | least height above the floor (ToF) or the take-off point |
+| 108 | flipMinTw | 1.6 | 1.3 | 2.5 | – | least thrust-to-weight available now |
 
 The loop gains (90–95) are in **normalised thrust per motor**: a roll torque of 0.1 raises the left motors and lowers
 the right ones by 0.1 of the maximum thrust. The mixer compensates the battery and the thrust curve, so the gains do
@@ -898,6 +929,8 @@ calibrated).
 | 10 | INFO | LAUNCH_READY | launchDrop | LAUNCH accepted: armed, motors stopped (§7.7) — firmware 0.11 |
 | 11 | INFO | LAUNCH_RELEASED | ms | the motors started, ms from the release |
 | 12 | WARN | LAUNCH_ABORTED | reason | §7.7 |
+| 13 | INFO | FLIP_DONE | cm lost | §7.8 — firmware 0.13 |
+| 14 | WARN | FLIP_ABORTED | phase << 8 \| reason | §7.8 |
 | 20 | ERROR | FAILSAFE_APP_LINK | action | long app-link failsafe |
 | 21 | ERROR | FAILSAFE_RADIO | action | |
 | 22 | ERROR | FAILSAFE_BATTERY | action | |

@@ -33,7 +33,7 @@ const en = {
   cockpit: {
     dir: { n: "N", e: "E", s: "S", w: "W" }, mag: "MAG",
     armed: "ARMED", disarmed: "DISARMED", slideToDisarm: "ARMED · slide to disarm", slideToDisarmAria: "Slide to disarm (on the ground only)",
-    flightMode: "Flight mode", flight: "Flight", autoTakeoff: "Auto takeoff", launch: "Hand launch", launchHold: "hold to start", launchReady: "Toss it up from a flat palm · keep your hand below the drone, never above the propellers", autoLand: "Auto land", rth: "RTH", rthLong: "Return to home",
+    flightMode: "Flight mode", flight: "Flight", autoTakeoff: "Auto takeoff", launch: "Hand launch", launchHold: "hold to start", launchReady: "Toss it up from a flat palm · keep your hand below the drone, never above the propellers", flip: "Flip", flipHold: "hold to flip", flipFwd: "forward", flipBack: "back", flipLeft: "left", flipRight: "right", autoLand: "Auto land", rth: "RTH", rthLong: "Return to home",
     pause: "Pause / hover", kill: "MOTOR KILL", killHold: "hold for 2 s", killConfirm: "Stop the motors in flight? The drone will fall.",
     killYes: "Stop motors", relAlt: "Relative altitude", vSpeed: "Vertical speed", gSpeed: "Ground speed", home: "Home",
     homeDetail: "bearing {brg}° · RTH ≈ {eta}", motorsRpm: "Motors (RPM)", motorsOut: "Motors (output)", avgCell: "Avg cell", used: "Used",
@@ -56,7 +56,7 @@ const en = {
     setCapacity: "Set the battery capacity",
   },
   modes: { 0: "ACRO", 1: "ANGLE", 2: "ALT HOLD", 3: "POS HOLD" },
-  auto: { 0: "", 1: "TAKEOFF", 2: "LANDING", 3: "RTH", 4: "HOLD", 5: "FAILSAFE", 6: "LAUNCH" },
+  auto: { 0: "", 1: "TAKEOFF", 2: "LANDING", 3: "RTH", 4: "HOLD", 5: "FAILSAFE", 6: "LAUNCH", 7: "FLIP" },
   telemetry: {
     title: "Telemetry", recording: "Recording log", exportCsv: "Export CSV", battery: "Battery", groundSpeed: "Ground speed",
     homeDist: "Home distance", radioLink: "Radio link", estRemaining: "Est. remaining", rthNeeds: "RTH needs {t}",
@@ -76,6 +76,7 @@ const en = {
   },
   levels: { 0: "INFO", 1: "WARN", 2: "ERROR", 3: "CRITICAL" },
   events: {
+    13: "Flip done ({cm} cm lost)", 14: "Flip cut short: {why}",
     10: "Launch ready: toss the drone up", 11: "Launched", 12: "Launch cancelled: {why}",
     9: "Radio switch: {op} refused ({why})",
     8: "Takeoff aborted: no lift-off", 33: "Battery monitor stopped",
@@ -108,7 +109,7 @@ const en = {
     units: "Units", metric: "Metric", imperial: "Imperial", theme: "Theme", dark: "Dark", daylight: "Daylight", droneName: "Drone name",
   },
   controls: {
-    rcProtocolHint: "The protocol of the receiver wired to the flight controller (ACwing FC: connector J5).", rcMapHint: "AETR for ExpressLRS, Crossfire and FrSky; TAER for most Spektrum, Futaba and FlySky transmitters.", rcArmSwKillHint: "Arm switch on AUX1: off → on arms (only if seen off first), on → off disarms on the ground. In flight it stops the motors (as Betaflight) or is refused.", rcModeMapHint: "AUX2 selects the flight mode while the radio has control. Off by default: receivers send the centre value on channels without a switch.", launchDropHint: "Off: only a toss up starts the motors (they start 10 cm from the hand or at the top of the toss). On: a drop is accepted too; it costs 0.4–1.3 m of height and needs more thrust.", ctlLawHint: "The control law flown at the next arm (it changes only while disarmed). 0 is the built-in cascade; 1–3 are laws added to the firmware (ADR 0013). An index without a law flies the built-in one.", rcCompatible: "Compatible receivers",
+    rcProtocolHint: "The protocol of the receiver wired to the flight controller (ACwing FC: connector J5).", rcMapHint: "AETR for ExpressLRS, Crossfire and FrSky; TAER for most Spektrum, Futaba and FlySky transmitters.", rcArmSwKillHint: "Arm switch on AUX1: off → on arms (only if seen off first), on → off disarms on the ground. In flight it stops the motors (as Betaflight) or is refused.", rcModeMapHint: "AUX2 selects the flight mode while the radio has control. Off by default: receivers send the centre value on channels without a switch.", launchDropHint: "Off: only a toss up starts the motors (they start 10 cm from the hand or at the top of the toss). On: a drop is accepted too; it costs 0.4–1.3 m of height and needs more thrust.", ctlLawHint: "The control law flown at the next arm (it changes only while disarmed). 0 is the built-in cascade; 1–3 are laws added to the firmware (ADR 0013). An index without a law flies the built-in one.", flipHint: "Rotation rate of the flip. Higher turns faster, with less height lost, but needs a well-tuned rate loop (ADR 0012).", flipMinHHint: "The flip is refused below this height above the floor (ToF) or the take-off point.", flipMinTwHint: "The flip is refused when the thrust-to-weight available now (battery and weight) is below this. Below 1.6 the height lost grows quickly.", rcCompatible: "Compatible receivers",
     hoverHint: "Hover thrust of the frame, the starting value of the in-flight estimate: T400 0.51, T800 0.58, T1200 0.65, +0.04 with the GPS board.",
     tuning: "Flight tuning (advanced)", tuningHint: "Loop gains and filters of the flight controller. Change one value at a time, props off first; Save writes them to the drone.", notchHint: "0 = off. Set it to the motor noise peak seen in the flight log.",
     idleHint: "Thrust of each motor when armed, as a fraction of the maximum.", curveHint: "1 = thrust quadratic in the duty (brushed motors), 0 = linear. Measured on the thrust stand.",
@@ -124,7 +125,7 @@ const en = {
     elrsHelp: "Top priority: when active, the app switches to telemetry only",
   },
   params: {
-    rcProtocol: "Receiver protocol", rcMap: "Channel order", rcArmSwKill: "Arm switch off in flight", rcModeMap: "Mode switch (AUX2)", launchDrop: "Hand launch", ctlLaw: "Control law",
+    rcProtocol: "Receiver protocol", rcMap: "Channel order", rcArmSwKill: "Arm switch off in flight", rcModeMap: "Mode switch (AUX2)", launchDrop: "Hand launch", ctlLaw: "Control law", flipRate: "Flip rate", flipMinH: "Flip: least height", flipMinTw: "Flip: least thrust-to-weight",
     hoverThr: "Hover thrust",
     rateP: "Roll/pitch rate P", rateI: "Roll/pitch rate I", rateD: "Roll/pitch rate D", yawP: "Yaw rate P", yawI: "Yaw rate I", attP: "Angle P", gyroLpf: "Gyro low-pass", dtermLpf: "D-term low-pass", gyroNotch: "Gyro notch", motorIdle: "Motor idle", thrCurve: "Thrust curve",
     battCapacity: "Capacity", battCells: "Cells", logMode: "Flight log",
@@ -252,6 +253,7 @@ const en = {
     say: { alt: "Altitude {v} meters", batt: "Battery {v} percent", timer: "{v} minutes" },
     radioOp: { arm: "arm", disarm: "disarm", mode: "mode change", kill: "kill" },
     launchAbort: { 1: "10 s in the hand", 2: "link lost", 3: "not recovered, landing", 4: "attitude estimate lost", 5: "toss too weak, motors kept off" },
+    flipAbort: { 1: "rotation too slow", 2: "stick moved", 3: "link lost", 4: "gyro saturated", 5: "not level in time, landing", 6: "attitude estimate lost, landing" },
   },
   about: {
     logUsed: "Flight log used", logModeHint: "Recorded in the drone's flash; download it in Flight logs",

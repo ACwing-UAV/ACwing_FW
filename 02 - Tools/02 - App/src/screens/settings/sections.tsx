@@ -124,6 +124,9 @@ export function Controls() {
           </div>
           <ParamNumber k="hoverThr" hint={t("controls.hoverHint")} />
           <ParamSelect k="ctlLaw" hint={t("controls.ctlLawHint")} />
+          <ParamNumber k="flipRate" hint={t("controls.flipHint")} />
+          <ParamNumber k="flipMinH" hint={t("controls.flipMinHHint")} />
+          <ParamNumber k="flipMinTw" hint={t("controls.flipMinTwHint")} />
           <ParamNumber k="rateP" />
           <ParamNumber k="rateI" />
           <ParamNumber k="rateD" />

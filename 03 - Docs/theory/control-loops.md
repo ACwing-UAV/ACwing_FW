@@ -270,6 +270,15 @@ release point, or the apex of a toss) the setpoint is level attitude, yaw rate 0
 attitude first, the airmode keeps the torque). Once level, slow and no longer falling, the vertical loop holds
 the height reached. Details, numbers and limits: [ADR 0011](../decisions/0011-hand-launch.md).
 
+### Flip (FLIP)
+
+Climb at full thrust for 0.18 s with the attitude level. Then the body-rate reference `flipRate` on one axis, the
+other rates zero, collective 0.25: the mixer's airmode raises it as far as the torque needs. The rotation ends at
+360° minus the braking lead $\omega^2/2\alpha$ ($\alpha$ = 500 rad/s²) minus 10°. The recovery is level, with
+full thrust while falling and the hover thrust once climbing, until tilt < 5° and $\lvert\omega\rvert$ < 1 rad/s.
+Then the mode and the height of before return. The IEKF runs on the gyro only for the length of the manoeuvre.
+Gate, numbers and validation: [ADR 0012](../decisions/0012-autonomous-flip.md).
+
 ### LAND and RTH
 
 With an altitude estimate: descent at `landSpeed` (0.7 m/s), 0.3 m/s below 1 m when a ToF sees the floor;

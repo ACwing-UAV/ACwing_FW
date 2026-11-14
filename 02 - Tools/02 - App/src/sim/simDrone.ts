@@ -33,6 +33,7 @@ const D2R = Math.PI / 180;
 const HOVER_THR = 0.5;
 const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
 const wrap360 = (a: number) => ((a % 360) + 360) % 360;
+const wrap180 = (a: number) => ((((a + 180) % 360) + 360) % 360) - 180;
 const approach = (v: number, target: number, rate: number, dt: number) => v + (target - v) * Math.min(1, rate * dt);
 const noise = (s: number) => (Math.random() * 2 - 1) * s;
 
@@ -249,6 +250,18 @@ export class SimDrone {
         this.event(EventLevel.INFO, EventCode.ARMED, "Armed");
         return ok;
       }
+      case OP.FLIP: {
+        // autonomous flip (ADR 0012): the gate of the firmware, simplified (no T/W model: a low battery refuses)
+        const axis = r.u8_();
+        if (axis > 3) return [AckResult.INVALID, Reason.NONE];
+        if (!this.armed || !this.inAir) return rej(Reason.NOT_ARMED);
+        if (this.auto !== AutoAction.NONE || this.failsafe || this.p("beginner") || this.mode === FlightMode.ACRO) return rej(Reason.NONE);
+        if (this.alt < this.p("flipMinH")) return rej(Reason.OUT_OF_RANGE);
+        if (this.battLevel >= BattWarn.LOW) return rej(Reason.THRUST_LOW);
+        this.auto = AutoAction.FLIP;
+        this.flipT = 0; this.flipAxis = axis;
+        return ok;
+      }
       case OP.LAUNCH: {
         // hand launch (ADR 0011): the ARM checks, the beginner rule, then armed with the motors stopped
         if (r.u8_() !== ARM_MAGIC[0] || r.u8_() !== ARM_MAGIC[1]) return [AckResult.INVALID, Reason.NONE];
@@ -417,6 +430,8 @@ export class SimDrone {
 
   private takeoffTarget = 1;
   private launchT = 0; // s in the hand since LAUNCH (the simulator tosses the drone after 3 s)
+  private flipT = 0; // s since FLIP
+  private flipAxis = 0;
   private fsLong = false;
   private collectiveThr = 0; // ACRO / ANGLE: collective 0..1 from the throttle stick
   private gfCeilEv = false;  // EVENT 23 sent for the current ceiling breach
@@ -440,7 +455,6 @@ export class SimDrone {
         this.roll = approach(this.roll, rIn * tilt, 8, dt);
       } else {
         const rate = 4 * this.p("maxYawRate") * beginner;
-        const wrap180 = (a: number) => ((((a + 180) % 360) + 360) % 360) - 180;
         this.pitch = wrap180(this.pitch + pIn * rate * dt);
         this.roll = wrap180(this.roll + rIn * rate * dt);
       }
@@ -825,7 +839,15 @@ export class SimDrone {
     if (this.landIdle && !rcStale && thr < -0.9) this.landIdle = false;
 
     if (this.armed && !this.killedFall) {
-      if (this.auto === AutoAction.LAUNCH) {
+      if (this.auto === AutoAction.FLIP) {
+        // climb 0.18 s, one turn in ~0.3 s, recover: the HUD shows the rotation, then the starting height
+        this.flipT += dt;
+        tgtVz = this.flipT < 0.18 ? 1 : this.flipT < 0.5 ? -0.5 : 0;
+        if (this.flipT >= 0.9) {
+          this.auto = AutoAction.NONE;
+          this.event(EventLevel.INFO, EventCode.FLIP_DONE, "Flip done");
+        }
+      } else if (this.auto === AutoAction.LAUNCH) {
         // in the hand, motors stopped; after 3 s the simulator tosses it: released, then the height held
         this.launchT += dt;
         if (!this.inAir && this.launchT >= 3) {
@@ -910,7 +932,11 @@ export class SimDrone {
 
     // attitude follows the horizontal acceleration (the hold modes and the automatic actions;
     // in ACRO / ANGLE the attitude is the pilot's, set in stepCollective)
-    if (!collective) {
+    if (this.auto === AutoAction.FLIP && this.flipT >= 0.18 && this.flipT < 0.5) {
+      const a = wrap180(((this.flipT - 0.18) / 0.32) * 360);
+      if (this.flipAxis <= 1) this.roll = this.flipAxis === 0 ? a : -a;
+      else this.pitch = this.flipAxis === 2 ? -a : a;          // the HUD's pitch is + nose up
+    } else if (!collective) {
       const aN = (tgtVN - this.vN) * 2, aE = (tgtVE - this.vE) * 2;
       const aF = aN * Math.cos(h) + aE * Math.sin(h), aR = -aN * Math.sin(h) + aE * Math.cos(h);
       this.pitch = approach(this.pitch, this.inAir ? clamp(Math.atan2(aF, 9.81) / D2R, -this.p("maxTilt"), this.p("maxTilt")) : 0, 6, dt);

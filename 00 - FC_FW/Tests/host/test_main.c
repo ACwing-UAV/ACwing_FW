@@ -12,6 +12,7 @@
 #include "ack_cache.h"
 #include "fc_core.h"
 #include "launch.h"
+#include "flip.h"
 #include "ctl_api.h"
 #include "params.h"
 #include "cfg_store.h"
@@ -171,7 +172,7 @@ static void test_takeoff_land(void)
     now = 1000;
     heartbeat();
     plant_t pl = { 0, 0, 0.42f, 0 };
-    fc_vert_t v = { 1, 0, 0, 0, 0, 0, 1.0f, 0xFF, 0, 0, { 0, 0 }, 0, 1.0f, { 0, 0, 0 }, 0, 0, 0 };
+    fc_vert_t v = { 1, 0, 0, 0, 0, 0, 1.0f, 0xFF, 0, 0, { 0, 0 }, 0, 1.0f, { 0, 0, 0 }, 0, 0, 0, { 0, 0, 0 } };
     fc_service(now, 1, &v);
     const uint8_t arm[2] = { 0xA5, 0x5A };
     fc_res_t r = post(PV2_OP_ARM, 1, arm, 2, &v);
@@ -232,7 +233,7 @@ static void test_takeoff_tof(void)
     fc_setup(PV2_S_IMU | PV2_S_BARO | PV2_S_TOF | PV2_S_FLOW);
     now = 1000; heartbeat();
     plant_t pl = { 0, 0, 0.40f, 0 };
-    fc_vert_t v = { 1, 0, 0, 0, 1, 0, 1.0f, 80, 0, 0, { 0, 0 }, 0, 1.0f, { 0, 0, 0 }, 0, 0, 0 };
+    fc_vert_t v = { 1, 0, 0, 0, 1, 0, 1.0f, 80, 0, 0, { 0, 0 }, 0, 1.0f, { 0, 0, 0 }, 0, 0, 0, { 0, 0, 0 } };
     const uint8_t arm[2] = { 0xA5, 0x5A };
     fc_res_t r = post(PV2_OP_ARM, 1, arm, 2, &v);
     const uint16_t alt = 150;
@@ -378,7 +379,7 @@ static void test_app_link_failsafe(void)
     fc_setup(PV2_S_IMU | PV2_S_BARO);
     now = 1000; heartbeat();
     plant_t pl = { 0, 0, 0.42f, 0 };
-    fc_vert_t v = { 1, 0, 0, 0, 0, 0, 1.0f, 0xFF, 0, 0, { 0, 0 }, 0, 1.0f, { 0, 0, 0 }, 0, 0, 0 };
+    fc_vert_t v = { 1, 0, 0, 0, 0, 0, 1.0f, 0xFF, 0, 0, { 0, 0 }, 0, 1.0f, { 0, 0, 0 }, 0, 0, 0, { 0, 0, 0 } };
     const uint8_t arm[2] = { 0xA5, 0x5A };
     (void)post(PV2_OP_ARM, 1, arm, 2, &v);
     (void)post(PV2_OP_TAKEOFF, 2, NULL, 0, &v);
@@ -469,7 +470,7 @@ static void test_pos_hold_flags(void)
     now = 1000;
     s_inv_bad = 0;
     plant_t pl = { 0, 0, 0.42f, 0 };
-    fc_vert_t v = { 1, 0, 0, 1, 1, 0, 1.0f, 80, 0, 0, { 0, 0 }, 0, 1.0f, { 0, 0, 0 }, 0, 0, 0 };
+    fc_vert_t v = { 1, 0, 0, 1, 1, 0, 1.0f, 80, 0, 0, { 0, 0 }, 0, 1.0f, { 0, 0, 0 }, 0, 0, 0, { 0, 0, 0 } };
     (void)post(PV2_OP_SET_MODE, 1, (const uint8_t[1]){ PV2_MODE_ANGLE }, 1, &v);
     run_pos(&pl, &v, 200, -1000, 0, 0);
     r = post(PV2_OP_ARM, 2, arm, 2, &v);
@@ -536,7 +537,7 @@ static void test_manual_collective(void)
     fc_setup(PV2_S_IMU | PV2_S_BARO);
     now = 1000;
     plant_t pl = { 0, 0, 0.42f, 0 };
-    fc_vert_t v = { 1, 0, 0, 0, 0, 0, 1.0f, 0xFF, 0, 0, { 0, 0 }, 0, 1.0f, { 0, 0, 0 }, 0, 0, 0 };
+    fc_vert_t v = { 1, 0, 0, 0, 0, 0, 1.0f, 0xFF, 0, 0, { 0, 0 }, 0, 1.0f, { 0, 0, 0 }, 0, 0, 0, { 0, 0, 0 } };
     run_plant(&pl, &v, 200, 800);                       /* cockpit closed with the throttle high */
     run_plant(&pl, &v, 600, INT16_MIN);                 /* RC older than 0.5 s: slide-to-arm allowed */
     r = post(PV2_OP_ARM, 1, arm, 2, &v);
@@ -673,7 +674,7 @@ static void test_ctrl_loop(void)
     fc_setup(PV2_S_IMU | PV2_S_BARO);
     ctrl_init();
     now = 1000;
-    fc_vert_t v = { 1, 0, 0, 0, 0, 0, 1.0f, 0xFF, 0, 0, { 0, 0 }, 0, 1.0f, { 0, 0, 0 }, 0, 0, 0 };
+    fc_vert_t v = { 1, 0, 0, 0, 0, 0, 1.0f, 0xFF, 0, 0, { 0, 0 }, 0, 1.0f, { 0, 0, 0 }, 0, 0, 0, { 0, 0, 0 } };
     run_plant(NULL, &v, 100, -1000);
     ctrl_steps(48, q0, g0);
     CHECK(ctrl_motor_pct(0) == 0 && !ctrl_service(now), "disarmed: no motor output");
@@ -901,7 +902,7 @@ static void test_launch_core(void)
     fc_state_t s; fc_setpoint_t sp; fc_res_t r;
     fc_setup(PV2_S_IMU | PV2_S_BARO);
     now = 1000;
-    fc_vert_t v = { 1, 1.2f, 0, 0, 0, 0, 1.0f, 0xFF, 0, 0, { 0, 0 }, 0, 1.0f, { 0, 0, 0 }, 0, 0, 4.1f };
+    fc_vert_t v = { 1, 1.2f, 0, 0, 0, 0, 1.0f, 0xFF, 0, 0, { 0, 0 }, 0, 1.0f, { 0, 0, 0 }, 0, 0, 4.1f, { 0, 0, 0 } };
     lv_run(&v, 200, 1.0f, 0.0f);
     /* refusals */
     v.v_cell = 3.0f;
@@ -1008,7 +1009,7 @@ static void test_ctl_api(void)
     fc_setup(PV2_S_IMU | PV2_S_BARO);
     ctrl_init();
     now = 1000;
-    fc_vert_t v = { 1, 1.25f, 0, 0, 0, 0, 1.0f, 0xFF, 0, 0, { 0, 0 }, 0, 1.0f, { 0, 0, 0 }, 0, 0, 0 };
+    fc_vert_t v = { 1, 1.25f, 0, 0, 0, 0, 1.0f, 0xFF, 0, 0, { 0, 0 }, 0, 1.0f, { 0, 0, 0 }, 0, 0, 0, { 0, 0, 0 } };
     CHECK(ctl_active() == 0 && !strcmp(ctl_active_name(), "cascade_pid"), "default law: cascade_pid");
     CHECK(ctl_register(&k_probe) == 1 && ctl_register(&k_probe) == 1, "a second law registered as index 1 (once)");
     { uint8_t why; (void)params_set(105, 1.0f, &why); }
@@ -1045,6 +1046,96 @@ static void test_ctl_api(void)
     run_plant(NULL, &v, 40, -1000);
     CHECK(ctl_active() == 0, "disarmed: back to cascade_pid");
     ctrl_init();
+}
+
+/* ------------------------------------------------------------ autonomous flip through the flight core (ADR 0012) */
+static void fv_run(fc_vert_t *v, uint32_t ms)
+{
+    for (uint32_t k = 0; k < ms / 4; ++k) { now += 4; if (k % 25 == 0) heartbeat(); fc_service(now, 1, v); }
+}
+
+static int take_event(uint16_t code, int32_t *arg)
+{
+    fc_event_t e; int n = 0;
+    while (fc_take_event(&e)) if (e.code == code) { n++; if (arg) *arg = e.arg; }
+    return n;
+}
+
+static void test_flip_core(void)
+{
+    const uint8_t mg[2] = { 0xA5, 0x5A };
+    fc_state_t s; fc_setpoint_t sp; fc_res_t r; int32_t arg = -1;
+    fc_setup(PV2_S_IMU | PV2_S_BARO);
+    now = 1000;
+    fc_vert_t v = { 1, 0.0f, 0, 0, 0, 0, 1.0f, 0xFF, 0, 0, { 0, 0 }, 0, 1.0f, { 0, 0, 0 }, 0, 0, 4.1f, { 0, 0, 0 } };
+    fv_run(&v, 200);
+    (void)post(PV2_OP_SET_MODE, 1, (const uint8_t[1]){ PV2_MODE_ALT_HOLD }, 1, &v);
+    r = post(PV2_OP_ARM, 2, mg, 2, &v);
+    CHECK(r.result == PV2_ACK_OK, "arm");
+    g_fc_dbg_in_air = 1;
+    v.h = 3.0f;
+    fv_run(&v, 300);
+    /* refusals */
+    r = post(PV2_OP_FLIP, 3, (const uint8_t[1]){ 7 }, 1, &v);
+    CHECK(r.result == PV2_ACK_INVALID, "FLIP axis 7: INVALID");
+    v.h = 1.5f;
+    r = post(PV2_OP_FLIP, 4, (const uint8_t[1]){ 0 }, 1, &v);
+    CHECK(r.result == PV2_ACK_REJECTED && r.reason == PV2_R_OUT_OF_RANGE, "1.5 m: OUT_OF_RANGE (%u)", r.reason);
+    v.h = 3.0f; v.v_cell = 3.3f;
+    r = post(PV2_OP_FLIP, 5, (const uint8_t[1]){ 0 }, 1, &v);
+    CHECK(r.result == PV2_ACK_REJECTED && r.reason == PV2_R_THRUST_LOW, "3.3 V/cell: THRUST_LOW (%u)", r.reason);
+    v.v_cell = 4.1f; v.w = 2.0f;
+    r = post(PV2_OP_FLIP, 6, (const uint8_t[1]){ 0 }, 1, &v);
+    CHECK(r.result == PV2_ACK_REJECTED && r.reason == PV2_R_NOT_STILL, "rotating: NOT_STILL (%u)", r.reason);
+    v.w = 0.0f;
+    fv_run(&v, 100);
+    (void)take_event(0, NULL);
+    /* the flip: climb, rotate, recover, done */
+    r = post(PV2_OP_FLIP, 7, (const uint8_t[1]){ FL_ROLL_RIGHT }, 1, &v);
+    CHECK(r.result == PV2_ACK_OK, "FLIP roll right accepted (%u/%u)", r.result, r.reason);
+    fc_snapshot(&s); fc_setpoint(&sp);
+    CHECK(s.autom == PV2_AUTO_FLIP && sp.thrust > 0.95f && fc_vector_hold(), "climb: full thrust, the estimator on the gyro only (thrust %.2f)", sp.thrust);
+    fv_run(&v, 200);
+    fc_setpoint(&sp);
+    CHECK(sp.roll_rate > 20.0f && sp.thrust < 0.5f, "rotate: roll rate %.1f rad/s, low collective %.2f", sp.roll_rate, sp.thrust);
+    v.w_b[0] = 24.4f; v.w = 24.4f;
+    fv_run(&v, 252);                                      /* about 350 deg at 24.4 rad/s */
+    fc_setpoint(&sp);
+    CHECK(fabsf(sp.roll_rate) < 1e-6f && fabsf(sp.roll) < 1e-6f && fc_vector_hold(), "recover: level attitude, still on the gyro");
+    v.w_b[0] = 0.0f; v.w = 0.0f; v.h = 2.8f;
+    fv_run(&v, 200);
+    fc_snapshot(&s); fc_setpoint(&sp);
+    CHECK(s.autom == PV2_AUTO_NONE && s.mode == PV2_MODE_ALT_HOLD && fabsf(sp.h_sp - 3.0f) < 0.01f && !fc_vector_hold(),
+          "done: ALT_HOLD again, back to the starting height (%.2f)", sp.h_sp);
+    CHECK(take_event(PV2_E_FLIP_DONE, &arg) == 1 && arg == 20, "EVENT 13 with the height lost (%d cm)", (int)arg);
+    /* a stick moved during the rotation: cut short, recovered, EVENT 14 */
+    v.h = 3.0f; fv_run(&v, 100);
+    r = post(PV2_OP_FLIP, 8, (const uint8_t[1]){ FL_PITCH_FWD }, 1, &v);
+    CHECK(r.result == PV2_ACK_OK, "FLIP pitch forward");
+    fv_run(&v, 220);
+    {
+        uint8_t b[9]; int16_t thr = 0, yaw = 0, pitch = 700, roll = 0;
+        memcpy(&b[0], &thr, 2); memcpy(&b[2], &yaw, 2); memcpy(&b[4], &pitch, 2); memcpy(&b[6], &roll, 2); b[8] = 0;
+        cmd(PV2_OP_RC, 0, b, sizeof b);
+    }
+    fv_run(&v, 300);
+    fc_snapshot(&s);
+    CHECK(s.autom == PV2_AUTO_NONE && take_event(PV2_E_FLIP_ABORTED, &arg) == 1 && arg == ((FL_ROTATE << 8) | FL_AB_STICK),
+          "stick in the rotation: cut, recovered, EVENT 14 (arg %04X)", (unsigned)arg);
+    /* never level again: EVENT 14 and LAND */
+    v.h = 3.0f; fv_run(&v, 600);
+    r = post(PV2_OP_FLIP, 9, (const uint8_t[1]){ FL_ROLL_LEFT }, 1, &v);
+    CHECK(r.result == PV2_ACK_OK, "FLIP roll left (%u/%u)", r.result, r.reason);
+    v.w_b[0] = -24.4f;
+    fv_run(&v, 500);
+    v.w_b[0] = 0.0f; v.cos_tilt = 0.3f;
+    fv_run(&v, 1200);
+    fc_snapshot(&s);
+    CHECK(s.autom == PV2_AUTO_LAND && take_event(PV2_E_FLIP_ABORTED, &arg) >= 1 && (arg & 0xFF) == FL_AB_NOT_LEVEL,
+          "not level within 1 s: EVENT 14, LAND (auto %u, arg %04X)", s.autom, (unsigned)arg);
+    v.cos_tilt = 1.0f;
+    g_fc_dbg_in_air = 0;
+    (void)post(PV2_OP_KILL, 10, "KILL", 4, &v);
 }
 
 static void test_alt_est(void)
@@ -1191,7 +1282,7 @@ static void test_app(void)
     ac.hw_rev = 'N'; ac.n_motors = 4; ac.uid[0] = 0x12345678; ac.get_init = fake_init;
     app_init(&ac);
 
-    fc_vert_t v = { 1, 0, 0, 0, 0, 0, 1.0f, 0xFF, 0, 0, { 0, 0 }, 0, 1.0f, { 0, 0, 0 }, 0, 0, 0 };
+    fc_vert_t v = { 1, 0, 0, 0, 0, 0, 1.0f, 0xFF, 0, 0, { 0, 0 }, 0, 1.0f, { 0, 0, 0 }, 0, 0, 0, { 0, 0, 0 } };
     tlm_ble_set_state(TLM_BLE_CONNECTED);
     tlm_ble_set_state(TLM_BLE_STREAMING);
     appl_on_connect();
@@ -1408,6 +1499,7 @@ int main(void)
     test_pos_hold_flags();
     test_launch_core();
     test_ctl_api();
+    test_flip_core();
     test_alt_est();
     test_drivers();
     test_checks_flow();

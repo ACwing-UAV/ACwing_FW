@@ -131,6 +131,11 @@ static const char *ev_text(uint16_t code)
     case PV2_E_HOME_SET:           return "Home set";
     case PV2_E_TAKEOFF_ABORTED:    return "Takeoff aborted: no lift-off";
     case PV2_E_RADIO_REFUSED:      return "Radio switch refused";
+    case PV2_E_LAUNCH_READY:       return "Launch ready: toss it up";
+    case PV2_E_LAUNCH_RELEASED:    return "Launched";
+    case PV2_E_LAUNCH_ABORTED:     return "Launch cancelled";
+    case PV2_E_FLIP_DONE:          return "Flip done";
+    case PV2_E_FLIP_ABORTED:       return "Flip cut short";
     case PV2_E_FAILSAFE_APP_LINK:  return "App link lost: failsafe";
     case PV2_E_FAILSAFE_RADIO:     return "Radio lost: failsafe";
     case PV2_E_FAILSAFE_BATTERY:   return "Battery failsafe";

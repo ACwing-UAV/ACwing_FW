@@ -14,6 +14,7 @@
 #include "radio_fs.h"
 #include "rc_switches.h"
 #include "launch.h"
+#include "flip.h"
 #include <string.h>
 #include <math.h>
 
@@ -44,6 +45,10 @@ static uint8_t  s_radio_ctrl;      /* the RC radio has control                  
 static uint32_t s_radio_sil;       /* since the last valid radio frame              */
 static ln_t     s_ln;              /* hand launch (launch.c)                          */
 static ln_out_t s_lno;
+static fl_t     s_fl;              /* autonomous flip (flip.c)                        */
+static fl_out_t s_flo;
+static uint8_t  s_fl_mode;         /* mode before the flip, restored after it          */
+static float    s_fl_h0, s_fl_hmin;
 static rc_state_t s_radio;         /* last receiver state (switches)                 */
 static uint8_t  s_radio_took;      /* the radio took control on this step            */
 static uint8_t  s_exec_radio;      /* the command being executed comes from the radio switches */
@@ -138,13 +143,14 @@ void fc_batt_heartbeat(uint32_t now)       { s_batt_hb_ms = now; SPSC_BARRIER();
 
 void fc_set_sensors(uint16_t sensors) { s_sensors = sensors; }
 void fc_setpoint(fc_setpoint_t *out)  { *out = s_sp; }
+uint8_t fc_vector_hold(void)          { return (uint8_t)(s_auto == PV2_AUTO_FLIP && s_flo.vector_hold); }
 
 uint8_t fc_is_core_op(uint8_t op)
 {
     switch (op) {
     case PV2_OP_ARM: case PV2_OP_DISARM: case PV2_OP_TAKEOFF: case PV2_OP_LAND:
     case PV2_OP_RTH: case PV2_OP_HOLD: case PV2_OP_KILL: case PV2_OP_SET_MODE:
-    case PV2_OP_MOTOR_TEST: case FC_OP_MOTOR_STOP: case PV2_OP_LAUNCH:
+    case PV2_OP_MOTOR_TEST: case FC_OP_MOTOR_STOP: case PV2_OP_LAUNCH: case PV2_OP_FLIP:
         return 1u;
     default:
         return 0u;
@@ -249,6 +255,7 @@ static void disarm(void)
     s_batt_lock = 0u;
     s_land_idle = 0u; s_air_thr = 0u; s_air_thr_ms = 0u; s_land_ol = 0u;
     ln_cancel(&s_ln); memset(&s_lno, 0, sizeof s_lno);
+    fl_cancel(&s_fl); memset(&s_flo, 0, sizeof s_flo);
     if (was) hover_track_disarm(s_flight_ms);
     if (was) event(PV2_EV_INFO, PV2_E_DISARMED, 0);
 }
@@ -308,6 +315,31 @@ static uint8_t launch_refusal(void)
     return (uint8_t)((!alt_sensor() || !alt_ok()) ? PV2_R_SENSOR_MISSING : PV2_R_NONE);
 }
 
+static uint8_t pilot_link_ok(void);
+
+/* FLIP: the entry gate of ADR 0012 §2 (flip.c), from the flight core's state; PV2_R_NONE = may start */
+static uint8_t flip_refusal(void)
+{
+    fl_gate_in_t g;
+    memset(&g, 0, sizeof g);
+    g.armed = s_armed; g.in_air = s_in_air;
+    g.auto_none = (uint8_t)(s_auto == PV2_AUTO_NONE);
+    g.failsafe = s_failsafe;
+    g.beginner = (uint8_t)(PARAM(P_BEGINNER) > 0.5f);
+    g.acro = (uint8_t)(s_mode == PV2_MODE_ACRO);
+    g.alt_valid = alt_ok();
+    g.height = (s_have_v && s_v.tof_valid) ? s_v.tof_h : s_v.h - s_h_ground;   /* above the floor, else the take-off */
+    g.ceiling_room = ceiling_h() - s_v.h;
+    g.tw = ln_tw_available(s_hover, s_v.v_cell);
+    g.cos_tilt = s_v.cos_tilt; g.w = s_v.w; g.vz = s_v.vz;
+    g.v_h = s_v.flow_usable ? sqrtf(s_v.vel_b[0] * s_v.vel_b[0] + s_v.vel_b[1] * s_v.vel_b[1]) : 0.0f;
+    g.batt_ok = (uint8_t)(s_batt_level == PV2_BATT_OK && !s_batt_stale);
+    g.link_ok = pilot_link_ok();
+    g.gyro_sat = s_v.gyro_sat;
+    g.min_h = PARAM(P_FLIP_MIN_H); g.min_tw = PARAM(P_FLIP_MIN_TW);
+    return fl_gate(&g);
+}
+
 /* ================================================================== */
 static void result(const fc_cmd_t *c, uint8_t res, uint8_t why)
 {
@@ -348,6 +380,17 @@ static void exec(const fc_cmd_t *c, uint32_t now, uint8_t est_running)
         if (why) { REJ(why); return; }
         OK();
         arm_now(now);
+        return;
+    }
+    case PV2_OP_FLIP: {
+        if (c->len < 1u || p[0] > FL_PITCH_BACK) { INVALID(PV2_R_NONE); return; }
+        const uint8_t why = flip_refusal();
+        if (why) { REJ(why == FL_REFUSED ? PV2_R_NONE : why); return; }
+        OK();
+        s_fl_mode = s_mode; s_fl_h0 = s_fl_hmin = s_v.h;
+        fl_start(&s_fl, p[0], PARAM(P_FLIP_RATE) * DEG2RAD);
+        memset(&s_flo, 0, sizeof s_flo);
+        s_auto = PV2_AUTO_FLIP;
         return;
     }
     case PV2_OP_LAUNCH: {
@@ -692,8 +735,9 @@ static void air_ground_no_alt(uint32_t now, uint32_t dt)
 /* ---- in air / on ground ---- */
 static void air_ground(uint32_t now, uint32_t dt)
 {
-    /* hand launch: held in the hand, lifted, thrown: launch.c decides when the drone flies */
-    if (s_auto == PV2_AUTO_LAUNCH) return;
+    /* hand launch: held in the hand, lifted, thrown: launch.c decides when the drone flies. Flip: inverted, the
+     * ToF and the touchdown test mean nothing until it is level again */
+    if (s_auto == PV2_AUTO_LAUNCH || s_auto == PV2_AUTO_FLIP) return;
     /* bench override (no altitude sensor, or forced): debugger flag */
     if (s_armed && g_fc_dbg_in_air && !s_in_air) {
         lift_off(); s_dbg_forced = 1u;
@@ -864,6 +908,17 @@ static void setpoints(uint32_t now, uint32_t dt_ms)
         return;
     }
 
+    if (s_auto == PV2_AUTO_FLIP) {
+        /* flip (flip.c): body rates while rotating, level otherwise; the collective of the phase */
+        r.att = s_flo.rate_mode ? CTL_ATT_RATE : CTL_ATT_ANGLE;
+        sp.roll = sp.pitch = 0.0f;
+        sp.roll_rate = s_flo.rate[0]; sp.pitch_rate = s_flo.rate[1]; sp.yaw_rate = 0.0f;
+        r.vert = CTL_V_COLLECTIVE;
+        r.collective = clampf(s_flo.collective, 0.0f, 1.0f);
+        s_ref_sp = sp; s_ref = r; ref_attitude(&s_ref, &s_ref_sp);
+        return;
+    }
+
     /* the pilot put the stick at the bottom after a touchdown: manual take-off allowed again */
     if (s_land_idle && !s_rc_stale && s_stick[0] < FC_THR_LOW) s_land_idle = 0u;
 
@@ -978,6 +1033,37 @@ static void launch_service(uint8_t est_running, uint32_t dt_ms)
     else if (s_lno.phase == LN_ABORT) { const uint8_t r = s_lno.abort_reason; ln_cancel(&s_ln); launch_abort(r); }
 }
 
+/* ---- autonomous flip (flip.c, ADR 0012): the module decides, the core applies ---- */
+static void flip_service(uint8_t est_running, uint32_t dt_ms)
+{
+    if (s_auto != PV2_AUTO_FLIP) {                     /* ended by a command, a failsafe or a disarm */
+        if (s_fl.phase) { fl_cancel(&s_fl); memset(&s_flo, 0, sizeof s_flo); }
+        return;
+    }
+    fl_in_t in;
+    memset(&in, 0, sizeof in);
+    memcpy(in.w, s_v.w_b, sizeof in.w);
+    in.cos_tilt = s_v.cos_tilt; in.vz = s_v.vz; in.hover = s_hover;
+    if (!s_rc_stale) in.stick = fmaxf(fabsf(s_stick[2]), fabsf(s_stick[3]));
+    in.link_ok = pilot_link_ok(); in.gyro_sat = s_v.gyro_sat;
+    in.est_ok = (uint8_t)(est_running && s_have_v);
+    const uint8_t phase = s_fl.phase;
+    fl_step(&s_fl, &in, dt_ms, &s_flo);
+    if (s_v.h < s_fl_hmin) s_fl_hmin = s_v.h;
+    if (s_flo.phase == FL_DONE) {
+        s_auto = PV2_AUTO_NONE;
+        s_mode = s_fl_mode;                            /* the mode of before, at the starting height */
+        s_h_sp = s_fl_h0;
+        if (s_flo.abort_reason) event(PV2_EV_WARN, PV2_E_FLIP_ABORTED, (int32_t)((FL_ROTATE << 8) | s_flo.abort_reason));
+        else event(PV2_EV_INFO, PV2_E_FLIP_DONE, (int32_t)((s_fl_h0 - s_fl_hmin) * 100.0f + 0.5f));
+        fl_cancel(&s_fl);
+    } else if (s_flo.phase == FL_ABORT) {
+        event(PV2_EV_WARN, PV2_E_FLIP_ABORTED, (int32_t)((phase << 8) | s_flo.abort_reason));
+        fl_cancel(&s_fl);
+        s_auto = PV2_AUTO_LAND; s_touch_ms = 0u;       /* not level in time: land */
+    }
+}
+
 /* ---- horizontal position (pos_ctrl.c): after setpoints(), it may replace roll / pitch ---- */
 static uint8_t auto_holds_position(void)
 {
@@ -1032,7 +1118,7 @@ static void control_step(uint32_t dt_ms)
 /* ---- hover thrust (hover_track.c): the flight core only reports its state ---- */
 static uint8_t hover_airborne(uint32_t now)
 {
-    return (uint8_t)(s_in_air && alt_ok() && !s_v.tof_ground && s_auto != PV2_AUTO_LAUNCH &&
+    return (uint8_t)(s_in_air && alt_ok() && !s_v.tof_ground && s_auto != PV2_AUTO_LAUNCH && s_auto != PV2_AUTO_FLIP &&
         (now - s_lift_ms) > FC_HOVER_SPOOL_MS &&
         !(s_auto == PV2_AUTO_TAKEOFF && !s_to_lifted) &&
         !(s_v.tof_valid && s_v.tof_h < FC_HOVER_MIN_TOF_H) &&
@@ -1102,6 +1188,7 @@ void fc_service(uint32_t now, uint8_t est_running, const fc_vert_t *v)
     while (spsc_pop(&s_cmdq, &c)) exec(&c, now, est_running);
     radio_switches(now, est_running);
     launch_service(est_running, dt);
+    flip_service(est_running, dt);
 
     air_ground(now, dt);
 

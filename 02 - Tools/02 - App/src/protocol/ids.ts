@@ -59,6 +59,7 @@ export const OP = {
   KILL: 0x18,
   SET_MODE: 0x19,
   LAUNCH: 0x1a, // hand launch (ADR 0011), ARM magic, firmware >= 0.11
+  FLIP: 0x1b, // autonomous flip (ADR 0012), axis u8, firmware >= 0.13
   PARAM_GET: 0x20,
   PARAM_SET: 0x21,
   PARAM_SAVE: 0x22,
@@ -152,6 +153,8 @@ export enum AutoAction {
   FAILSAFE = 5,
   /** hand launch (ADR 0011): armed with the motors stopped until the toss, then recovery */
   LAUNCH = 6,
+  /** autonomous flip (ADR 0012) */
+  FLIP = 7,
 }
 
 /** FLIGHT.failsafe bits */
@@ -238,6 +241,9 @@ export enum EventCode {
   LAUNCH_READY = 10,
   LAUNCH_RELEASED = 11,
   LAUNCH_ABORTED = 12,
+  /** flip (firmware >= 0.13): INFO done (arg = height lost, cm), WARN aborted (arg = phase << 8 | reason) */
+  FLIP_DONE = 13,
+  FLIP_ABORTED = 14,
   FAILSAFE_APP_LINK = 20,
   FAILSAFE_RADIO = 21,
   FAILSAFE_BATTERY = 22,
@@ -375,6 +381,10 @@ export const PARAMS: ParamDef[] = [
   { id: 104, key: "launchDrop", def: 0, min: 0, max: 1, step: 1, options: [0, 1] },
   // control law (firmware 0.12, ADR 0013): 0 the default cascade, 1-3 laws registered in the firmware
   { id: 105, key: "ctlLaw", def: 0, min: 0, max: 3, step: 1, options: [0, 1, 2, 3] },
+  // autonomous flip (firmware 0.13, ADR 0012)
+  { id: 106, key: "flipRate", def: 1400, min: 600, max: 2000, step: 50, unit: "°/s" },
+  { id: 107, key: "flipMinH", def: 2, min: 1, max: 5, step: 0.1, unit: "m" },
+  { id: 108, key: "flipMinTw", def: 1.6, min: 1.3, max: 2.5, step: 0.05 },
 ];
 
 export const PARAM_BY_KEY: Record<string, ParamDef> = Object.fromEntries(PARAMS.map((p) => [p.key, p]));
