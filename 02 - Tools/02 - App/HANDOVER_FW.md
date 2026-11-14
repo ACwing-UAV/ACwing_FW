@@ -850,7 +850,7 @@ one is refused with `OUT_OF_RANGE` unless every stick moved at least **350 µs**
 700 µs over its range). 350 µs takes Spektrum at 100 % travel (1100–1900 µs) and refuses a calibration with the
 sticks moved only part of the way, which would scale a full deflection far beyond 1000. The result is applied at
 once (the receiver input uses it from its next frame) and at every boot; a sticks-calibrated drone maps centre →
-0 and each end → ±1000, throttle min → −1000. Configuration image version 3 (v2 images are migrated, sticks not
+0 and each end → ±1000, throttle min → −1000. Configuration image version 3, then 4 from firmware 0.10 (older images are migrated, sticks not
 calibrated).
 
 ## 11. Events

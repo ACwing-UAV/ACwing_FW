@@ -885,12 +885,12 @@ const cal_set_t *app_task_boot(const float mag_hi_default[3])
     cal_set_defaults(&s_img.bak, mag_hi_default);
     params_defaults();
     memcpy(s_img.name, "ACwing #1", 9);
-    cfg_image_t img;
     s_img.batt_used_scale_i = 1.0f;
-    if (cfg_load(&img) == 0) {
-        s_img = img;
+    /* straight into s_img: the image (~1.4 KB) is not put on the boot stack, which the interrupts use later;
+     * cfg_load() leaves it untouched (the defaults above) when no valid image is found */
+    if (cfg_load(&s_img) == 0) {
         float v[PARAM_COUNT];
-        cfg_params_get(&img, v);
+        cfg_params_get(&s_img, v);
         params_load(v, PARAM_COUNT);
         s_img.name[15] = '\0';
     }

@@ -19,8 +19,8 @@
 #include "calib_mgr.h"
 
 #define CFG_MAGIC        0x43574341u    /**< "ACWC" */
-#define CFG_VERSION      3u
-#define CFG_PARAM_SLOTS  48u            /**< room for parameters added later      */
+#define CFG_VERSION      4u
+#define CFG_PARAM_SLOTS  128u           /**< room for parameters added later (43 used in firmware 0.9) */
 
 /** one parameter: stored by id, so the table can grow without a migration */
 typedef struct {
@@ -29,8 +29,8 @@ typedef struct {
     float    value;
 } cfg_param_t;
 
-/** Version 3 (firmware 0.7: STICKS calibration in cal_set_t). Versions 1 (positional parameters, no battery)
- *  and 2 (no sticks) are migrated by cfg_load(); the next save writes version 3. */
+/** Version 4 (firmware 0.10: 128 parameter slots, 128 reserved bytes). Versions 1 (positional parameters, no
+ *  battery), 2 (no sticks) and 3 (48 slots) are migrated by cfg_load(); the next save writes version 4. */
 typedef struct {
     uint32_t    magic;
     uint16_t    version;
@@ -43,7 +43,7 @@ typedef struct {
     uint32_t    bak_mask;            /**< bit (type-1): bak holds a set for it      */
     float       batt_used_mah;       /**< charge used in the last flight            */
     float       batt_used_scale_i;   /**< current scale it was counted with         */
-    uint8_t     reserved[56];        /**< zero; for later fields                    */
+    uint8_t     reserved[128];       /**< zero; for later fields                    */
     uint32_t    crc;                 /**< CRC-32 of everything above               */
 } cfg_image_t;
 

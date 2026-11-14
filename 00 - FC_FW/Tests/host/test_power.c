@@ -1,7 +1,7 @@
 /*
  * Host tests of the battery chain: estimator (battery.c), BattTask signals,
  * battery failsafes in the flight core, BATTERY calibration, CHECKS item 1,
- * POWER frame, configuration image v1 -> v2 and v2 -> v3 migrations.
+ * POWER frame, configuration image v1 -> v2, v2 -> v3 and v3 -> v4 migrations.
  */
 #include "proto_v2.h"
 #include "tlm_ble.h"
@@ -711,7 +711,7 @@ typedef struct {
 } cal_v2_t;
 typedef struct {
     uint32_t magic; uint16_t version, size; uint32_t seq;
-    cfg_param_t params[CFG_PARAM_SLOTS]; char name[16]; cal_v2_t cal, bak; uint32_t bak_mask;
+    cfg_param_t params[48]; char name[16]; cal_v2_t cal, bak; uint32_t bak_mask;
     float batt_used_mah, batt_used_scale_i; uint8_t reserved[56]; uint32_t crc;
 } img_v2_t;
 
@@ -737,10 +737,55 @@ static void test_migration_v2(void)
           img.cal.done_mask == 0x2F && img.bak.gyro.bias[0] == 0.003f && img.bak_mask == 2, "v2 calibrations kept");
     CHECK(img.batt_used_mah == 123.0f && img.batt_used_scale_i == 0.97f, "v2 last flight kept");
     CHECK(img.cal.sticks.max[0] == 0 && !(img.cal.done_mask & (1u << (PV2_CAL_STICKS - 1))), "sticks not calibrated");
-    CHECK(cfg_save(&img) == 0, "save v3");
+    CHECK(cfg_save(&img) == 0, "save the current version");
     static cfg_image_t img2;
     CHECK(cfg_load(&img2) == 0 && img2.version == CFG_VERSION && img2.seq == 42 && img2.cal.battery.scale_v == 108.0f,
-          "reload v3 (seq %u)", (unsigned)img2.seq);
+          "reload the current version (seq %u)", (unsigned)img2.seq);
+}
+
+/* version 3 image, as firmware 0.8-0.9 wrote it: 48 parameter slots, 56 reserved bytes */
+typedef struct {
+    uint32_t magic; uint16_t version, size; uint32_t seq;
+    cfg_param_t params[48]; char name[16]; cal_set_t cal, bak; uint32_t bak_mask;
+    float batt_used_mah, batt_used_scale_i; uint8_t reserved[56]; uint32_t crc;
+} img_v3_t;
+
+static void test_migration_v3(void)
+{
+    host_flash_erase();
+    static img_v3_t v3; memset(&v3, 0, sizeof v3);
+    v3.magic = CFG_MAGIC; v3.version = 3; v3.size = sizeof v3; v3.seq = 90;
+    v3.params[0].id = g_param_def[P_TAKEOFF_ALT].id; v3.params[0].value = 2.1f;
+    v3.params[47].id = g_param_def[P_RC_MODE_MAP].id; v3.params[47].value = 2.0f;   /* the last v3 slot */
+    memcpy(v3.name, "Three", 5);
+    v3.cal.sticks.centre[1] = 1496; v3.cal.sticks.max[0] = 1990; v3.cal.sticks.aux_pos[1] = 3;
+    v3.cal.done_mask = 0xFF; v3.bak.accel.off[2] = 0.03f; v3.bak_mask = 1;
+    v3.batt_used_mah = 210.0f; v3.batt_used_scale_i = 1.05f;
+    v3.crc = cfg_crc32(&v3, offsetof(img_v3_t, crc));
+    (void)cfg_flash_write(0, &v3, sizeof v3);
+
+    static cfg_image_t img;
+    CHECK(sizeof(img_v3_t) == 708u, "test layout of version 3 (%u)", (unsigned)sizeof(img_v3_t));
+    CHECK(cfg_load(&img) == 0 && img.seq == 90, "v3 image loaded");
+    float v[PARAM_COUNT];
+    cfg_params_get(&img, v);
+    CHECK(v[P_TAKEOFF_ALT] == 2.1f && v[P_RC_MODE_MAP] == 2.0f && v[P_HOVER_THR] == g_param_def[P_HOVER_THR].def,
+          "v3 parameters kept (the last slot too), missing ones default");
+    int empty = 1;
+    for (unsigned k = 48; k < CFG_PARAM_SLOTS; ++k) if (img.params[k].id) empty = 0;
+    CHECK(empty, "the new slots are empty");
+    CHECK(!strcmp(img.name, "Three") && img.cal.sticks.centre[1] == 1496 && img.cal.sticks.max[0] == 1990 &&
+          img.cal.sticks.aux_pos[1] == 3 && img.cal.done_mask == 0xFF && img.bak.accel.off[2] == 0.03f &&
+          img.bak_mask == 1, "v3 name and calibrations kept");
+    CHECK(img.batt_used_mah == 210.0f && img.batt_used_scale_i == 1.05f, "v3 last flight kept");
+    /* every parameter fits, then a save writes version 4 and reads back */
+    cfg_params_put(&img, v);
+    CHECK(cfg_save(&img) == 0, "save v4");
+    static cfg_image_t img2;
+    CHECK(cfg_load(&img2) == 0 && img2.version == 4u && img2.seq == 91 && img2.cal.sticks.centre[1] == 1496,
+          "reload v4 (seq %u)", (unsigned)img2.seq);
+    cfg_params_get(&img2, v);
+    CHECK(v[P_RC_MODE_MAP] == 2.0f, "v4 parameters");
 }
 
 int main(void)
@@ -752,6 +797,7 @@ int main(void)
     test_power_frame();
     test_migration();
     test_migration_v2();
+    test_migration_v3();
     printf("power: %d passed, %d failed\n", s_pass, s_fail);
     return s_fail ? 1 : 0;
 }
