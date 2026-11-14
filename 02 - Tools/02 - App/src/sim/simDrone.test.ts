@@ -126,3 +126,31 @@ describe("simulator: hand launch (ADR 0011)", () => {
     expect(Math.abs(p.alt - h0)).toBeLessThan(0.3);       // holds the height reached
   });
 });
+
+describe("simulator: autonomous flip (ADR 0012)", () => {
+  it("FLIP: refused on the ground and too low; in the air one turn, then back to the hold", () => {
+    const d = new SimDrone("indoor");
+    d.onSubscribe();
+    let seq = 1;
+    fly(d, 0.2, { throttle: -1000 });
+    d.command(Cmd.arm(seq++));
+    const p = d as unknown as Peek;
+    d.command(Cmd.flip(seq++, 0));
+    expect(p.auto).toBe(AutoAction.NONE);                 // on the ground: refused
+    d.command(Cmd.takeoff(seq++, 1));
+    fly(d, 4, { throttle: 0 });
+    d.command(Cmd.flip(seq++, 0));
+    expect(p.auto).toBe(AutoAction.NONE);                 // 1 m: below flipMinH (2 m)
+    d.command(Cmd.takeoff(seq++, 3));                      // ignored in the air: climb with the stick instead
+    fly(d, 2, { throttle: 800 });
+    fly(d, 2, { throttle: 0 });
+    expect(p.alt).toBeGreaterThan(2);
+    d.command(Cmd.flip(seq++, 2));
+    expect(p.auto).toBe(AutoAction.FLIP);
+    fly(d, 0.35, { throttle: 0 });
+    expect(Math.abs(p.pitch)).toBeGreaterThan(30);         // rotating
+    fly(d, 1, { throttle: 0 });
+    expect(p.auto).toBe(AutoAction.NONE);
+    expect(Math.abs(p.pitch)).toBeLessThan(5);
+  });
+});

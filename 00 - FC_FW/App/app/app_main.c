@@ -470,6 +470,7 @@ static void flight_service(uint32_t *lastSvc)
     v.a_w[0] = s_a_w[0]; v.a_w[1] = s_a_w[1]; v.a_w[2] = s_a_w[2];
     v.w = sqrtf(s_est.omega[0]*s_est.omega[0] + s_est.omega[1]*s_est.omega[1] + s_est.omega[2]*s_est.omega[2]);
     v.gyro_sat = s_gyro_sat; s_gyro_sat = 0u;
+    memcpy(v.w_b, s_est.omega, sizeof v.w_b);
     {
         batt_state_t b;
         memset(&b, 0, sizeof b);
@@ -477,6 +478,7 @@ static void flight_service(uint32_t *lastSvc)
         v.v_cell = (b.present && b.cells) ? b.cell_v : 0.0f;
     }
     fc_service(now, est_ok, &v);
+    s_est.vector_hold = fc_vector_hold();          /* flip: gyro only until level again (ADR 0012) */
     (void)ctrl_service(now);              /* rate loop stalled while armed: motors off */
     {
         static uint8_t wasArmed;

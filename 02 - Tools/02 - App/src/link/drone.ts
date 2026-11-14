@@ -286,6 +286,7 @@ export class Drone {
   /* ---- convenience ---- */
   arm = () => this.send((s) => Cmd.arm(s));
   launch = () => this.send((s) => Cmd.launch(s));
+  flip = (axis: number) => this.send((s) => Cmd.flip(s, axis));
   disarm = () => this.send((s) => Cmd.disarm(s));
   takeoff = (altM: number) => this.send((s) => Cmd.takeoff(s, altM));
   land = () => this.send((s) => Cmd.land(s));

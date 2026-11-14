@@ -87,6 +87,10 @@ struct est_s {
     calib_t      cal;
     accwin_t     win;
     uint8_t      running;
+    /** 1: the accelerometer and magnetometer updates are skipped, the attitude propagates on the gyro only.
+     *  Set by the flight core during a flip (ADR 0012), where neither measures the gravity or the field. The
+     *  stillness detector, the acc window and the callbacks run as usual. */
+    uint8_t      vector_hold;
 
     /** step accumulators */
     float    dth[3], gsum[3];

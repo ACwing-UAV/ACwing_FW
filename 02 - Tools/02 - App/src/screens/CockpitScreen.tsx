@@ -167,6 +167,16 @@ export function CockpitScreen() {
   const actions = (
     <div className="ck-actions">
       <button className="btn" onClick={() => run(drone.takeoff(drone.param("takeoffAlt")))} disabled={!armed || inAir || battLock} title={lockTitle}><Icon name="up" size={18} />{t("cockpit.autoTakeoff")}</button>
+      {armed && inAir && !battLock && (
+        <div className="ck-flip" role="group" aria-label={t("cockpit.flip")}>
+          <span className="small muted">{t("cockpit.flip")}</span>
+          {([[2, "up", "cockpit.flipFwd"], [3, "down", "cockpit.flipBack"], [1, "arrowL", "cockpit.flipLeft"], [0, "arrowR", "cockpit.flipRight"]] as const).map(([ax, icon, key]) => (
+            <HoldButton key={ax} ms={800} onHold={() => run(drone.flip(ax))} className="btn icon" label={`${t(key)}, ${t("cockpit.flipHold")}`}>
+              <Icon name={icon} size={18} />
+            </HoldButton>
+          ))}
+        </div>
+      )}
       {!armed && connected && (
         <HoldButton ms={1500} onHold={() => run(drone.launch())} className="btn" label={`${t("cockpit.launch")}, ${t("cockpit.launchHold")}`}>
           <Icon name="up" size={18} />{t("cockpit.launch")}

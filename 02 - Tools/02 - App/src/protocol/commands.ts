@@ -30,6 +30,8 @@ export const Cmd = {
     cmd(OP.RC, seq, (w) => w.i16(rc.throttle).i16(rc.yaw).i16(rc.pitch).i16(rc.roll).u8(rc.buttons)),
   arm: (seq: number) => cmd(OP.ARM, seq, (w) => w.raw(ARM_MAGIC)),
   launch: (seq: number) => cmd(OP.LAUNCH, seq, (w) => w.raw(ARM_MAGIC)),
+  /** axis: 0 roll right, 1 roll left, 2 pitch forward, 3 pitch back */
+  flip: (seq: number, axis: number) => cmd(OP.FLIP, seq, (w) => w.u8(axis)),
   disarm: (seq: number) => cmd(OP.DISARM, seq),
   takeoff: (seq: number, altM: number) => cmd(OP.TAKEOFF, seq, (w) => w.u16(altM * 100)),
   land: (seq: number) => cmd(OP.LAND, seq),
