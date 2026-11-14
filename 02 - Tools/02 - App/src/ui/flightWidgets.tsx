@@ -60,6 +60,10 @@ export function Hud({ rollRight, pitchUp, width = 520 }: { rollRight: number; pi
   const sx = r * Math.sin(HUD_ROLL_MAX * Math.PI / 180), sy = cy - r * Math.cos(HUD_ROLL_MAX * Math.PI / 180);
   return (
     <svg viewBox="0 0 520 340" width={width} role="img" aria-label={`Roll ${rollRight.toFixed(0)}°, pitch ${pitchUp.toFixed(0)}°`} style={{ overflow: "visible" }}>
+      {/* the ladder stays inside the HUD box (it ran over the heading tape at large pitch angles); the coloured
+          horizon behind the cockpit (HorizonBackdrop) shows the attitude everywhere */}
+      <defs><clipPath id="hudbox"><rect x="-400" y="0" width="1320" height="340" /></clipPath></defs>
+      <g clipPath="url(#hudbox)">
       <g transform={`rotate(${-rollRight} ${cx} ${cy}) translate(0 ${off})`} stroke="var(--hud-line)">
         <line x1={cx - 240} y1={cy} x2={cx - 55} y2={cy} strokeWidth="2" />
         <line x1={cx + 55} y1={cy} x2={cx + 240} y2={cy} strokeWidth="2" />
@@ -71,6 +75,7 @@ export function Hud({ rollRight, pitchUp, width = 520 }: { rollRight: number; pi
             <text x={cx + 121} y={cy + 4 - p * ppd} textAnchor="start" fontSize="12" fill="var(--hud-line)" stroke="none" fontFamily="Chakra Petch, sans-serif">{p}</text>
           </g>
         ))}
+      </g>
       </g>
       {/* aircraft symbol: wings 36 px each side of a 24 px chevron whose apex is at the centre */}
       <path d={`M${cx - 48} ${cy} h36 l12 12 l12 -12 h36`} fill="none" stroke="var(--accent)" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
@@ -90,7 +95,9 @@ export function HeadingTape({ heading, width = 520 }: { heading: number; width?:
   for (let d = Math.floor((heading - 70) / 10) * 10; d <= heading + 70; d += 10) {
     const x = 260 + (d - heading) * pxPerDeg;
     const dd = ((d % 360) + 360) % 360;
-    const lbl = dd === 0 ? "N" : dd === 90 ? "E" : dd === 180 ? "S" : dd === 270 ? "W" : dd % 30 === 0 ? String(dd) : "";
+    // a label is drawn only when it fits whole: near the edges "210" was clipped to "10"
+    const name = dd === 0 ? "N" : dd === 90 ? "E" : dd === 180 ? "S" : dd === 270 ? "W" : dd % 30 === 0 ? String(dd) : "";
+    const lbl = x >= 14 + 4 * name.length && x <= 506 - 4 * name.length ? name : "";
     ticks.push(
       <g key={d}>
         <line x1={x} y1={lbl ? 22 : 26} x2={x} y2={34} stroke="var(--text-2)" strokeWidth="1.5" />
@@ -119,6 +126,69 @@ export function BatteryIcon({ pct, warn }: { pct: number; warn: number }) {
       <rect x="1" y="1" width="28" height="16" rx="3" fill="none" stroke="var(--text)" strokeWidth="1.5" />
       <rect x="30" y="6" width="3" height="6" rx="1" fill="var(--text)" />
       <rect x="4" y="4" width={Math.max(1, 22 * pct / 100)} height="10" rx="1.5" fill={color} />
+    </svg>
+  );
+}
+
+/** Sky and ground behind the whole cockpit. Same viewBox, centre and pitch scale as Hud, so that placed in a box of
+ * the same size and position the horizon lines up with the HUD; the cockpit clips it to the screen. */
+export function HorizonBackdrop({ rollRight, pitchUp, width }: { rollRight: number; pitchUp: number; width: number }) {
+  const off = Math.max(-60, Math.min(60, pitchUp)) * 6;
+  return (
+    <svg viewBox="0 0 520 340" width={width} style={{ overflow: "visible" }} aria-hidden="true">
+      <defs>
+        <linearGradient id="hzsky" gradientUnits="userSpaceOnUse" x1="0" y1="170" x2="0" y2="-530">
+          <stop offset="0" stopColor="var(--sky-horizon)" /><stop offset="1" stopColor="var(--sky-zenith)" />
+        </linearGradient>
+        <linearGradient id="hzgnd" gradientUnits="userSpaceOnUse" x1="0" y1="170" x2="0" y2="870">
+          <stop offset="0" stopColor="var(--ground-horizon)" /><stop offset="1" stopColor="var(--ground-deep)" />
+        </linearGradient>
+      </defs>
+      <g transform={`rotate(${-rollRight} 260 170) translate(0 ${off})`}>
+        <rect x="-4000" y="-6000" width="8520" height="6170" fill="url(#hzsky)" />
+        <rect x="-4000" y="170" width="8520" height="6000" fill="url(#hzgnd)" />
+      </g>
+    </svg>
+  );
+}
+
+/** Heading-up compass: the drone points up, the card turns with the heading. North in red, home (when known) as an
+ * arrow, amber with "MAG" when the firmware reports magnetic interference (SYSTEM.estFlags bit 3). */
+export function MiniCompass({ heading, homeBearing, magBad, size = 116, labels }: {
+  heading: number; homeBearing: number | null; magBad: boolean; size?: number;
+  labels: { n: string; e: string; s: string; w: string; mag: string };
+}) {
+  const c = 60;
+  const ring = magBad ? "var(--warn)" : "var(--line-3)";
+  const ticks = [];
+  for (let d = 0; d < 360; d += 30) {
+    const lbl = d === 0 ? labels.n : d === 90 ? labels.e : d === 180 ? labels.s : d === 270 ? labels.w : "";
+    ticks.push(
+      <g key={d} transform={`rotate(${d} ${c} ${c})`}>
+        <line x1={c} y1="7" x2={c} y2={lbl ? 15 : 12} stroke={magBad ? "var(--warn)" : "var(--text-2)"} strokeWidth="1.5" />
+        {lbl && <text x={c} y="24" textAnchor="middle" dominantBaseline="middle" fontSize="11" fontWeight="700"
+          transform={`rotate(${heading - d} ${c} 24)`} fill={d === 0 ? "var(--crit)" : "var(--text)"}>{lbl}</text>}
+      </g>,
+    );
+  }
+  const hdg = String(Math.round(((heading % 360) + 360) % 360) % 360).padStart(3, "0");
+  return (
+    <svg viewBox="0 0 120 134" width={size} height={(size * 134) / 120} role="img" aria-label={`Heading ${hdg}°${magBad ? `, ${labels.mag}` : ""}`}>
+      <circle cx={c} cy={c} r="56" fill="color-mix(in srgb, var(--surface) 86%, transparent)" stroke={ring} strokeWidth="1.5" />
+      <g transform={`rotate(${-heading} ${c} ${c})`}>
+        {ticks}
+        {homeBearing !== null && (
+          <g transform={`rotate(${homeBearing} ${c} ${c})`}><path d={`M${c} 33 l-6 10 h12 z`} fill="var(--accent)" /></g>
+        )}
+      </g>
+      <path d={`M${c} 46 l-9 20 l9 -5 l9 5 z`} fill="var(--text)" />
+      <text x={c} y="85" textAnchor="middle" fontSize="15" fontWeight="700" fill={magBad ? "var(--warn)" : "var(--text)"} fontFamily="Chakra Petch, sans-serif">{hdg}°</text>
+      {magBad && (
+        <g>
+          <rect x={c - 16} y="119" width="32" height="14" rx="3" fill="var(--warn)" />
+          <text x={c} y="129.5" textAnchor="middle" fontSize="9.5" fontWeight="700" fill="var(--bg)">{labels.mag}</text>
+        </g>
+      )}
     </svg>
   );
 }

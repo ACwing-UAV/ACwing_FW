@@ -31,6 +31,7 @@ const en = {
     state: { 0: "OK", 1: "Check", 2: "Not ready", 3: "n/a" },
   },
   cockpit: {
+    dir: { n: "N", e: "E", s: "S", w: "W" }, mag: "MAG",
     armed: "ARMED", disarmed: "DISARMED", slideToDisarm: "ARMED · slide to disarm", slideToDisarmAria: "Slide to disarm (on the ground only)",
     flightMode: "Flight mode", flight: "Flight", autoTakeoff: "Auto takeoff", autoLand: "Auto land", rth: "RTH", rthLong: "Return to home",
     pause: "Pause / hover", kill: "MOTOR KILL", killHold: "hold for 2 s", killConfirm: "Stop the motors in flight? The drone will fall.",
