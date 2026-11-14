@@ -35,7 +35,11 @@ typedef struct {
     float    batt_cell_v;      /**< average cell, sagged and filtered              */
     float    batt_warn, batt_crit;   /**< params battWarn / battCrit                */
     uint8_t  usb_host;         /**< a USB host is connected (item 12, FAIL)         */
+    float    hover;            /**< hover thrust in use, normalised (item 13)       */
 } checks_in_t;
+
+/** item 13: WARN when hovering needs more than this fraction of the thrust left at the present voltage */
+#define CHECKS_THRUST_MARGIN 0.80f
 
 /** fills items (PV2_CHECKS_MAX), returns the count; *ready = no FAIL;
  * *battery_fail = the battery item is in FAIL (ARM -> BATTERY_LOW) */

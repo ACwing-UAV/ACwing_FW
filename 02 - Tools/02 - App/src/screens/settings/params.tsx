@@ -79,7 +79,8 @@ export function ParamNumber({ k, hint, suffix }: { k: string; hint?: string; suf
   const visible = useVisible();
   const id = `p-${k}`;
   const v = drone.param(k);
-  const dec = d.step >= 1 ? 0 : 2;
+  // decimals from the step (at least 2 for fractional values): rateD has a step of 0.0001
+  const dec = d.step >= 1 ? 0 : Math.max(2, Math.ceil(-Math.log10(d.step) - 1e-9));
   if (!visible(k)) return null;
   return (
     <Row label={<label htmlFor={id}>{t(`params.${k}`)}</label>} hint={hint}>

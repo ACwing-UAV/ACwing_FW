@@ -105,6 +105,23 @@ export function Controls() {
           <ParamSwitch k="beginner" hint={t("controls.beginnerHint")} />
         </section>
         <section className="card tight">
+          <div className="row first" style={{ minHeight: 48, flexDirection: "column", alignItems: "flex-start", justifyContent: "center", gap: 2, padding: "10px 0" }}>
+            <h2>{t("controls.tuning")}</h2><span className="small muted">{t("controls.tuningHint")}</span>
+          </div>
+          <ParamNumber k="hoverThr" hint={t("controls.hoverHint")} />
+          <ParamNumber k="rateP" />
+          <ParamNumber k="rateI" />
+          <ParamNumber k="rateD" />
+          <ParamNumber k="yawP" />
+          <ParamNumber k="yawI" />
+          <ParamNumber k="attP" suffix="1/s" />
+          <ParamNumber k="gyroLpf" suffix="Hz" />
+          <ParamNumber k="dtermLpf" suffix="Hz" />
+          <ParamNumber k="gyroNotch" hint={t("controls.notchHint")} suffix="Hz" />
+          <ParamNumber k="motorIdle" hint={t("controls.idleHint")} />
+          <ParamNumber k="thrCurve" hint={t("controls.curveHint")} />
+        </section>
+        <section className="card tight">
           <div className="row first" style={{ minHeight: 48 }}><h2>{t("controls.automatic")}</h2></div>
           <ParamSlider k="takeoffAlt" />
           <ParamSlider k="landSpeed" />

@@ -920,7 +920,7 @@ export class SimDrone {
 
   private emitCaps() {
     this.emit(FT.CAPS, M.encodeCaps({
-      proto: 2, fw: [0, 6, 1], hwRev: "H", model: this.outdoor ? Model.OUTDOOR : Model.INDOOR, sensors: this.sensors,
+      proto: 2, fw: [0, 7, 0], hwRev: "H", model: this.outdoor ? Model.OUTDOOR : Model.INDOOR, sensors: this.sensors,
       nMotors: this.nMotors, frame: FrameType.QUAD_X, cells: this.cells, name: this.name, serial: this.outdoor ? "ACW-0001" : "ACW-0002",
     }));
   }
@@ -1286,6 +1286,8 @@ export class SimDrone {
       { id: CheckId.CALIBRATION, state: this.compassCalibrated ? CheckState.OK : CheckState.WARN, value: this.compassCalibrated ? 0 : (1 << (CalType.COMPASS - 1)) << 8 },
       // 12 USB: the simulator is never plugged into a computer
       { id: CheckId.USB, state: CheckState.OK, value: 0 },
+      // 13 thrust margin (firmware >= 0.7): hover thrust 0.51 (T400) at the present cell voltage
+      { id: CheckId.THRUST, state: 0.51 * (4.2 / cell) ** 2 > 0.8 ? CheckState.WARN : CheckState.OK, value: Math.round(51 * (4.2 / cell) ** 2) },
     ];
     const ready = items.every((i) => i.state !== CheckState.FAIL);
     return { ready, items };

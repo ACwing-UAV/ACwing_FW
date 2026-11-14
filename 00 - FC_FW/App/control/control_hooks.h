@@ -32,4 +32,14 @@ void ctrl_init(void);
 void ctrl_rate_step(const ctrl_rate_in_t *in);      /**< 960 Hz */
 void ctrl_attitude_step(const ctrl_att_in_t *in);   /**< 240 Hz */
 
+/* phase 3 (app/ctrl_loop.c): the loops, the mixer and the motors */
+/** LEVEL calibration trim (deg), from the ImuTask when a calibration is applied */
+void    ctrl_set_level_trim(float roll_deg, float pitch_deg);
+/** motor output 0..100 % for the MOTORS frame (0 while disarmed); any task (byte reads) */
+uint8_t ctrl_motor_pct(uint8_t motor_index);
+/** ImuTask, ~250 Hz: armed and no rate step for CTRL_STALL_MS (the IMU or the estimator stopped) -> motors off.
+ *  Returns 1 while stalled. A motor command frozen at its last value would fly the drone away. */
+#define CTRL_STALL_MS 50u
+uint8_t ctrl_service(uint32_t now_ms);
+
 #endif /* CONTROL_HOOKS_H */

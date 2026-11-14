@@ -242,6 +242,8 @@ export enum EventCode {
   HIGH_VIBRATION = 41,
   MOTOR_HOT = 42,
   RADIO_OVERRIDE = 43,
+  /** WARN: hover thrust estimate outside 0.35..0.75, arg = thrust x 1000 (firmware >= 0.7) */
+  HOVER_THRUST = 44,
   CALIB_DONE = 50,
   CALIB_FAILED = 51,
   PARAMS_SAVED = 60,
@@ -283,6 +285,8 @@ export enum CheckId {
   CALIBRATION = 11,
   /** FAIL while a USB host is connected: no ARM (firmware >= 0.6) */
   USB = 12,
+  /** thrust margin: hover thrust at the present voltage, % of the maximum; WARN above 80 (firmware >= 0.7) */
+  THRUST = 13,
 }
 
 export enum CheckState {
@@ -337,6 +341,19 @@ export const PARAMS: ParamDef[] = [
   { id: 60, key: "compassPrimary", def: 1, min: 0, max: 1, step: 1, options: [1, 0], needs: SENSOR.MAG_GPS },
   // firmware extension (0.5.0): flight log in the drone flash
   { id: 70, key: "logMode", def: 1, min: 0, max: 2, step: 1, options: [1, 2, 0], needs: SENSOR.FLASH_LOG },
+  // phase 3 (firmware 0.7.0): mixer and loop tuning. Torques in normalised thrust per motor (att_ctrl.h, mixer.h)
+  { id: 80, key: "hoverThr", def: 0.51, min: 0.25, max: 0.85, step: 0.01 },
+  { id: 81, key: "thrCurve", def: 1, min: 0, max: 1, step: 0.05 },
+  { id: 90, key: "rateP", def: 0.02, min: 0.002, max: 0.1, step: 0.001 },
+  { id: 91, key: "rateI", def: 0.2, min: 0, max: 2, step: 0.01 },
+  { id: 92, key: "rateD", def: 0.0004, min: 0, max: 0.004, step: 0.0001 },
+  { id: 93, key: "yawP", def: 0.04, min: 0.002, max: 0.2, step: 0.001 },
+  { id: 94, key: "yawI", def: 0.2, min: 0, max: 2, step: 0.01 },
+  { id: 95, key: "attP", def: 6, min: 1, max: 15, step: 0.1, unit: "1/s" },
+  { id: 96, key: "gyroLpf", def: 90, min: 20, max: 250, step: 1, unit: "Hz" },
+  { id: 97, key: "dtermLpf", def: 70, min: 20, max: 250, step: 1, unit: "Hz" },
+  { id: 98, key: "gyroNotch", def: 0, min: 0, max: 400, step: 1, unit: "Hz" },
+  { id: 99, key: "motorIdle", def: 0.05, min: 0, max: 0.15, step: 0.01 },
 ];
 
 export const PARAM_BY_KEY: Record<string, ParamDef> = Object.fromEntries(PARAMS.map((p) => [p.key, p]));

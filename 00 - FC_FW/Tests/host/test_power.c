@@ -224,7 +224,7 @@ static fc_res_t post(uint8_t op, uint8_t seq, const void *p, uint8_t n)
     c.op = op; c.seq = seq; c.len = n;
     if (n) memcpy(c.p, p, n);
     (void)fc_post(&c);
-    fc_vert_t v = { 1, 0, 0, 0, 0, 0, 1.0f, 0xFF, 0 };
+    fc_vert_t v = { 1, 0, 0, 0, 0, 0, 1.0f, 0xFF, 0, 0 };
     fc_service(now, 1, &v);
     fc_res_t r; memset(&r, 0, sizeof r);
     while (fc_take_result(&r)) {}
@@ -234,7 +234,7 @@ static fc_res_t post(uint8_t op, uint8_t seq, const void *p, uint8_t n)
 /* BattTask every 20 ms, flight core every 4 ms, app heartbeat 4 Hz */
 static void run(int ms, int batt_alive)
 {
-    fc_vert_t v = { 1, 0, 0, 0, 0, 0, 1.0f, 0xFF, 0 };
+    fc_vert_t v = { 1, 0, 0, 0, 0, 0, 1.0f, 0xFF, 0, 0 };
     for (int k = 0; k < ms / 4; ++k) {
         now += 4;
         if ((k % 62) == 0) cmd(PV2_OP_HEARTBEAT, 0, NULL, 0);
@@ -290,7 +290,7 @@ static void test_failsafes(void)
     /* app link short silence while landing for the battery: still LAND */
     run(1500, 1);                       /* heartbeats keep coming in run(): simulate silence below */
     {
-        fc_vert_t v = { 1, 0, 0, 0, 0, 0, 1.0f, 0xFF, 0 };
+        fc_vert_t v = { 1, 0, 0, 0, 0, 0, 1.0f, 0xFF, 0, 0 };
         for (int k = 0; k < 400; ++k) { now += 4; if ((now % 20u) == 0u) batt_task_step(now); fc_service(now, 1, &v); }
     }
     fc_snapshot(&s);
@@ -316,7 +316,7 @@ static void test_failsafes(void)
     fc_snapshot(&s);
     CHECK(r.result == PV2_ACK_REJECTED && s.autom == PV2_AUTO_LAND, "HOLD refused");
     {
-        fc_vert_t v = { 1, 0, 0, 0, 0, 0, 1.0f, 0xFF, 0 };
+        fc_vert_t v = { 1, 0, 0, 0, 0, 0, 1.0f, 0xFF, 0, 0 };
         for (int k = 0; k < 1000; ++k) { now += 4; if ((now % 20u) == 0u) batt_task_step(now); fc_service(now, 1, &v); }
     }
     fc_snapshot(&s);
@@ -460,6 +460,24 @@ static void test_checks(void)
     in.batt_stale = 1;
     checks_build(&in, it, &ready, &bf);
     CHECK(it[0].state == PV2_CK_FAIL, "monitor stopped -> FAIL");
+
+    /* 13 thrust margin (ADR 0010 §4): hover x (4.2 / V_cell)^2, WARN above 80 % */
+    const pv2_check_t *t13 = NULL;
+    in.batt_stale = 0; in.batt_present = 1; in.batt_level = 0;
+    in.hover = 0.51f; in.batt_cell_v = 3.6f;                       /* T400 at 3.6 V: 69 % */
+    uint8_t n = checks_build(&in, it, &ready, &bf);
+    for (uint8_t k = 0; k < n; ++k) if (it[k].id == PV2_CHK_THRUST) t13 = &it[k];
+    int16_t val; memcpy(&val, &t13->value, 2);
+    CHECK(t13 && t13->state == PV2_CK_OK && val == 69, "thrust margin T400 3.6 V: OK, 69 %% (%d)", val);
+    in.hover = 0.65f; in.batt_cell_v = 3.7f;                       /* T1200 at 3.7 V: 84 % */
+    n = checks_build(&in, it, &ready, &bf);
+    for (uint8_t k = 0; k < n; ++k) if (it[k].id == PV2_CHK_THRUST) t13 = &it[k];
+    memcpy(&val, &t13->value, 2);
+    CHECK(t13->state == PV2_CK_WARN && val == 84 && ready, "thrust margin T1200 3.7 V: WARN (does not block), 84 %% (%d)", val);
+    in.batt_present = 0;
+    n = checks_build(&in, it, &ready, &bf);
+    for (uint8_t k = 0; k < n; ++k) if (it[k].id == PV2_CHK_THRUST) t13 = &it[k];
+    CHECK(t13->state == PV2_CK_NA && n == 13, "no battery: N/A; 13 items");
 }
 
 /* ================================================================== */
@@ -491,7 +509,7 @@ static void test_power_frame(void)
 
     s_pack_v = 3.9f * 3.0f; s_pack_i = 1.25f;   /* 3S */
     const int f0 = s_nf;
-    fc_vert_t v = { 1, 0, 0, 0, 0, 0, 1.0f, 0xFF, 0 };
+    fc_vert_t v = { 1, 0, 0, 0, 0, 0, 1.0f, 0xFF, 0, 0 };
     for (int k = 0; k < 500; ++k) {
         now += 4;
         if ((k % 62) == 0) cmd(PV2_OP_HEARTBEAT, 0, NULL, 0);

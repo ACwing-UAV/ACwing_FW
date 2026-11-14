@@ -26,6 +26,10 @@ enum {
     P_COMPASS_PRIMARY,
     /* firmware extensions (not in HANDOVER_FW.md §8 yet): appended, never reordered */
     P_BATT_CAPACITY, P_BATT_CELLS, P_LOG_MODE,
+    /* phase 3 (firmware 0.7.0): mixer and loop tuning */
+    P_THR_CURVE, P_RATE_P, P_RATE_I, P_RATE_D, P_YAW_P, P_YAW_I, P_ATT_P,
+    P_GYRO_LPF, P_DTERM_LPF, P_GYRO_NOTCH, P_MOTOR_IDLE,
+    P_HOVER_THR,               /* ADR 0010 §3: seed of the hover-thrust estimate */
     PARAM_COUNT
 };
 

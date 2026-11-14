@@ -97,6 +97,15 @@ uint8_t checks_build(const checks_in_t *in, pv2_check_t *it, uint8_t *ready, uin
     /* 12 USB: a cable to a PC must not be in the drone when it arms (ADR 0009) */
     put(&it[n++], PV2_CHK_USB, in->usb_host ? PV2_CK_FAIL : PV2_CK_OK, 0);
 
+    /* 13 thrust margin (ADR 0010 §4): the hover thrust at the present cell voltage, % of the maximum */
+    if (!in->batt_monitor || in->batt_stale || !in->batt_present || !(in->batt_cell_v > 2.5f))
+        put(&it[n++], PV2_CHK_THRUST, PV2_CK_NA, 0);
+    else {
+        const float k = 4.2f / in->batt_cell_v;
+        const float need = in->hover * k * k;
+        put(&it[n++], PV2_CHK_THRUST, need > CHECKS_THRUST_MARGIN ? PV2_CK_WARN : PV2_CK_OK, (int32_t)(need * 100.0f + 0.5f));
+    }
+
     uint8_t rdy = 1, bf = 0;
     for (uint8_t k = 0; k < n; ++k) {
         if (it[k].state == PV2_CK_FAIL) rdy = 0;

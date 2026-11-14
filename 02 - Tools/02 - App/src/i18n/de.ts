@@ -27,9 +27,9 @@ const de: Translation = {
     battMonitorLost: "Akkuüberwachung gestoppt: Ladestand unbekannt, Scharfschalten gesperrt. Drohne neu starten.",
   },
   checks: {
-    noBattery: "Kein Akku (USB‑Versorgung)", battMonitor: "Akkuüberwachung gestoppt",
+    noBattery: "Kein Akku (USB‑Versorgung)", battMonitor: "Akkuüberwachung gestoppt", thrustNeeded: "{p} % des Schubs zum Schweben",
     1: "Akku", 2: "IMU und Horizont", 3: "Kompass", 4: "GNSS", 5: "Home gesetzt", 6: "ELRS‑Funk", 7: "EKF‑Status",
-    8: "Geofence · Failsafe", 9: "Optischer Fluss", 10: "Gas auf Minimum", 11: "Kalibrierung", 12: "USB getrennt",
+    8: "Geofence · Failsafe", 9: "Optischer Fluss", 10: "Gas auf Minimum", 11: "Kalibrierung", 12: "USB getrennt", 13: "Schubreserve",
     state: { 0: "OK", 1: "Prüfen", 2: "Nicht bereit", 3: "k. A." },
   },
   cockpit: {
@@ -82,7 +82,7 @@ const de: Translation = {
     1: "Scharfgeschaltet", 2: "Gesichert", 3: "Start", 4: "Gelandet", 5: "Flugmodus geändert", 6: "Rückkehr zum Startpunkt", 7: "Home gesetzt",
     20: "App‑Verbindung verloren: Failsafe", 21: "Funkverbindung verloren: Failsafe", 22: "Akku‑Failsafe", 23: "Geofence erreicht",
     24: "GPS verloren", 25: "Optischer Fluss verloren", 30: "Akku schwach", 31: "Akku kritisch", 32: "Akku leer: Landung",
-    40: "Kompassstörung", 41: "Starke Vibration", 42: "Motor oder ESC heiß", 43: "ELRS‑Funk hat die Kontrolle",
+    40: "Kompassstörung", 41: "Starke Vibration", 42: "Motor oder ESC heiß", 43: "ELRS‑Funk hat die Kontrolle", 44: "Schwebeschub ungewöhnlich",
     50: "Kalibrierung gespeichert", 51: "Kalibrierung fehlgeschlagen", 60: "Einstellungen gespeichert", 70: "Motoren gestoppt",
   },
   reasons: {
@@ -108,6 +108,9 @@ const de: Translation = {
     units: "Einheiten", metric: "Metrisch", imperial: "Imperial", theme: "Design", dark: "Dunkel", daylight: "Tageslicht", droneName: "Name der Drohne",
   },
   controls: {
+    hoverHint: "Schwebeschub des Rahmens, Startwert der Schätzung im Flug: T400 0,51, T800 0,58, T1200 0,65, +0,04 mit der GPS-Platine.",
+    tuning: "Flugabstimmung (erweitert)", tuningHint: "Verstärkungen und Filter der Regelkreise. Immer nur einen Wert ändern, zuerst ohne Propeller; Speichern schreibt sie in die Drohne.", notchHint: "0 = aus. Auf die Spitze des Motorrauschens im Fluglog setzen.",
+    idleHint: "Schub jedes Motors im scharfen Zustand, als Anteil des Maximums.", curveHint: "1 = Schub quadratisch im Tastgrad (Bürstenmotoren), 0 = linear. Am Schubprüfstand gemessen.",
     sticks: "Sticks", stickMode: "Stick‑Mode", mode1: "Mode 1", mode2: "Mode 2", sensitivity: "Empfindlichkeit", expo: "Expo",
     deadband: "Totzone", haptics: "Haptisches Feedback", hapticsHint: "Klick in der Stickmitte und an den Endanschlägen (Smartphones)",
     inputs: "Steuerquellen", inputsHint: "Die höchste Priorität gewinnt. Der ELRS‑Funk hat immer Vorrang vor der App.", elrs: "ELRS‑Funk",
@@ -120,6 +123,8 @@ const de: Translation = {
     elrsHelp: "Höchste Priorität: wenn aktiv, zeigt die App nur noch Telemetrie",
   },
   params: {
+    hoverThr: "Schwebeschub",
+    rateP: "Roll/Nick-Rate P", rateI: "Roll/Nick-Rate I", rateD: "Roll/Nick-Rate D", yawP: "Gier-Rate P", yawI: "Gier-Rate I", attP: "Winkel P", gyroLpf: "Gyro-Tiefpass", dtermLpf: "D-Term-Tiefpass", gyroNotch: "Gyro-Notch", motorIdle: "Motor-Leerlauf", thrCurve: "Schubkurve",
     battCapacity: "Kapazität", battCells: "Zellen", logMode: "Fluglog",
     takeoffAlt: "Starthöhe", landSpeed: "Landegeschwindigkeit", autoDisarm: "Automatisch sichern nach der Landung", maxTilt: "Max. Neigung",
     maxYawRate: "Max. Gierrate", maxClimb: "Max. Steigen / Sinken", maxHSpeed: "Max. Horizontalgeschwindigkeit", beginner: "Anfängermodus",

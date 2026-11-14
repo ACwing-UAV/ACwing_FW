@@ -269,7 +269,7 @@ static void fc_tick(int armed_wanted)
     }
     uint8_t hb[2] = { PV2_OP_HEARTBEAT, 0 };
     if (now % 200u == 0u) appl_on_cmd_write(hb, 2, now);
-    fc_vert_t v = { 1, 1.0f, 0, 0, 0, 0, 1.0f, 0xFF, 0 };
+    fc_vert_t v = { 1, 1.0f, 0, 0, 0, 0, 1.0f, 0xFF, 0, 0 };
     fc_service(now, 1, &v);
     fc_res_t r; while (fc_take_result(&r)) {}
     fc_event_t e; while (fc_take_event(&e)) {}
@@ -283,7 +283,7 @@ static void produce(void)
         const float w[3] = { (float)(now / 20u % 1000u) / 1000.0f, 0, 0 };
         const float a[3] = { 0, 0, 1 };
         logf_att(now, q, w, a);
-        fc_vert_t v = { 1, 1.0f, 0, 0, 0, 0, 1.0f, 0xFF, 0 };
+        fc_vert_t v = { 1, 1.0f, 0, 0, 0, 0, 1.0f, 0xFF, 0, 0 };
         fc_setpoint_t sp; memset(&sp, 0, sizeof sp);
         logf_vert(now, &v, &sp, 0xFFFF, 101000);
     }

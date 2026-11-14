@@ -21,6 +21,7 @@
 #include "batt_task.h"
 #include "log_task.h"
 #include "usb_link.h"
+#include "control_hooks.h"
 #include <string.h>
 #include <math.h>
 
@@ -300,7 +301,11 @@ static void send_motors(void)
     fc_snapshot(&f);
     pv2_motor_t m[PV2_MOTORS_MAX];
     const uint8_t n = (s_cfg.n_motors > PV2_MOTORS_MAX) ? PV2_MOTORS_MAX : s_cfg.n_motors;
-    for (uint8_t i = 0; i < n; ++i) { m[i].rpm = 0xFFFFu; m[i].temp_c = -128; m[i].out_pct = f.motor_out_pct[i]; }
+    /* armed: the mixer output (ctrl_loop.c); disarmed: the motor under test, if any (fc_core) */
+    for (uint8_t i = 0; i < n; ++i) {
+        m[i].rpm = 0xFFFFu; m[i].temp_c = -128;
+        m[i].out_pct = f.armed ? ctrl_motor_pct(i) : f.motor_out_pct[i];
+    }
     tx(s_frame, pv2_motors(m, n, s_frame, sizeof s_frame));
 }
 
@@ -385,6 +390,7 @@ static void build_checks(pv2_check_t *it, uint8_t *n)
         in.batt_crit = PARAM(P_BATT_CRIT);
     }
     in.usb_host = usbl_host();
+    in.hover = f.hover;
     *n = checks_build(&in, it, &s_ready, &s_batt_fail);
 }
 
