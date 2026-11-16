@@ -18,6 +18,11 @@
      HSI48 trimmed by the CRS, the CPU2 clock semaphore). PA11/PA12 stay as plain `USB_DM`/`USB_DP` signals.
      Enabling it generates a second `hpcd_USB_FS` and `HAL_PCD_MspInit`: the link fails. It also moves PLLSAI1 to
      48 MHz, and the ADC clock with it;
+   - **every configuration optimised**: Debug at **-Og**, Release at -Os. At -O0, the default when no level is set,
+     the firmware does not keep its real time. On the bench the IMU read fell behind (94 % catch-up reads, FIFO
+     at its 48-word limit, 15.8 ms per batch) and the flight core ran at ~43 Hz instead of ~250 Hz. At -Og:
+     ~500 IMU interrupts/s, 2.4 ms per batch at most (issue #80). `Tests/target/build_fw.py` builds with the level
+     of the configuration, so the CI measures what STM32CubeIDE flashes;
    - **HAL time base TIM17 at priority 15** (NVIC → `TIM1_TRG_COM_TIM17`): FreeRTOS and the IMU interrupt must
      preempt it;
    - TIM1 cannot replace TIM2 for the motors: its CH4 exists only on PA11 (USB_DM);

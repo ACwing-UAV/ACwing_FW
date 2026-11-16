@@ -35,6 +35,21 @@ def values(cfg, key, tool_kind):
     return out
 
 
+OPT = {"o0": "-O0", "og": "-Og", "o1": "-O1", "o2": "-O2", "o3": "-O3", "os": "-Os", "oz": "-Oz", "ofast": "-Ofast"}
+
+
+def optimization(cfg):
+    """the C compiler optimization of the configuration, as STM32CubeIDE uses it (no value = its default, -O0)"""
+    for tool in cfg.iter("tool"):
+        if "c.compiler" not in (tool.get("superClass") or "") or "cpp" in (tool.get("superClass") or ""):
+            continue
+        for o in tool.iter("option"):
+            if (o.get("superClass") or "").endswith("optimization.level"):
+                v = (o.get("value") or "").rsplit(".", 1)[-1]
+                return OPT.get(v, "-O0")
+    return "-O0"
+
+
 def path(p):
     p = p.replace("&quot;", "").strip('"')
     p = re.sub(r"\$\{workspace_loc:/\$\{ProjName\}/?([^}]*)\}", r"\1", p)
@@ -92,10 +107,11 @@ def main():
     out = os.path.join(ROOT, "Tests", "target", "build", a.out or a.config)
     shutil.rmtree(out, ignore_errors=True)
     os.makedirs(out)
-    cflags = CPU + ["-std=gnu11", "-O2", "-g", "-ffunction-sections", "-fdata-sections", "-Wall",
+    opt = optimization(cfg)
+    cflags = CPU + ["-std=gnu11", opt, "-g", "-ffunction-sections", "-fdata-sections", "-Wall",
                     "-Wno-unused-function", "-Wno-unused-variable", "--specs=nano.specs"] + \
              [f"-D{d}" for d in defs] + [f"-I{i}" for i in incs]
-    print(f"{a.config}: {len(srcs)} sources, {len(incs)} include paths, defines {' '.join(defs)}")
+    print(f"{a.config}: {len(srcs)} sources, {len(incs)} include paths, {opt}, defines {' '.join(defs)}")
 
     def compile_one(src):
         obj = os.path.join(out, os.path.relpath(src, ROOT).replace(os.sep, "_").replace(" ", "_") + ".o")
