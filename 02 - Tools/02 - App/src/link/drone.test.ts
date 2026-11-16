@@ -53,6 +53,23 @@ describe("app session against the simulator (real bytes, 20-byte notifications)"
     await d.disconnect();
   }, 40000);
 
+  it("Discard after a finished calibration leaves the result screen (CAL_ABORT clears the wizard state)", async () => {
+    const d = new Drone();
+    await d.connect(new SimTransport("indoor"));
+    await until(() => !!d.getSnapshot().caps);
+    await d.calStart(CalType.GYRO);
+    await until(() => d.getSnapshot().calib?.state === CalState.DONE, 8000);
+    await d.calAbort();
+    // the drone sends no CALIB frame once IDLE: before the fix the DONE frame stayed and the wizard showed the result
+    expect(d.getSnapshot().calib).toBeNull();
+    await wait(300);
+    expect(d.getSnapshot().calib).toBeNull();
+    // a second Discard (nothing running): NOT_CALIBRATING, still no stale state, no exception
+    await d.calAbort();
+    expect(d.getSnapshot().calib).toBeNull();
+    await d.disconnect();
+  }, 20000);
+
   it("firmware 0.5.0 extensions: battery params, logMode, battery EMERGENCY locks the landing", async () => {
     const t = new SimTransport("indoor");
     const d = new Drone();
