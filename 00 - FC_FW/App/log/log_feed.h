@@ -17,6 +17,12 @@
 /** clock for the event records (ms) */
 void logf_set_clock(uint32_t (*now_ms)(void));
 
+/** Rate divider of the records: 1 when `period_ms` has elapsed since the last record. The next time advances by
+ * exactly one period (not to `now`), so the average rate is 1000 / period_ms even when the caller runs on a period
+ * that does not divide it (the ImuTask: ~4.4 ms at the real 916 Hz of the IMU, which gave ~46 Hz instead of 50).
+ * After a gap of more than one period (log paused, first call) it starts again from `now`. */
+uint8_t logf_due(uint32_t *next_ms, uint32_t now_ms, uint32_t period_ms);
+
 void logf_att(uint32_t t, const float q[4], const float gyro[3], const float acc_g[3]);
 void logf_vert(uint32_t t, const fc_vert_t *v, const fc_setpoint_t *sp, uint16_t tof_mm, uint32_t baro_pa);
 void logf_flight(uint32_t t, const fc_state_t *s);

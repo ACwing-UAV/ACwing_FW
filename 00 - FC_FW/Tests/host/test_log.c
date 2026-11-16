@@ -478,10 +478,25 @@ static void test_task(void)
     CHECK(log_count() == 1, "always mode, USB active: paused");
     run(6000, 0, 10);
     CHECK(log_count() == 2 && log_is_open(), "5 s after the last command: recording again");
+    /* LOG_LIST over USB while a log is being written: the log is closed BEFORE the list (the PC sees it final,
+     * with its full size), as logging.md says; issue #22 found it listed as "recording" */
+    f0 = s_nf;
+    usb_cmd(PV2_OP_LOG_LIST, 24, NULL, 0);
+    run(20, 0, 10);
+    {
+        pv2_log_entry_t le; memset(&le, 0, sizeof le);
+        int n_open = 0, n_e = 0;
+        for (int i = f0; i < s_nf; ++i)
+            if (s_f[i].type == PV2_FT_LOG_ENTRY) { memcpy(&le, s_f[i].p, sizeof le); n_e++; n_open += (le.flags & 2u) != 0; }
+        CHECK(n_e == 2 && n_open == 0 && !log_is_open(), "USB LIST closes the open log first (%d entries, %d open)", n_e, n_open);
+        CHECK(le.bytes == (uint32_t)log_size(le.id) || le.bytes == (uint32_t)le.sectors * 4096u, "listed size final");
+    }
+    run(6000, 0, 10);
     /* SET_TIME is not a log command: it does not pause the recording */
+    CHECK(log_count() == 3 && log_is_open(), "recording again after the list");
     usb_cmd(PV2_OP_SET_TIME, 23, (const uint8_t[8]){ 0x40, 0x3B, 0xDF, 0x6A, 0, 0, 0, 0 }, 8);
     run(1000, 0, 10);
-    CHECK(log_count() == 2 && log_is_open(), "SET_TIME while recording: still recording");
+    CHECK(log_count() == 3 && log_is_open(), "SET_TIME while recording: still recording");
 
     /* armed: no download, no erase */
     { uint8_t why; params_set(70, 1.0f, &why); }
@@ -637,8 +652,32 @@ static void test_ble(void)
     tlm_ble_set_state(TLM_BLE_OFF);
 }
 
+/* record rate (issue #22: ATT logged at ~44-46 Hz instead of 50): the ImuTask calls every 4 IMU samples, i.e.
+ * every 4.37 ms at the real 916 Hz of the bench IMU, in whole milliseconds */
+static void test_rate(void)
+{
+    uint32_t next = 0, n50 = 0, n10 = 0, next10 = 0;
+    double t = 12345.0;
+    for (int k = 0; k < 2289; ++k, t += 4.0 / 0.916) {          /* 10 s */
+        const uint32_t now = (uint32_t)t;
+        n50 += logf_due(&next, now, 20u);
+        n10 += logf_due(&next10, now, 100u);
+    }
+    CHECK(n50 >= 499 && n50 <= 501, "50 Hz records over 10 s: %u (was ~458 with last = now)", (unsigned)n50);
+    CHECK(n10 >= 99 && n10 <= 101, "10 Hz records over 10 s: %u", (unsigned)n10);
+    /* a gap (log paused 5 s): no burst of catch-up records, one at once then the normal rate */
+    uint32_t burst = 0;
+    for (int k = 0; k < 5; ++k) burst += logf_due(&next, (uint32_t)t + 5000u + (uint32_t)k, 20u);
+    CHECK(burst == 1, "after a gap: one record, no catch-up burst (%u)", (unsigned)burst);
+    /* uint32 wrap of the ms clock */
+    next = 0xFFFFFFF0u; n50 = 0;
+    for (uint32_t now = 0xFFFFFFF0u; now != 0x00000100u; ++now) n50 += logf_due(&next, now, 20u);
+    CHECK(n50 == 14, "wrap of the clock: %u records over 272 ms", (unsigned)n50);
+}
+
 int main(void)
 {
+    test_rate();
     test_store();
     test_queue();
     test_task();
