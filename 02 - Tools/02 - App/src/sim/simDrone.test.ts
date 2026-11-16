@@ -154,3 +154,20 @@ describe("simulator: autonomous flip (ADR 0012)", () => {
     expect(Math.abs(p.pitch)).toBeLessThan(5);
   });
 });
+
+describe("simulator: automatic disarm on the ground, as fc_core.c", () => {
+  it("no take-off within 10 s", () => {
+    const { d, p } = armIn(FlightMode.ANGLE);
+    fly(d, 9.5, { throttle: -1000 });
+    expect(p.armed).toBe(true);
+    fly(d, 1, { throttle: -1000 });
+    expect(p.armed).toBe(false);
+  });
+  it("app silent for 3 s", () => {
+    const { d, p } = armIn(FlightMode.ANGLE);
+    for (let k = 0; k < 250; k++) { d.tick(0.01); d.drain(); }
+    expect(p.armed).toBe(true);
+    for (let k = 0; k < 100; k++) { d.tick(0.01); d.drain(); }
+    expect(p.armed).toBe(false);
+  });
+});

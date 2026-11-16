@@ -929,7 +929,7 @@ calibrated).
 | code | level | name | arg | when |
 |---|---|---|---|---|
 | 1 | INFO | ARMED | – | arm accepted |
-| 2 | INFO | DISARMED | – | any disarm |
+| 2 | INFO | DISARMED | cause: 0 command, 1 no take-off in 10 s, 2 landed (`autoDisarm`), 3 app silent on the ground, 4 radio failsafe, 5 KILL, 6 hand launch cancelled (`PV2_DISARM_*`, firmware 0.16.3; 0 before it) | any disarm |
 | 3 | INFO | TAKEOFF_STARTED | target cm | |
 | 4 | INFO | LANDED | – | touchdown |
 | 5 | INFO | MODE_CHANGED | mode | |

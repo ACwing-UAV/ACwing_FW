@@ -226,6 +226,17 @@ export enum EventLevel {
   CRITICAL = 3,
 }
 
+/** EVENT DISARMED arg: why the motors stopped (firmware >= 0.16.3; 0 before it). proto_v2.h PV2_DISARM_* */
+export enum DisarmCause {
+  COMMAND = 0,
+  NO_TAKEOFF = 1,
+  LANDED = 2,
+  APP_LINK = 3,
+  RADIO_LINK = 4,
+  KILL = 5,
+  LAUNCH = 6,
+}
+
 /** EVENT codes. The app translates known codes; unknown ones show the text sent by the drone. */
 export enum EventCode {
   ARMED = 1,

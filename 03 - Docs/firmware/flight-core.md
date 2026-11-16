@@ -147,6 +147,10 @@ details are in [Battery and failsafes](battery.md#failsafes).
   speed stays below 0.12 m/s for 0.7 s close to the floor (1 s without ToF).
   Then come EVENT 4, `flags.LANDED`, and the auto-disarm after `autoDisarm`
   seconds.
+- **EVENT 2 DISARMED** carries the cause in `arg` (firmware 0.16.3): 0 a
+  DISARM command, 1 no take-off within 10 s, 2 `autoDisarm` after a landing,
+  3 app silent for 3 s on the ground, 4 radio failsafe, 5 KILL, 6 hand launch
+  cancelled (`PV2_DISARM_*` in `proto_v2.h`). The app says it in the toast.
 - **HOLD** holds the current height. Moving a stick by more than 30 % gives
   control back.
 - **ALT_HOLD / POS_HOLD**: the stick commands the climb rate (`maxClimb`), and

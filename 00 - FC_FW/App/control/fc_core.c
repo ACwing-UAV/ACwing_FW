@@ -245,7 +245,8 @@ static void test_stop(void)
     s_test_motor = 0u;
 }
 
-static void disarm(void)
+/* motors off, state back to the ground; the event says why (PV2_DISARM_*) */
+static void disarm(uint8_t cause)
 {
     test_stop();
     if (s_cfg.motors_arm) s_cfg.motors_arm(0u);
@@ -262,7 +263,7 @@ static void disarm(void)
     ln_cancel(&s_ln); memset(&s_lno, 0, sizeof s_lno);
     fl_cancel(&s_fl); memset(&s_flo, 0, sizeof s_flo);
     if (was) hover_track_disarm(s_flight_ms);
-    if (was) event(PV2_EV_INFO, PV2_E_DISARMED, 0);
+    if (was) event(PV2_EV_INFO, PV2_E_DISARMED, cause);
 }
 
 /* the battery monitor says no flight: level CRITICAL or worse, or it stopped */
@@ -420,7 +421,7 @@ static void exec(const fc_cmd_t *c, uint32_t now, uint8_t est_running)
         if (!s_armed) { OK(); return; }
         if (s_in_air) { REJ(PV2_R_NOT_LANDED); return; }
         OK();
-        disarm();
+        disarm(PV2_DISARM_COMMAND);
         return;
     case PV2_OP_TAKEOFF: {
         if (!alt_sensor()) { result(c, PV2_ACK_UNSUPPORTED, PV2_R_SENSOR_MISSING); return; }
@@ -473,7 +474,7 @@ static void exec(const fc_cmd_t *c, uint32_t now, uint8_t est_running)
         if (s_cfg.motors_arm) s_cfg.motors_arm(0u);     /* motors off before anything else */
         test_stop();
         OK();
-        disarm();
+        disarm(PV2_DISARM_KILL);
         event(PV2_EV_CRITICAL, PV2_E_MOTOR_KILLED, 0);
         return;
     }
@@ -611,7 +612,7 @@ static void app_link_failsafe(uint32_t now)
 
     if (!s_in_air) {
         /* armed on the ground: disarm after 3 s of silence */
-        if (sil > FC_GROUND_DISARM_MS) disarm();
+        if (sil > FC_GROUND_DISARM_MS) disarm(PV2_DISARM_APP_LINK);
         return;
     }
     /* ELRS in control: the app link does not matter (no receiver on this hardware) */
@@ -656,7 +657,7 @@ static void radio_failsafe(void)
         s_rfs_hold = 0u;
         break;
     case RFS_DISARM:
-        disarm();
+        disarm(PV2_DISARM_RADIO_LINK);
         break;
     default:
         if (!rfs_active()) s_failsafe &= (uint8_t)~PV2_FS_RADIO;
@@ -1018,7 +1019,7 @@ static void launch_abort(uint8_t reason)
 {
     event(PV2_EV_WARN, PV2_E_LAUNCH_ABORTED, reason);
     if (reason == LN_AB_NOT_RECOVERED && s_in_air) { s_auto = PV2_AUTO_LAND; s_touch_ms = 0u; return; }
-    disarm();                                          /* in the hand, or no attitude estimate: motors off */
+    disarm(PV2_DISARM_LAUNCH);                         /* in the hand, or no attitude estimate: motors off */
 }
 
 static void launch_service(uint8_t est_running, uint32_t dt_ms)
@@ -1217,8 +1218,8 @@ void fc_service(uint32_t now, uint8_t est_running, const fc_vert_t *v)
 
     /* ---- automatic disarm ---- */
     if (s_armed && !s_in_air && s_auto != PV2_AUTO_LAUNCH) {       /* the launch has its own timeout */
-        if (!s_took_off && (now - s_arm_ms) > FC_NO_TAKEOFF_MS) disarm();
-        else if (s_took_off && (now - s_landed_ms) > (uint32_t)(PARAM(P_AUTO_DISARM) * 1000.0f)) disarm();
+        if (!s_took_off && (now - s_arm_ms) > FC_NO_TAKEOFF_MS) disarm(PV2_DISARM_NO_TAKEOFF);
+        else if (s_took_off && (now - s_landed_ms) > (uint32_t)(PARAM(P_AUTO_DISARM) * 1000.0f)) disarm(PV2_DISARM_LANDED);
     }
     if (s_armed && s_in_air) s_flight_ms += dt;
 

@@ -217,7 +217,7 @@ static void test_takeoff_land(void)
         fc_event_t e;
         while (fc_take_event(&e)) {
             if (e.code == PV2_E_LANDED)   { landed++;   t_land = now; }
-            if (e.code == PV2_E_DISARMED) { disarmed++; t_disarm = now; }
+            if (e.code == PV2_E_DISARMED) { disarmed++; t_disarm = now; CHECK(e.arg == PV2_DISARM_LANDED, "cause LANDED (%d)", (int)e.arg); }
         }
     }
     fc_snapshot(&s);
@@ -225,6 +225,58 @@ static void test_takeoff_land(void)
     CHECK(disarmed == 1 && !s.armed, "auto-disarm");
     CHECK(t_disarm - t_land >= 2000 && t_disarm - t_land < 2100, "autoDisarm 2 s (%u ms)", (unsigned)(t_disarm - t_land));
     CHECK(s.landed, "FLIGHT LANDED flag");
+}
+
+/* armed on the ground, then left alone: the DISARMED event says why (issue #61 "it disarms by itself") */
+static int disarm_cause(uint32_t run_ms, int beat, uint32_t *at)
+{
+    int cause = -1;
+    const uint32_t t0 = now;
+    for (uint32_t k = 0; k < run_ms / 4; ++k) {
+        now += 4;
+        if (beat && k % 25 == 0) heartbeat();
+        fc_service(now, 1, NULL);
+        fc_event_t e;
+        while (fc_take_event(&e)) if (e.code == PV2_E_DISARMED && cause < 0) { cause = (int)e.arg; *at = now - t0; }
+    }
+    return cause;
+}
+
+static void test_disarm_causes(void)
+{
+    const uint8_t arm[2] = { 0xA5, 0x5A };
+    uint32_t at = 0;
+    /* app connected, no take-off: 10 s */
+    fc_setup(PV2_S_IMU | PV2_S_BARO);
+    now = 1000; heartbeat();
+    CHECK(post(PV2_OP_ARM, 1, arm, 2, NULL).result == PV2_ACK_OK, "arm");
+    int c = disarm_cause(12000, 1, &at);
+    CHECK(c == PV2_DISARM_NO_TAKEOFF && at > FC_NO_TAKEOFF_MS && at <= FC_NO_TAKEOFF_MS + 8,
+          "no take-off: cause %d after %u ms", c, (unsigned)at);
+    /* app silent on the ground: 3 s */
+    fc_setup(PV2_S_IMU | PV2_S_BARO);
+    now = 30000; heartbeat();
+    CHECK(post(PV2_OP_ARM, 2, arm, 2, NULL).result == PV2_ACK_OK, "arm");
+    c = disarm_cause(5000, 0, &at);
+    CHECK(c == PV2_DISARM_APP_LINK && at > FC_GROUND_DISARM_MS - 8 && at <= FC_GROUND_DISARM_MS + 8,
+          "app silent: cause %d after %u ms", c, (unsigned)at);
+    /* DISARM command */
+    fc_setup(PV2_S_IMU | PV2_S_BARO);
+    now = 60000; heartbeat();
+    (void)post(PV2_OP_ARM, 3, arm, 2, NULL);
+    (void)drain_events(0);
+    CHECK(post(PV2_OP_DISARM, 4, NULL, 0, NULL).result == PV2_ACK_OK, "disarm");
+    fc_event_t e; c = -1;
+    while (fc_take_event(&e)) if (e.code == PV2_E_DISARMED) c = (int)e.arg;
+    CHECK(c == PV2_DISARM_COMMAND, "command: cause %d", c);
+    /* KILL */
+    const uint8_t kill[4] = { 0x4B, 0x49, 0x4C, 0x4C };
+    (void)post(PV2_OP_ARM, 5, arm, 2, NULL);
+    (void)drain_events(0);
+    (void)post(PV2_OP_KILL, 6, kill, 4, NULL);
+    c = -1;
+    while (fc_take_event(&e)) if (e.code == PV2_E_DISARMED) c = (int)e.arg;
+    CHECK(c == PV2_DISARM_KILL, "kill: cause %d", c);
 }
 
 /* indoor model: baro + ToF + flow -> POS_HOLD after takeoff, slow landing below 1 m */
@@ -1502,6 +1554,7 @@ int main(void)
     test_ack_cache();
     test_takeoff_rules();
     test_takeoff_land();
+    test_disarm_causes();
     test_takeoff_tof();
     test_app_link_failsafe();
     test_manual_collective();

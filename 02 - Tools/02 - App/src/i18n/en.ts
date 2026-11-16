@@ -252,6 +252,7 @@ const en = {
     },
     say: { alt: "Altitude {v} meters", batt: "Battery {v} percent", timer: "{v} minutes" },
     radioOp: { arm: "arm", disarm: "disarm", mode: "mode change", kill: "kill" },
+    disarmCause: { 1: "Disarmed: no take-off within 10 s", 2: "Disarmed: landed", 3: "Disarmed: app link lost", 4: "Disarmed: radio link lost", 5: "Disarmed: motors killed", 6: "Disarmed: hand launch cancelled" },
     launchAbort: { 1: "10 s in the hand", 2: "link lost", 3: "not recovered, landing", 4: "attitude estimate lost", 5: "toss too weak, motors kept off" },
     flipAbort: { 1: "rotation too slow", 2: "stick moved", 3: "link lost", 4: "gyro saturated", 5: "not level in time, landing", 6: "attitude estimate lost, landing" },
   },
