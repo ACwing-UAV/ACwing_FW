@@ -13,6 +13,8 @@ regeneration that changes one of them must fail here, with the reason, instead o
 - Every build configuration of the .cproject is optimised (-Og at least). With no level STM32CubeIDE compiles at
   -O0, and the firmware does not keep its real time: on the bench the ImuTask fell behind the IMU, and the flight
   core ran at ~43 Hz instead of ~250 Hz (issue #80).
+- The motor outputs are on only in the configuration made for them: Debug-Motors defines MOTORS_ENABLE=1, Debug and
+  Release do not define it (motors.h keeps 0), so a bench or flight build does not drive the motor pins by accident.
 
 Run from 00 - FC_FW:  python3 Tests/target/check_cubemx.py
 """
@@ -79,6 +81,24 @@ def main():
                         errors.append(f"{mod.get('name')}: {'C++' if 'cpp' in sc else 'C'} compiler without optimization "
                                       "(-O0): set at least -Og (Properties > C/C++ Build > Settings > Optimization)")
 
+    # MOTORS_ENABLE only in Debug-Motors
+    names = []
+    for c in tree.iter("cconfiguration"):
+        mod = c.find("storageModule[@moduleId='cdtBuildSystem']/configuration")
+        if mod is None:
+            continue
+        name = mod.get("name")
+        names.append(name)
+        defs = {v.get("value") for o in mod.iter("option") if (o.get("superClass") or "").endswith("definedsymbols")
+                for v in o.iter("listOptionValue")}
+        motors = {d for d in defs if d and d.split("=")[0] == "MOTORS_ENABLE"}
+        if name == "Debug-Motors" and motors != {"MOTORS_ENABLE=1"}:
+            errors.append(f"Debug-Motors must define MOTORS_ENABLE=1 (has {sorted(motors) or 'none'})")
+        if name != "Debug-Motors" and motors:
+            errors.append(f"{name} defines {sorted(motors)}: the motor outputs belong to the Debug-Motors configuration only")
+    if "Debug-Motors" not in names:
+        errors.append("the Debug-Motors configuration is missing from the .cproject")
+
     # line endings of the tracked text files of the project
     files = subprocess.run(["git", "ls-files", "--eol", "--", "."], cwd=ROOT, capture_output=True, text=True).stdout
     crlf = [ln.split("\t")[-1] for ln in files.splitlines() if ln.startswith("i/crlf")]
@@ -90,7 +110,7 @@ def main():
         for e in errors:
             print("  -", e)
         return 1
-    print("CubeMX project check: OK (USB owned by the app, tick priority 15, TIM2 motor PWM, LF endings, optimised builds)")
+    print("CubeMX project check: OK (USB owned by the app, tick priority 15, TIM2 motor PWM, LF endings, optimised builds, motors only in Debug-Motors)")
     return 0
 
 

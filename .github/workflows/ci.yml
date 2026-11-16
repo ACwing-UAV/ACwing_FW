@@ -87,12 +87,12 @@ jobs:
           python3 Tests/target/build_fw.py --config Debug --mcuboot --out mcuboot
           python3 Tests/target/build_fw.py --config Debug --mcuboot --define "APP_HW_REV='A'" --out mcubootA --max-ram-pct 80
           imgtool verify -k Boot/keys/dev-ecdsa-p256.pem Tests/target/build/mcuboot/ACwing_FC_FW.signed.bin
-      - name: Motors enabled (bench and rev A), the PWM binding must link
-        # MOTORS_ENABLE stays 0 in the sources until the power stage is connected; these builds keep the motor
-        # outputs (bsp/motor_pwm.c, TIM2 from CubeMX) from rotting while it is off
+      - name: Motors enabled (Debug-Motors, and rev A), the PWM binding must link
+        # MOTORS_ENABLE is 0 in Debug and Release; the Debug-Motors configuration of the IDE turns the outputs on
+        # (bench with the power stage). These builds keep bsp/motor_pwm.c and TIM2 from rotting while they are off
         working-directory: "00 - FC_FW"
         run: |
-          python3 Tests/target/build_fw.py --config Debug --define MOTORS_ENABLE=1 --out motors
+          python3 Tests/target/build_fw.py --config Debug-Motors --out motors
           python3 Tests/target/build_fw.py --config Debug --define MOTORS_ENABLE=1 --define "APP_HW_REV='A'" --out motorsA --max-ram-pct 80
 
   app:
