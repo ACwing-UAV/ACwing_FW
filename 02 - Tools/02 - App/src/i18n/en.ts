@@ -91,7 +91,7 @@ const en = {
     5: "battery too low", 6: "home is not set", 7: "the ELRS radio has control", 8: "the drone is armed", 9: "propellers not confirmed removed",
     10: "the drone is not armed", 11: "a calibration is running", 12: "no calibration running", 13: "the drone is moving",
     14: "value out of range", 15: "unknown setting", 16: "sensor not fitted",
-    17: "a USB cable to a computer is connected: unplug it", 18: "not allowed over USB (ground link)", 19: "another device has control of the settings", 20: "not enough thrust now (battery or weight)",
+    17: "a USB cable to a computer is connected: unplug it", 18: "not allowed over USB (ground link)", 19: "another device has control of the settings", 20: "not enough thrust now (battery or weight)", 21: "motor outputs disabled in this firmware (MOTORS_ENABLE = 0)",
   },
   cmdError: { rejected: "Not done: {why}", timeout: "No answer from the drone", offline: "Not connected", other: "The drone refused the command" },
   settings: {

@@ -388,7 +388,7 @@ void log_task_start(const log_task_cfg_t *cfg)
     log_task_init(cfg);
     /* lowest of the application tasks: erases and page programs may block it */
     static const osThreadAttr_t a = { .name = "log", .priority = osPriorityLow,
-                                      .stack_size = 1536 };
+                                      .stack_size = 2048 };
     (void)osThreadNew(LogTask, NULL, &a);
 }
 #endif

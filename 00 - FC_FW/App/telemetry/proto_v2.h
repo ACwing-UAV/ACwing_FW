@@ -98,7 +98,8 @@ enum {
     PV2_R_USB_CONNECTED = 17,   /**< ARM / TAKEOFF / MOTOR_TEST while a USB host is connected (ADR 0009) */
     PV2_R_NOT_OVER_USB = 18,    /**< flight command received over the USB link: ground link only        */
     PV2_R_OTHER_LINK = 19,      /**< configuration change from the link that does not have control       */
-    PV2_R_THRUST_LOW = 20       /**< not enough thrust-to-weight now for the manoeuvre (ADR 0011/0012)    */
+    PV2_R_THRUST_LOW = 20,      /**< not enough thrust-to-weight now for the manoeuvre (ADR 0011/0012)    */
+    PV2_R_MOTORS_DISABLED = 21  /**< MOTOR_TEST / motors calibration: firmware built with MOTORS_ENABLE = 0 */
 };
 
 /* ---------------- enums and bit masks ---------------- */

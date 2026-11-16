@@ -492,7 +492,7 @@ static void exec(const fc_cmd_t *c, uint32_t now, uint8_t est_running)
         return;
     }
     case PV2_OP_MOTOR_TEST: {
-        if (!s_cfg.motors_built) { result(c, PV2_ACK_UNSUPPORTED, PV2_R_NONE); return; }
+        if (!s_cfg.motors_built) { result(c, PV2_ACK_UNSUPPORTED, PV2_R_MOTORS_DISABLED); return; }
         if (c->len < 5u) { INVALID(PV2_R_NONE); return; }
         const uint8_t  m   = p[0], pct = p[1];
         const uint16_t ms  = pv2_rd_u16(&p[2]);
