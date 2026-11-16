@@ -10,6 +10,9 @@ regeneration that changes one of them must fail here, with the reason, instead o
 - The HAL time base (TIM17) keeps priority 15, the lowest: FreeRTOS and the IMU interrupt must preempt it.
 - The motor PWM (bsp/motor_pwm.c) needs TIM2 CH1..CH4 at prescaler 0 and period 1999 (32 kHz with a 64 MHz clock).
 - Text files keep LF line endings (.gitattributes): a CRLF regeneration turns every diff into a full-file change.
+- Every build configuration of the .cproject is optimised (-Og at least). With no level STM32CubeIDE compiles at
+  -O0, and the firmware does not keep its real time: on the bench the ImuTask fell behind the IMU, and the flight
+  core ran at ~43 Hz instead of ~250 Hz (issue #80).
 
 Run from 00 - FC_FW:  python3 Tests/target/check_cubemx.py
 """
@@ -58,6 +61,24 @@ def main():
     if "MX_TIM2_Init();" not in main_c:
         errors.append("MX_TIM2_Init() is not called in main()")
 
+    # compiler optimization of every configuration (C and C++)
+    import xml.etree.ElementTree as ET
+    tree = ET.parse(os.path.join(ROOT, ".cproject"))
+    for c in tree.iter("cconfiguration"):
+        mod = c.find("storageModule[@moduleId='cdtBuildSystem']/configuration")
+        if mod is None:
+            continue
+        for tool in mod.iter("tool"):
+            sc = tool.get("superClass") or ""
+            if "compiler" not in sc or "assembler" in sc:
+                continue
+            for o in tool.iter("option"):
+                if (o.get("superClass") or "").endswith("optimization.level"):
+                    v = (o.get("value") or "").rsplit(".", 1)[-1]
+                    if v in ("", "o0"):
+                        errors.append(f"{mod.get('name')}: {'C++' if 'cpp' in sc else 'C'} compiler without optimization "
+                                      "(-O0): set at least -Og (Properties > C/C++ Build > Settings > Optimization)")
+
     # line endings of the tracked text files of the project
     files = subprocess.run(["git", "ls-files", "--eol", "--", "."], cwd=ROOT, capture_output=True, text=True).stdout
     crlf = [ln.split("\t")[-1] for ln in files.splitlines() if ln.startswith("i/crlf")]
@@ -69,7 +90,7 @@ def main():
         for e in errors:
             print("  -", e)
         return 1
-    print("CubeMX project check: OK (USB owned by the app, tick priority 15, TIM2 motor PWM, LF endings)")
+    print("CubeMX project check: OK (USB owned by the app, tick priority 15, TIM2 motor PWM, LF endings, optimised builds)")
     return 0
 
 
