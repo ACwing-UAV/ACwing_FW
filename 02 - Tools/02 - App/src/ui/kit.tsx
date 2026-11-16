@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type ReactNode, useSyncExternalStore } fro
 import { Icon } from "./icons";
 import { useT } from "../i18n";
 import { CommandError } from "../link/drone";
-import { AckResult } from "../protocol/ids";
+import { commandErrorToast } from "./commandError";
 
 /* ---------- small pieces ---------- */
 
@@ -197,11 +197,8 @@ export function useCommand() {
       return true;
     } catch (e) {
       if (e instanceof CommandError) {
-        if (e.result === "timeout") toast(t("cmdError.timeout"), "error");
-        else if (e.result === "offline") toast(t("cmdError.offline"), "warn");
-        else if (e.result === AckResult.REJECTED || e.result === AckResult.INVALID || e.result === AckResult.BUSY)
-          toast(t("cmdError.rejected", { why: t(`reasons.${e.reason}`) || t("cmdError.other") }), "warn");
-        else toast(t("cmdError.other"), "warn");
+        const m = commandErrorToast(e, t);
+        toast(m.text, m.level);
       } else toast(String(e), "error");
       return false;
     }

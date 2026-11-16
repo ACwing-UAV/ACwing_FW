@@ -141,7 +141,9 @@ enum { PV2_BATT_OK = 0, PV2_BATT_LOW = 1, PV2_BATT_CRITICAL = 2, PV2_BATT_EMERGE
 enum { PV2_EV_INFO = 0, PV2_EV_WARN = 1, PV2_EV_ERROR = 2, PV2_EV_CRITICAL = 3 };
 
 enum {
-    PV2_E_ARMED = 1, PV2_E_DISARMED = 2, PV2_E_TAKEOFF_STARTED = 3, PV2_E_LANDED = 4,
+    PV2_E_ARMED = 1,
+    PV2_E_DISARMED = 2,             /**< INFO, arg = PV2_DISARM_* cause (firmware 0.16.3; 0 before it)       */
+    PV2_E_TAKEOFF_STARTED = 3, PV2_E_LANDED = 4,
     PV2_E_MODE_CHANGED = 5, PV2_E_RTH_STARTED = 6, PV2_E_HOME_SET = 7,
     PV2_E_TAKEOFF_ABORTED = 8,      /**< firmware extension (WARN): no lift-off; the app shows the text */
     PV2_E_RADIO_REFUSED = 9,        /**< firmware 0.8 (WARN): a radio-switch command refused, arg = op << 8 | reason */
@@ -159,6 +161,17 @@ enum {
     PV2_E_HOVER_THRUST = 44,         /**< firmware 0.7 (WARN): hover thrust outside 0.35..0.75, arg = t_h x 1000 */
     PV2_E_CALIB_DONE = 50, PV2_E_CALIB_FAILED = 51,
     PV2_E_PARAMS_SAVED = 60, PV2_E_MOTOR_KILLED = 70
+};
+
+/** EVENT DISARMED arg: why the motors stopped, so the app can say it (issue #61: "it disarms by itself") */
+enum {
+    PV2_DISARM_COMMAND    = 0,  /**< DISARM from the app or the radio switch                         */
+    PV2_DISARM_NO_TAKEOFF = 1,  /**< armed on the ground, no take-off within FC_NO_TAKEOFF_MS (10 s)  */
+    PV2_DISARM_LANDED     = 2,  /**< on the ground after a flight for autoDisarm seconds              */
+    PV2_DISARM_APP_LINK   = 3,  /**< armed on the ground, app silent for FC_GROUND_DISARM_MS (3 s)    */
+    PV2_DISARM_RADIO_LINK = 4,  /**< radio failsafe: disarm                                           */
+    PV2_DISARM_KILL       = 5,  /**< KILL                                                             */
+    PV2_DISARM_LAUNCH     = 6   /**< hand launch cancelled                                            */
 };
 
 enum { PV2_CAL_ACCEL = 1, PV2_CAL_LEVEL = 2, PV2_CAL_GYRO = 3, PV2_CAL_COMPASS = 4,

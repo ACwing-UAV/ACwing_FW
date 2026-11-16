@@ -254,6 +254,7 @@ const de: Translation = {
     },
     say: { alt: "Höhe {v} Meter", batt: "Akku {v} Prozent", timer: "{v} Minuten" },
     radioOp: { arm: "Scharfschalten", disarm: "Entschärfen", mode: "Moduswechsel", kill: "Not-Aus" },
+    disarmCause: { 1: "Gesichert: kein Start innerhalb von 10 s", 2: "Gesichert: gelandet", 3: "Gesichert: App‑Verbindung verloren", 4: "Gesichert: Funkverbindung verloren", 5: "Gesichert: Motoren gestoppt", 6: "Gesichert: Handstart abgebrochen" },
     launchAbort: { 1: "10 s in der Hand", 2: "Verbindung verloren", 3: "nicht stabilisiert, Landung", 4: "Lageschätzung verloren", 5: "Wurf zu schwach, Motoren aus" },
     flipAbort: { 1: "Drehung zu langsam", 2: "Knüppel bewegt", 3: "Verbindung verloren", 4: "Gyro gesättigt", 5: "nicht rechtzeitig waagrecht, Landung", 6: "Lageschätzung verloren, Landung" },
   },

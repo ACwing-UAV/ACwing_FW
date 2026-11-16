@@ -14,7 +14,7 @@ import { LogWriter, LR } from "../log/format";
 import {
   FT, OP, AckResult, Reason, FlightMode, ArmState, AutoAction, FS, FF, InputSource, SENSOR, Model, FrameType,
   BattWarn, EventLevel, EventCode, CalType, CalState, CheckId, CheckState, PARAMS, PARAM_BY_ID, ARM_MAGIC, KILL_MAGIC,
-  PROPS_OFF_MAGIC, WIPE_MAGIC,
+  PROPS_OFF_MAGIC, WIPE_MAGIC, DisarmCause,
 } from "../protocol/ids";
 
 export type SimModel = "outdoor" | "indoor";
@@ -246,6 +246,7 @@ export class SimDrone {
         this.armed = true;
         this.mahAtArm = this.usedMah;
         this.landedT = 0;
+        this.flightTime = 0;                 // fc_core.c arm_now(): s_flight_ms = 0, not taken off yet
         if (this.outdoor && !this.homeSet) this.homeSet = true;
         this.event(EventLevel.INFO, EventCode.ARMED, "Armed");
         return ok;
@@ -275,6 +276,7 @@ export class SimDrone {
         this.armed = true;
         this.mahAtArm = this.usedMah;
         this.landedT = 0;
+        this.flightTime = 0;                 // fc_core.c arm_now(): s_flight_ms = 0, not taken off yet
         this.auto = AutoAction.LAUNCH;
         this.launchT = 0;
         this.event(EventLevel.INFO, EventCode.ARMED, "Armed");
@@ -314,7 +316,7 @@ export class SimDrone {
         const m = [r.u8_(), r.u8_(), r.u8_(), r.u8_()];
         if (m.some((v, i) => v !== KILL_MAGIC[i])) return [AckResult.INVALID, Reason.NONE];
         if (this.inAir) this.killedFall = true;
-        this.disarm();
+        this.disarm(DisarmCause.KILL);
         this.event(EventLevel.CRITICAL, EventCode.MOTOR_KILLED, "Motors stopped");
         return ok;
       }
@@ -495,7 +497,7 @@ export class SimDrone {
     }
   }
 
-  private disarm() {
+  private disarm(cause: DisarmCause = DisarmCause.COMMAND) {
     this.armed = false;
     this.landIdle = false;
     if (this.usedMah - this.mahAtArm > 20) {
@@ -506,7 +508,7 @@ export class SimDrone {
     this.auto = AutoAction.NONE;
     this.failsafe = 0;
     this.battLock = false;
-    this.event(EventLevel.INFO, EventCode.DISARMED, "Disarmed");
+    this.event(EventLevel.INFO, EventCode.DISARMED, "Disarmed", cause);
   }
 
   /* ================================================================ */
@@ -924,8 +926,12 @@ export class SimDrone {
     if (this.armed && !this.inAir) {
       this.landedT += dt;
       if (this.landedT > this.p("autoDisarm") && this.flightTime > 0) {
-        this.disarm();
+        this.disarm(DisarmCause.LANDED);
         this.flightTime = 0;
+      } else if (this.flightTime === 0 && this.auto !== AutoAction.LAUNCH && this.landedT > 10) {
+        this.disarm(DisarmCause.NO_TAKEOFF);   // fc_core.c FC_NO_TAKEOFF_MS: armed on the ground, never took off
+      } else if (!this.elrsActive && this.t - this.lastAppMsg > 3) {
+        this.disarm(DisarmCause.APP_LINK);     // fc_core.c FC_GROUND_DISARM_MS: armed on the ground, app silent
       }
     }
     if (this.armed && this.inAir) this.flightTime += dt;

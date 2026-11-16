@@ -254,6 +254,7 @@ const it: Translation = {
     },
     say: { alt: "Quota {v} metri", batt: "Batteria {v} per cento", timer: "{v} minuti" },
     radioOp: { arm: "armo", disarm: "disarmo", mode: "cambio modo", kill: "arresto" },
+    disarmCause: { 1: "Disarmato: nessun decollo entro 10 s", 2: "Disarmato: atterrato", 3: "Disarmato: collegamento con l’app perso", 4: "Disarmato: collegamento radio perso", 5: "Disarmato: motori arrestati", 6: "Disarmato: lancio a mano annullato" },
     launchAbort: { 1: "10 s in mano", 2: "collegamento perso", 3: "non recuperato, atterraggio", 4: "stima d’assetto persa", 5: "lancio troppo debole, motori fermi" },
     flipAbort: { 1: "rotazione troppo lenta", 2: "stick mosso", 3: "collegamento perso", 4: "giroscopio saturato", 5: "non in piano in tempo, atterraggio", 6: "stima d’assetto persa, atterraggio" },
   },

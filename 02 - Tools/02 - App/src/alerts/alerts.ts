@@ -52,6 +52,11 @@ export function eventText(e: { code: number; text: string; arg?: number }, lang 
     const v = translate(lang, k, { why: translate(lang, `alerts.flipAbort.${e.arg & 0xff}`) });
     if (v !== k) return v;
   }
+  if (e.code === EventCode.DISARMED && e.arg) {
+    // arg = why (firmware >= 0.16.3, proto_v2.h PV2_DISARM_*); 0 = a command, or an older firmware
+    const v = translate(lang, `alerts.disarmCause.${e.arg}`);
+    if (v !== `alerts.disarmCause.${e.arg}`) return v;
+  }
   if (e.code === EventCode.FLIP_DONE && e.arg !== undefined) {
     const v = translate(lang, k, { cm: e.arg });
     if (v !== k) return v;
