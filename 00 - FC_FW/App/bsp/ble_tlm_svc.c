@@ -181,7 +181,7 @@ static void BleTxThread(void *arg)
 }
 
 /* ------------------------------------------------------------------ public */
-extern volatile uint8_t g_cpu2_ready;           /* bsp/cfg_flash_wb.c */
+extern volatile uint8_t g_cpu2_ready;           /* bsp/flash_wb.c */
 
 void ble_tlm_svc_init(void)
 {

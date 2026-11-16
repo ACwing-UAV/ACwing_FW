@@ -15,3 +15,5 @@ rc_test
 pos_test
 launch_test
 flip_test
+boot_test
+boot_img/

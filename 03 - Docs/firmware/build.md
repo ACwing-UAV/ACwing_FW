@@ -56,6 +56,37 @@
 6. BLE: the wireless stack must be flashed once on the Cortex-M0+ ([Wireless stack on the Cortex-M0+](ble.md#wireless-stack-on-the-cortex-m0)). Without
    it, the radio core never starts. Set `APP_TLM_BLE 0` to run on USB only.
 
+7. **Bootloader and signed images (ADR 0015).** Two ways to build the application:
+   - **plain** (the STM32CubeIDE project as it is): linked at 0x08000000, no bootloader. Use it with the debugger.
+     Flashing it **erases MCUboot** from the board; load MCUboot again before a signed image.
+   - **MCUboot**: the bootloader in the first 28 KB, the application in slot 0 after a 1 KB header, signed.
+
+   ```bash
+   make -C "00 - FC_FW/Boot"
+   ```
+
+   ```bash
+   python3 "00 - FC_FW/Tests/target/build_fw.py" --mcuboot
+   ```
+
+   The first command builds `Boot/build/acwing_boot.bin`. The second builds
+   `Tests/target/build/Debug/ACwing_FC_FW.signed.bin`, signed with the development key in `Boot/keys`
+   (`pip install imgtool`). The first time, with STM32CubeProgrammer, load `acwing_boot.bin` at **0x08000000**
+   and `ACwing_FC_FW.signed.bin` at **0x08007000**. Later images arrive through slot 1 (0x08043000): with the
+   debugger until the update over USB / BLE exists (ADR 0015 phase 2).
+
+   The flash map is `Boot/port/acwing_flash_layout.h`, checked by `Tests/target/check_layout.py`:
+
+   | Area | Address | Size |
+   |---|---|---|
+   | MCUboot | 0x08000000 | 28 KB |
+   | slot 0, running image | 0x08007000 | 240 KB |
+   | slot 1, new image (bench) | 0x08043000 | 236 KB |
+   | configuration pages | 0x0807E000 | 8 KB |
+
+   A new image runs once on trial. The firmware confirms it after 60 s of IMU and attitude estimate running, while
+   disarmed (`app/boot_confirm.c`). Before that, any reset brings back the previous image.
+
 Bring-up check in *Live Expressions*: `s_irqCount` grows by ~480/s at 960 Hz,
 `s_busErr` stays 0, `s_est.running` becomes 1 about 2 s after reset with the board
 still. `s_procCycMax / 64` = worst-case processing time in µs.

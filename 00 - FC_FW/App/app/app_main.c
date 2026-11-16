@@ -46,6 +46,7 @@
 #include "fc_core.h"
 #include "fc_shared.h"
 #include "app_task.h"
+#include "boot_slot.h"
 #include "alt_est.h"
 #include "ext_sens.h"
 #include "proto_v2.h"
@@ -838,6 +839,9 @@ void app_start(void)
                                       (log_flash() ? PV2_S_FLASH_LOG : 0u));
         ac.log_pct = log_task_pct;
         ac.mem_health = mem_health;
+#if defined(APP_MCUBOOT) && APP_MCUBOOT
+        ac.boot_confirm = boot_slot_confirm;  /* ADR 0015: confirm a test-booted image */
+#endif
         app_task_start(&ac);
     }
     ext_sens_start();

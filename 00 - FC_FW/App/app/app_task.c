@@ -24,6 +24,7 @@
 #include "usb_link.h"
 #include "control_hooks.h"
 #include "rc_input.h"
+#include "boot_confirm.h"
 #include <string.h>
 #include <math.h>
 
@@ -38,6 +39,7 @@
 
 /* ------------------------------------------------------------------ state */
 static app_task_cfg_t s_cfg;
+static bc_t           s_bc;              /* confirmation of a test-booted firmware (ADR 0015) */
 static cfg_image_t    s_img;              /* what is (or will be) in flash */
 static cal_set_t      s_cal;              /* calibrations in effect (RAM)  */
 static uint16_t       s_sensors;
@@ -941,11 +943,24 @@ void app_init(const app_task_cfg_t *cfg)
     s_usb_was = s_usb_now = 0u; s_cal_link = LINK_BLE;
     s_chk_have = 0u; s_chk_n = 0u;
     rates_default();
+    bc_init(&s_bc);
+}
+
+/* MCUboot: confirm the running firmware once it has been healthy for a minute (boot_confirm.h) */
+static void boot_confirm_step(uint32_t now)
+{
+    if (!s_cfg.boot_confirm) return;
+    fsh_est_t e;
+    memset(&e, 0, sizeof e);
+    fsh_est_read(&e);
+    const bc_in_t in = { e.imu_ok, e.running, armed_now() };
+    if (bc_step(&s_bc, &in, now)) bc_result(&s_bc, s_cfg.boot_confirm(), now);
 }
 
 void app_step(uint32_t now)
 {
     s_now = now;
+    boot_confirm_step(now);
     /* sensors found later (expansion board plugged in while disarmed) */
     const uint16_t sn = sensors_now();
     if (sn != s_sensors && !armed_now()) {

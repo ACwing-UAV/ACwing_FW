@@ -1,0 +1,233 @@
+/*
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * Copyright (c) 2017-2019 Linaro LTD
+ * Copyright (c) 2016-2019 JUUL Labs
+ * Copyright (c) 2019-2025 Arm Limited
+ * Copyright (c) 2025 Nordic Semiconductor ASA
+ *
+ * Original license:
+ *
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *  http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+
+#include <stdint.h>
+#include <inttypes.h>
+#include <flash_map_backend/flash_map_backend.h>
+
+#include "bootutil/crypto/sha.h"
+#include "bootutil/image.h"
+#include "bootutil_priv.h"
+#include "mcuboot_config/mcuboot_config.h"
+#include "bootutil/bootutil_log.h"
+
+BOOT_LOG_MODULE_DECLARE(mcuboot);
+
+#ifndef MCUBOOT_SIGN_PURE
+/*
+ * Compute SHA hash over the image.
+ * (SHA384 if ECDSA-P384 is being used,
+ *  SHA256 otherwise).
+ */
+int
+bootutil_img_hash(struct boot_loader_state *state,
+                  struct image_header *hdr, const struct flash_area *fap,
+                  uint8_t *tmp_buf, uint32_t tmp_buf_sz, uint8_t *hash_result,
+                  uint8_t *seed, int seed_len
+                 )
+{
+    bootutil_sha_context sha_ctx;
+    uint32_t size;
+    uint16_t hdr_size;
+    uint32_t blk_off;
+    uint32_t tlv_off;
+#if !defined(MCUBOOT_HASH_STORAGE_DIRECTLY)
+    int rc;
+    uint32_t off;
+    uint32_t blk_sz;
+#endif
+#ifdef MCUBOOT_HASH_STORAGE_DIRECTLY
+    uintptr_t base = 0;
+    int fa_ret;
+#endif
+#if defined(MCUBOOT_ENC_IMAGES)
+    int image_index;
+#endif
+    uint32_t sector_off = 0;
+    uint32_t end;
+
+#if (BOOT_IMAGE_NUMBER == 1) || !defined(MCUBOOT_ENC_IMAGES) || \
+    defined(MCUBOOT_RAM_LOAD)
+    (void)state;
+    (void)hdr_size;
+    (void)blk_off;
+    (void)tlv_off;
+#ifdef MCUBOOT_RAM_LOAD
+    (void)blk_sz;
+    (void)off;
+    (void)rc;
+    (void)fap;
+    (void)tmp_buf;
+    (void)tmp_buf_sz;
+#endif
+#endif
+    BOOT_LOG_DBG("bootutil_img_hash");
+
+#ifdef MCUBOOT_ENC_IMAGES
+    if (state == NULL) {
+        image_index = 0;
+    } else {
+        image_index = BOOT_CURR_IMG(state);
+    }
+
+    /* Encrypted images only exist in the secondary slot */
+    if (MUST_DECRYPT(fap, image_index, hdr) &&
+            !boot_enc_valid(BOOT_CURR_ENC_SLOT(state, BOOT_SLOT_SECONDARY))) {
+        BOOT_LOG_DBG("bootutil_img_hash: error encrypted image found in primary slot");
+        return -1;
+    }
+#endif
+
+#if defined(MCUBOOT_SWAP_USING_OFFSET)
+    /* For swap using offset mode, the image starts in the second sector of the upgrade slot, so
+     * apply the offset when this is needed
+     */
+    sector_off = boot_get_state_secondary_offset(state, fap);
+#endif
+
+    /* Hash is computed over image header and image itself, and over the
+     * protected TLVs when they are present. The sizes of all three come from
+     * the image header, which is not authenticated at this point, so add them
+     * up without overflowing and check that the resulting span lies within the
+     * area holding the image before any of it is read. The header check done
+     * before an image is validated leaves the protected TLVs out of the size
+     * it compares against the slot when the image is to be decompressed, and
+     * several callers reach this point without performing it at all.
+     */
+    hdr_size = hdr->ih_hdr_size;
+
+    if (!boot_u32_safe_add(&size, hdr->ih_img_size, hdr_size)) {
+        return -1;
+    }
+
+    tlv_off = size;
+
+    if (!boot_u32_safe_add(&size, size, hdr->ih_protect_tlv_size) ||
+        !boot_u32_safe_add(&end, size, sector_off) ||
+        end > flash_area_get_size(fap)) {
+        BOOT_LOG_DBG("bootutil_img_hash: image does not fit the flash area");
+        return -1;
+    }
+
+    bootutil_sha_init(&sha_ctx);
+
+    /* in some cases (split image) the hash is seeded with data from
+     * the loader image */
+    if (seed && (seed_len > 0)) {
+        bootutil_sha_update(&sha_ctx, seed, seed_len);
+    }
+
+#ifdef MCUBOOT_HASH_STORAGE_DIRECTLY
+    /* No chunk loading, storage is mapped to address space and can
+     * be directly given to hashing function.
+     */
+    fa_ret = flash_device_base(flash_area_get_device_id(fap), &base);
+    if (fa_ret != 0) {
+        base = 0;
+    }
+
+#if defined(MCUBOOT_SWAP_USING_OFFSET)
+    bootutil_sha_update(&sha_ctx, (void *)(base + flash_area_get_off(fap) + sector_off), size);
+#else
+    bootutil_sha_update(&sha_ctx, (void *)(base + flash_area_get_off(fap)), size);
+#endif
+#else /* MCUBOOT_HASH_STORAGE_DIRECTLY */
+#ifdef MCUBOOT_RAM_LOAD
+#ifdef MCUBOOT_SERIAL
+    if (FIH_NOT_EQ(boot_image_data_in_ram(), FIH_NEGATIVE_VALUE)) {
+#endif
+        bootutil_sha_update(&sha_ctx,
+                            (void*)(IMAGE_RAM_BASE + hdr->ih_load_addr),
+                            size);
+#ifdef MCUBOOT_SERIAL
+    } else {
+#endif
+#endif
+#if !defined(MCUBOOT_RAM_LOAD) || defined(MCUBOOT_SERIAL)
+        for (off = 0; off < size; off += blk_sz) {
+            blk_sz = size - off;
+            if (blk_sz > tmp_buf_sz) {
+                blk_sz = tmp_buf_sz;
+            }
+#ifdef MCUBOOT_ENC_IMAGES
+            /* The only data that is encrypted in an image is the payload;
+             * both header and TLVs (when protected) are not.
+             */
+            if ((off < hdr_size) && ((off + blk_sz) > hdr_size)) {
+                /* read only the header */
+                blk_sz = hdr_size - off;
+            }
+            if ((off < tlv_off) && ((off + blk_sz) > tlv_off)) {
+                /* read only up to the end of the image payload */
+                blk_sz = tlv_off - off;
+            }
+#endif
+#if defined(MCUBOOT_SWAP_USING_OFFSET)
+            rc = flash_area_read(fap, off + sector_off, tmp_buf, blk_sz);
+#else
+            rc = flash_area_read(fap, off, tmp_buf, blk_sz);
+#endif
+            if (rc) {
+                bootutil_sha_drop(&sha_ctx);
+                BOOT_LOG_DBG("bootutil_img_validate Error %d reading data chunk "
+                             "%p %" PRIu32 " %" PRIu32,
+                             rc, fap, off, blk_sz);
+                return rc;
+            }
+#ifdef MCUBOOT_ENC_IMAGES
+            if (MUST_DECRYPT(fap, image_index, hdr)) {
+                /* Only payload is encrypted (area between header and TLVs) */
+                int slot = flash_area_id_to_multi_image_slot(image_index,
+                                flash_area_get_id(fap));
+
+                if (off >= hdr_size && off < tlv_off) {
+                    blk_off = (off - hdr_size) & 0xf;
+                    rc = boot_enc_decrypt(BOOT_CURR_ENC_SLOT(state, slot),
+                                          off - hdr_size, blk_sz, blk_off, tmp_buf);
+                    if (rc != 0) {
+                        bootutil_sha_drop(&sha_ctx);
+                        return -1;
+                    }
+                }
+            }
+#endif
+            bootutil_sha_update(&sha_ctx, tmp_buf, blk_sz);
+
+            MCUBOOT_WATCHDOG_FEED();
+        }
+#if defined(MCUBOOT_RAM_LOAD)
+    }
+#endif
+#endif /* !defined(MCUBOOT_RAM_LOAD) || defined(MCUBOOT_SERIAL) */
+#endif /* MCUBOOT_HASH_STORAGE_DIRECTLY */
+    bootutil_sha_finish(&sha_ctx, hash_result);
+    bootutil_sha_drop(&sha_ctx);
+
+    return 0;
+}
+#endif /* !MCUBOOT_SIGN_PURE */
