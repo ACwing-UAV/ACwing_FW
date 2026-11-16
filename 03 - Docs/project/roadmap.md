@@ -41,6 +41,8 @@ flowchart LR
 - GNSS (ACwing GPS board): input done in 0.15 (M10 on Qwiic, NAV, checks; ADR 0014); next the horizontal estimator
   with home and compass selection, then POS_HOLD outdoors, RTH, distance geofence, then the app map.
 - ELRS receiver: input arbitration, radio failsafe, STICKS calibration.
+- Firmware and app updates (ADR 0015, proposed): MCUboot on the FC with signed images, update over USB and BLE
+  from the app, the FC as gateway for the flow board, version check against a release manifest on GitHub Pages.
 
 ## Estimation
 

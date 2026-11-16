@@ -95,6 +95,7 @@ nav:
       - decisions/0012-autonomous-flip.md
       - decisions/0013-control-law-interface.md
       - decisions/0014-gnss-input.md
+      - decisions/0015-firmware-and-app-updates.md
   - Project:
       - Lessons learned: project/lessons-learned.md
       - Roadmap: project/roadmap.md
