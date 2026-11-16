@@ -207,6 +207,7 @@ static void cmd_list(uint8_t port, uint8_t seq)
         const log_entry_t *e = last_log();
         if (e) { entry_of(e, 0u, 1u, &m); (void)port_send(port, PV2_FT_LOG_ENTRY, &m, sizeof m); }
     } else {
+        close_log();                                      /* the PC lists final logs: none "being written" */
         const uint8_t n = log_count();
         for (uint8_t i = 0; i < n; ++i) {
             entry_of(log_entry(i), i, n, &m);

@@ -50,9 +50,15 @@ flowchart LR
 - Records produced before the log opens are discarded, except the events: the
   last 8 events (≤ 2 s old) are written right after `LR_INFO`, so the ARMED
   event is in the log although the log opens a few milliseconds after it.
-- **USB has priority.** Any command from the PC closes the open log and
-  pauses recording for 5 s after the last command, so a download never reads
-  a log that is still being written.
+- **USB has priority.** Any log command from the PC (list, read, erase) closes
+  the open log **before** answering, and pauses recording for 5 s after the
+  last command. A download never reads a log that is still being written, and
+  the list shows every log final. Since firmware 0.16.1 this holds for the
+  list too; before, it showed the newest log as "recording".
+- **Record rates are exact on average.** The 50 Hz and 10 Hz records advance
+  their next time by exactly one period (`logf_due`), so the IMU rate does not
+  slow them down. Before firmware 0.16.1, with the real 916 Hz of the bench
+  IMU, they came out at about 46 Hz and 9 Hz.
 - The rate is about **3.4 kB/s**: 16 MB hold about 80 minutes. When the flash
   is full the oldest sectors are erased and reused.
 
