@@ -22,8 +22,8 @@
 #include "calib_mgr.h"
 
 #define APP_FW_MAJOR  0u
-#define APP_FW_MINOR  15u
-#define APP_FW_PATCH  1u
+#define APP_FW_MINOR  16u
+#define APP_FW_PATCH  0u
 
 typedef struct {
     char     hw_rev;              /**< CAPS hwRev: 'N' Nucleo bench, 'A' ACwing FC rev A */
@@ -38,6 +38,8 @@ typedef struct {
     uint8_t (*log_pct)(void);
     /** memory health for SYSTEM: lowest free heap, smallest stack margin (bytes) and its task; NULL = n/a */
     void    (*mem_health)(uint16_t *heap_min_free, uint16_t *stack_min_free, char task[4]);
+    /** MCUboot build: confirm the running image (bsp/boot_slot.c, ADR 0015); NULL = no bootloader, nothing to do */
+    int     (*boot_confirm)(void);
 } app_task_cfg_t;
 
 /** Before the scheduler starts: loads the flash image (parameters, name,

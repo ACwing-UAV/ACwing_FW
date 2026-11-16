@@ -1,6 +1,6 @@
 # 0015. Firmware and app updates: MCUboot on the FC, the FC as gateway for the flow board, a release manifest on GitHub Pages
 
-- **Status:** Proposed (2026-11-16)
+- **Status:** Accepted (2026-11-16). Phase 1 (MCUboot on the bench) implemented in firmware 0.16.0, results below
 - **Date:** 2026-11-16
 
 ## Context
@@ -48,14 +48,15 @@ Constraints found in the project:
 
 | Area | Bench (NUCLEO: internal flash only) | ACwing FC (rev A and later, W25Q fitted) |
 |---|---|---|
-| MCUboot | 0x08000000, 40 KB | same |
-| slot 0 (running image, MCUboot header + application) | 234 KB | 464 KB |
-| slot 1 (new image) | 230 KB, internal | W25Q, the first 512 KB (the flight log starts after them) |
+| MCUboot | 0x08000000, 28 KB (the build is 12.5 KB) | same |
+| slot 0 (running image, MCUboot header + application) | 240 KB | 476 KB |
+| slot 1 (new image) | 236 KB, internal | W25Q, the first 512 KB (the flight log starts after them) |
 | configuration | 0x0807E000, 8 KB (unchanged) | same |
 
-- On the bench the **largest image is about 228 KB**. Today's 165 KB leaves about 63 KB. The CI must fail above 90 %
+- On the bench the **largest image is about 231 KB** (slot 1 minus the header and the trailer). Today's signed image is
+  166 KB (70 %). The CI must fail above 90 %
   of the slot, as it already does for RAM and flash.
-- On the ACwing FC the limit is the whole area (464 KB): slot 1 is on the W25Q, which every FC revision keeps.
+- On the ACwing FC the limit is the whole area (476 KB): slot 1 is on the W25Q, which every FC revision keeps.
 - The application is linked after the MCUboot header (vector table at slot 0 + 0x400, VTOR set in `SystemInit`).
   The CubeMX project and the linker scripts change together with this. The CubeMX check of the CI (`check_cubemx.py`)
   gets a new rule for it.
@@ -182,7 +183,7 @@ This is documented in a guide and not offered by the app.
 
 ## Consequences
 
-- The flash available to the application on the bench drops to about 228 KB. The flight log and the configuration
+- The flash available to the application on the bench drops to about 231 KB. The flight log and the configuration
   do not change.
 - Every firmware build becomes a signed MCUboot image. The CI builds MCUboot, signs with the development key, and
   checks the image size against the slot.
@@ -236,3 +237,45 @@ This is documented in a guide and not offered by the app.
 6. **ACwing FC:** slot 1 on the W25Q (the same for every revision), together with the port to rev A of #18.
 
 Each phase opens its issue of checks on the board.
+
+## Phase 1 results (firmware 0.16.0, bench)
+
+**What was built**
+- **MCUboot ported to the STM32WB55, bare metal** (`00 - FC_FW/Boot`):
+  - configuration, flash map, a register-level flash driver (the CPU2 is not running yet), start-up at 64 MHz;
+  - MCUboot's sources vendored at a fixed commit (`third_party/mcuboot/MCUBOOT_COMMIT`).
+  - **12.5 KB**, against the 40 KB assumed in the Decision. The boot area is 28 KB and the slots grew by 6 KB each.
+- **The flash map has one source**, `Boot/port/acwing_flash_layout.h`:
+  - MCUboot, the application's linker script and the CI read it;
+  - `Tests/target/check_layout.py` checks that the linker scripts and the configuration pages agree with it.
+- **Two application builds:**
+  - **plain:** linked at 0x08000000 with no bootloader, for the debugger in STM32CubeIDE;
+  - **MCUboot:** `build_fw.py --mcuboot` links at 0x08007400 (VTOR from `SystemInit`) and signs with `imgtool`.
+    The development key is in `Boot/keys`; it is not a secret.
+- **Confirmation:**
+  - `app/boot_confirm.c` decides: 60 s with the IMU and the estimate running without a break, then the write only
+    while disarmed, retried after 5 s if it fails;
+  - `bsp/boot_slot.c` writes the flag with MCUboot's own `bootutil_public.c`, over the HSEM-safe flash primitives
+    (`bsp/flash_wb.c`, now shared with the configuration store).
+- **Not in this phase:** the transfer over USB / BLE (phase 2). Until then a new image reaches slot 1 only through
+  the debugger.
+
+**Host validation** (`boot_test`, in `make` and in the CI): the real `boot_go()` on a 512 KB flash simulated in
+RAM, with images signed by `imgtool`:
+
+| Case | Result |
+|---|---|
+| slot 0 valid, slot 1 empty | boots slot 0; vector table at 0x08007400 |
+| new image set pending (test) | swapped in, boots it |
+| not confirmed, reset | reverted to the old image |
+| confirmed with `boot_set_confirmed()`, as the application does | kept after more resets |
+| slot 1 signed with another key | refused, the running image stays |
+| one bit flipped in slot 1 | refused |
+| power cut during a swap, at 26 different points | resumed and completed every time |
+| empty flash | nothing to boot |
+| configuration pages | never written, content intact |
+| confirmation logic | 60 s healthy, the minute restarted by a loss of the estimate, deferred while armed, a failed write retried, once per boot, wrap of the ms clock |
+
+**On the board:** the first MCUboot boot, a test swap with the debugger, the revert and the confirmation are in the
+check issue of this phase.
+

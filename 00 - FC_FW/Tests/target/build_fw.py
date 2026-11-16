@@ -52,11 +52,20 @@ def main():
     ap.add_argument("--define", action="append", default=[], metavar="NAME=VALUE",
                     help="extra preprocessor define, e.g. \"APP_HW_REV='A'\" (the board); may repeat")
     ap.add_argument("--out", default=None, help="build folder name (default: the configuration)")
+    ap.add_argument("--mcuboot", action="store_true",
+                    help="link after MCUboot (slot 0, ADR 0015) and sign the image with imgtool")
+    ap.add_argument("--key", default=os.path.join(ROOT, "Boot", "keys", "dev-ecdsa-p256.pem"),
+                    help="signing key for --mcuboot (default: the development key)")
     a = ap.parse_args()
     cfg = config(a.config)
 
     incs = [path(p) for p in values(cfg, "includepaths", "c.compiler")]
     defs = values(cfg, "definedsymbols", "c.compiler") + a.define
+    lay = layout() if a.mcuboot else None
+    if a.mcuboot:
+        # the vector table after the MCUboot header in slot 0 (system_stm32wbxx.c sets VTOR from these)
+        defs += ["USER_VECT_TAB_ADDRESS", f"VECT_TAB_OFFSET={lay['ACW_SLOT0_OFF'] + lay['ACW_IMAGE_HEADER_SIZE']:#x}",
+                 "APP_MCUBOOT=1"]
     missing = [p for p in incs if not os.path.isdir(p)]
     if missing:
         sys.exit("include paths in .cproject that do not exist:\n  " + "\n  ".join(missing))
@@ -78,7 +87,7 @@ def main():
     srcs.sort()
     libs = values(cfg, "libraries", "c.linker")
     libdirs = [path(p) for p in values(cfg, "directories", "c.linker")]
-    ld = os.path.join(ROOT, "STM32WB55RGVX_FLASH.ld")
+    ld = os.path.join(ROOT, "STM32WB55RGVX_FLASH_MCUBOOT.ld" if a.mcuboot else "STM32WB55RGVX_FLASH.ld")
 
     out = os.path.join(ROOT, "Tests", "target", "build", a.out or a.config)
     shutil.rmtree(out, ignore_errors=True)
@@ -128,6 +137,40 @@ def main():
             over.append(f"{region} {pct:.2f} % > {limit:.0f} %")
     if over:
         sys.exit("memory budget exceeded: " + ", ".join(over))
+    if a.mcuboot:
+        sign(elf, lay, a.key)
+
+
+def layout():
+    """the ACW_* constants of Boot/port/acwing_flash_layout.h"""
+    txt = open(os.path.join(ROOT, "Boot", "port", "acwing_flash_layout.h")).read()
+    return {k: int(v, 0) for k, v in re.findall(r"#define\s+(ACW_\w+)\s+(0x[0-9A-Fa-f]+|\d+)u\b", txt)}
+
+
+def fw_version():
+    txt = open(os.path.join(ROOT, "App", "app", "app_task.h")).read()
+    return ".".join(re.search(rf"#define\s+APP_FW_{k}\s+(\d+)u", txt).group(1) for k in ("MAJOR", "MINOR", "PATCH"))
+
+
+def sign(elf, lay, key):
+    """MCUboot image: header 0x400, ECDSA P-256 signature, sized for slot 1 (the smaller slot). imgtool refuses an
+    image that would not fit with its trailer."""
+    raw = elf[:-4] + ".bin"
+    out = elf[:-4] + ".signed.bin"
+    subprocess.run(["arm-none-eabi-objcopy", "-O", "binary", elf, raw], check=True)
+    sectors = lay["ACW_SLOT0_SIZE"] // lay["ACW_FLASH_PAGE"]
+    cmd = ["imgtool", "sign", "-k", key, "--header-size", hex(lay["ACW_IMAGE_HEADER_SIZE"]), "--pad-header",
+           "--align", str(lay["ACW_FLASH_WRITE_ALIGN"]), "--slot-size", hex(lay["ACW_SLOT1_SIZE"]),
+           "--max-sectors", str(sectors), "--version", fw_version(), raw, out]
+    r = subprocess.run(cmd, capture_output=True, text=True)
+    if r.returncode:
+        sys.exit("imgtool sign failed:\n" + r.stdout + r.stderr)
+    size = os.path.getsize(out)
+    pct = 100.0 * size / lay["ACW_SLOT1_SIZE"]
+    print(f"signed image {os.path.basename(out)}: {size} B, {pct:.1f} % of slot 1 ({lay['ACW_SLOT1_SIZE'] // 1024} KB), "
+          f"version {fw_version()}, key {os.path.basename(key)}")
+    if pct > 90.0:
+        sys.exit(f"signed image above 90 % of slot 1 ({pct:.1f} %)")
 
 
 if __name__ == "__main__":

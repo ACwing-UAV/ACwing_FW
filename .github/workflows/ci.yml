@@ -32,6 +32,8 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v6
+      - name: imgtool (signs the MCUboot test images of boot_test)
+        run: pip install imgtool==2.5.0
       - name: Build and run (gcc, AddressSanitizer + UBSan)
         working-directory: "00 - FC_FW/Tests/host"
         run: make
@@ -60,6 +62,14 @@ jobs:
       - name: CubeMX project invariants (USB owned by the app, tick priority, TIM2 motor PWM, LF endings)
         working-directory: "00 - FC_FW"
         run: python3 Tests/target/check_cubemx.py
+      - name: Flash map of ADR 0015 (bootloader, slots, configuration pages) consistent everywhere
+        working-directory: "00 - FC_FW"
+        run: python3 Tests/target/check_layout.py
+      - name: imgtool (MCUboot image signing)
+        run: pip install imgtool==2.5.0
+      - name: Bootloader (MCUboot, development key), at most its 28 KB
+        working-directory: "00 - FC_FW/Boot"
+        run: make -j4
       - name: Debug (as STM32CubeIDE)
         working-directory: "00 - FC_FW"
         run: python3 Tests/target/build_fw.py --config Debug
@@ -71,6 +81,12 @@ jobs:
         # figure. 80 % leaves the boot / interrupt stack and room for the GPS work.
         working-directory: "00 - FC_FW"
         run: python3 Tests/target/build_fw.py --config Debug --define "APP_HW_REV='A'" --out revA --max-ram-pct 80
+      - name: MCUboot application images (bench and rev A), signed with the development key, at most 90 % of slot 1
+        working-directory: "00 - FC_FW"
+        run: |
+          python3 Tests/target/build_fw.py --config Debug --mcuboot --out mcuboot
+          python3 Tests/target/build_fw.py --config Debug --mcuboot --define "APP_HW_REV='A'" --out mcubootA --max-ram-pct 80
+          imgtool verify -k Boot/keys/dev-ecdsa-p256.pem Tests/target/build/mcuboot/ACwing_FC_FW.signed.bin
       - name: Motors enabled (bench and rev A), the PWM binding must link
         # MOTORS_ENABLE stays 0 in the sources until the power stage is connected; these builds keep the motor
         # outputs (bsp/motor_pwm.c, TIM2 from CubeMX) from rotting while it is off
