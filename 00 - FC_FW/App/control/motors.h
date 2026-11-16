@@ -15,6 +15,8 @@
 
 #ifndef MOTORS_ENABLE
 #define MOTORS_ENABLE    0        /**< 1 only with the power stage connected (the CI also builds it with 1) */
+#else
+#define MOTORS_ENABLE    1
 #endif
 #define MOTORS_PWM_TOP   1999u
 
