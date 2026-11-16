@@ -329,6 +329,15 @@ static void test_takeoff_rules(void)
     fc_res_t r = post(PV2_OP_ARM, 1, arm, 2, NULL);
     r = post(PV2_OP_TAKEOFF, 2, NULL, 0, NULL);
     CHECK(r.result == PV2_ACK_UNSUPPORTED && r.reason == PV2_R_SENSOR_MISSING, "takeoff without baro %d/%d", r.result, r.reason);
+    /* MOTOR_TEST on a firmware without motor outputs (fc_setup: motors_built 0): UNSUPPORTED / MOTORS_DISABLED */
+    {
+        const uint8_t dis[2] = { 0, 0 };
+        (void)post(PV2_OP_DISARM, 3, dis, 0, NULL);
+        const uint8_t mt[5] = { 1, 8, 0xD0, 0x07, 0x50 };
+        r = post(PV2_OP_MOTOR_TEST, 4, mt, 5, NULL);
+        CHECK(r.result == PV2_ACK_UNSUPPORTED && r.reason == PV2_R_MOTORS_DISABLED, "motor test without outputs %d/%d",
+              r.result, r.reason);
+    }
 
     /* baro present, not armed: NOT_ARMED */
     fc_setup(PV2_S_IMU | PV2_S_BARO);

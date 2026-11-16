@@ -389,6 +389,9 @@ static void test_calibration(void)
     cal_init(&cc, &active);
     CHECK(cal_start(PV2_CAL_BATTERY, 0, 0, 0, &why) == PV2_ACK_REJECTED && why == PV2_R_SENSOR_MISSING,
           "BATTERY without CURRENT -> SENSOR_MISSING");
+    /* a firmware without motor outputs (MOTORS_ENABLE 0): its own reason, not "sensor not fitted" (issue #61) */
+    CHECK(cal_start(PV2_CAL_MOTORS, 0, 0, 0, &why) == PV2_ACK_REJECTED && why == PV2_R_MOTORS_DISABLED,
+          "MOTORS calibration without motor outputs -> MOTORS_DISABLED (%u)", why);
     cc.sensors = PV2_S_IMU | PV2_S_CURRENT;
     cal_init(&cc, &active);
     CHECK(cal_start(PV2_CAL_BATTERY, 0, 1, 0, &why) == PV2_ACK_REJECTED && why == PV2_R_ARMED, "armed -> ARMED");

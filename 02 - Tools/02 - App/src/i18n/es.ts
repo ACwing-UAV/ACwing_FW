@@ -93,7 +93,7 @@ const es: Translation = {
     5: "batería demasiado baja", 6: "Home no fijado", 7: "la radio ELRS tiene el control", 8: "el dron está armado", 9: "no se ha confirmado la retirada de hélices",
     10: "el dron no está armado", 11: "hay una calibración en curso", 12: "no hay calibración en curso", 13: "el dron se está moviendo",
     14: "valor fuera de rango", 15: "ajuste desconocido", 16: "sensor no instalado",
-    17: "hay un cable USB conectado a un ordenador: desconéctalo", 18: "no permitido por USB (enlace de tierra)", 19: "otro dispositivo controla los ajustes", 20: "empuje insuficiente ahora (batería o peso)",
+    17: "hay un cable USB conectado a un ordenador: desconéctalo", 18: "no permitido por USB (enlace de tierra)", 19: "otro dispositivo controla los ajustes", 20: "empuje insuficiente ahora (batería o peso)", 21: "salidas de motor desactivadas en este firmware (MOTORS_ENABLE = 0)",
   },
   cmdError: { rejected: "No realizado: {why}", timeout: "Sin respuesta del dron", offline: "No conectado", other: "El dron rechazó el comando" },
   settings: {

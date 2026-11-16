@@ -130,6 +130,8 @@ export enum Reason {
   OTHER_LINK = 19,
   /** not enough thrust-to-weight now for the manoeuvre (hand launch, flip; firmware >= 0.11) */
   THRUST_LOW = 20,
+  /** MOTOR_TEST / motors calibration on a firmware built without motor outputs (MOTORS_ENABLE = 0; firmware >= 0.16.2) */
+  MOTORS_DISABLED = 21,
 }
 
 export enum FlightMode {

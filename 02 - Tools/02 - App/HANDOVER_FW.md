@@ -298,7 +298,9 @@ NOT_CALIBRATING, `13` NOT_STILL, `14` OUT_OF_RANGE, `15` UNKNOWN_PARAM,
 USB host is connected), `18` NOT_OVER_USB (a flight command received over
 USB), `19` OTHER_LINK (a configuration change from the link that does not
 have control) — 17…19 from firmware 0.6.0, §5.2; `20` THRUST_LOW (not enough
-thrust-to-weight at the present cell voltage for the manoeuvre, firmware 0.11). The app translates each reason into the user's language
+thrust-to-weight at the present cell voltage for the manoeuvre, firmware 0.11); `21` MOTORS_DISABLED (MOTOR_TEST or
+the motors calibration on a firmware built without motor outputs, `MOTORS_ENABLE` 0; firmware 0.16.2, before it
+`SENSOR_MISSING`). The app translates each reason into the user's language
 ("Not done: throttle is not at minimum").
 
 ### 0x0F CHECKS (2 + 4·n B)
@@ -354,7 +356,7 @@ INIT) and `0x02 N` (STATE decimation) keep their phase-2 format without seq.
 | `0x33` | CAL_SAVE | – | only in DONE (MOTORS: in any running state); write to flash, CALIB state SAVED once, EVENT 50 (arg = type), then IDLE |
 | `0x34` | CAL_RESTORE | `type u8` | restore the previous saved set of that type (keep one backup per type); `REJECTED/ARMED` if armed |
 | `0x35` | CAL_SET_REF | `type u8, index u8, value f32` | reference values typed by the user, §10.5 and §10.6 |
-| `0x36` | MOTOR_TEST | `motor u8 (1…n), pct u8 (≤ 20), ms u16 (≤ 3000), 0x50` | `PROPS_CONFIRM_MISSING` without `0x50`; `ARMED`; `INVALID/OUT_OF_RANGE`. App sends pct 8, 2000 ms |
+| `0x36` | MOTOR_TEST | `motor u8 (1…n), pct u8 (≤ 20), ms u16 (≤ 3000), 0x50` | `PROPS_CONFIRM_MISSING` without `0x50`; `ARMED`; `INVALID/OUT_OF_RANGE`; `UNSUPPORTED/MOTORS_DISABLED` on a firmware without motor outputs. App sends pct 8, 2000 ms |
 | `0x37` | MOTOR_REVERSE | `motor u8` | toggle direction (DShot spin-direction command / ESC setting), store with CAL_SAVE |
 | `0x38` | MOTOR_REMAP | `map u8×n` (n ≤ 8; map[i] = output for motor i+1) | `ARMED`. Reserved: the app does not send it yet |
 | `0x40` | STREAM_RATES | `flight, power, nav, motors, system` u8 Hz | clamp to the ranges in §3; 0 = keep current. **Lasts one session**: the defaults of §3 again at every new subscription (and when the USB port opens with no app subscribed) — firmware 0.6.1. Reserved: the app uses the defaults today |
@@ -815,7 +817,8 @@ Common rules:
 
 - Only disarmed (`CAL_START` armed → `REJECTED/ARMED`); one at a time
   (`BUSY/CALIBRATING` if another is not DONE); missing sensor →
-  `REJECTED/SENSOR_MISSING`; unknown type → `INVALID`.
+  `REJECTED/SENSOR_MISSING`; MOTORS on a firmware without motor outputs →
+  `REJECTED/MOTORS_DISABLED`; unknown type → `INVALID`.
 - During a calibration send CALIB at 10 Hz and once on every state/step
   change. Results are applied to RAM only; **CAL_SAVE** writes them to flash
   (keeping the previous set as the backup for CAL_RESTORE). **CAL_ABORT** or

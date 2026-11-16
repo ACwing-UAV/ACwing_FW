@@ -93,7 +93,7 @@ const fr: Translation = {
     5: "batterie trop faible", 6: "le Home n'est pas défini", 7: "la radio ELRS a la main", 8: "le drone est armé", 9: "retrait des hélices non confirmé",
     10: "le drone n'est pas armé", 11: "une calibration est en cours", 12: "aucune calibration en cours", 13: "le drone bouge",
     14: "valeur hors plage", 15: "réglage inconnu", 16: "capteur absent",
-    17: "un câble USB vers un ordinateur est branché : débranchez-le", 18: "interdit via USB (liaison sol)", 19: "un autre appareil contrôle les réglages", 20: "poussée insuffisante maintenant (batterie ou masse)",
+    17: "un câble USB vers un ordinateur est branché : débranchez-le", 18: "interdit via USB (liaison sol)", 19: "un autre appareil contrôle les réglages", 20: "poussée insuffisante maintenant (batterie ou masse)", 21: "sorties moteurs désactivées dans ce firmware (MOTORS_ENABLE = 0)",
   },
   cmdError: { rejected: "Non effectué : {why}", timeout: "Pas de réponse du drone", offline: "Non connecté", other: "Le drone a refusé la commande" },
   settings: {

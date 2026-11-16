@@ -166,7 +166,7 @@ uint8_t cal_start(uint8_t type, uint8_t option, uint8_t armed, uint32_t now, uin
         if (!(s_cfg.sensors & PV2_S_ELRS) || !s_cfg.rc) { *reason = PV2_R_SENSOR_MISSING; return PV2_ACK_REJECTED; }
         break;
     case PV2_CAL_MOTORS:
-        if (!s_cfg.motors_built) { *reason = PV2_R_SENSOR_MISSING; return PV2_ACK_REJECTED; }
+        if (!s_cfg.motors_built) { *reason = PV2_R_MOTORS_DISABLED; return PV2_ACK_REJECTED; }
         break;
     case PV2_CAL_COMPASS:
         if (!(s_cfg.sensors & PV2_S_MAG_FC) || option == 2u) { *reason = PV2_R_SENSOR_MISSING; return PV2_ACK_REJECTED; }
