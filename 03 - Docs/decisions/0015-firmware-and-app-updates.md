@@ -18,7 +18,7 @@ Constraints found in the project:
 
 | Item | Value | Consequence |
 |---|---|---|
-| FC application area (CPU1) | 512 KB at 0x08000000. The CPU2 BLE stack sits above it. The last 8 KB hold the configuration pages | a bootloader, the running image and the new image must fit here. The rev A also has the W25Q128 (16 MB) |
+| FC application area (CPU1) | 512 KB at 0x08000000. The CPU2 BLE stack sits above it. The last 8 KB hold the configuration pages | on the bench a bootloader, the running image and the new image must all fit here. Every ACwing FC (rev A and later) also has the W25Q128 (16 MB) |
 | FC firmware today | about 165 KB (bench Debug) | two copies plus a bootloader fit in 512 KB, with a margin of about 65 KB per copy |
 | bench (NUCLEO) | no external flash | the new image goes in the internal flash |
 | flow bridge | STM32C011F4: **16 KB of flash**, 6 KB of RAM | no room for a bootloader of our own |
@@ -46,7 +46,7 @@ Constraints found in the project:
 
 **Flash map**
 
-| Area | Bench (internal flash only) | Rev A |
+| Area | Bench (NUCLEO: internal flash only) | ACwing FC (rev A and later, W25Q fitted) |
 |---|---|---|
 | MCUboot | 0x08000000, 40 KB | same |
 | slot 0 (running image, MCUboot header + application) | 234 KB | 464 KB |
@@ -55,7 +55,7 @@ Constraints found in the project:
 
 - On the bench the **largest image is about 228 KB**. Today's 165 KB leaves about 63 KB. The CI must fail above 90 %
   of the slot, as it already does for RAM and flash.
-- On rev A the limit is the whole area (464 KB).
+- On the ACwing FC the limit is the whole area (464 KB): slot 1 is on the W25Q, which every FC revision keeps.
 - The application is linked after the MCUboot header (vector table at slot 0 + 0x400, VTOR set in `SystemInit`).
   The CubeMX project and the linker scripts change together with this. The CubeMX check of the CI (`check_cubemx.py`)
   gets a new rule for it.
@@ -85,7 +85,7 @@ writes. Allowed **only while disarmed and on the ground**; ARM is refused during
 ### 3. The FC as gateway for the flow board
 
 The app sends the flow image to the FC (`target` FLOW) with the same commands. The FC stores it (≤ 16 KB: on the
-bench in slot 1, on rev A in the W25Q) and checks its signature. Then:
+bench in slot 1, on the ACwing FC in the W25Q) and checks its signature. Then:
 
 1. the ExtTask stops polling the Qwiic bus;
 2. the FC writes a **bootloader-entry command** to the bridge (new CTRL value with a magic byte, so that no stray
@@ -113,7 +113,8 @@ Flow firmware changes:
 
 On a tag `vX.Y.Z` a release workflow:
 
-1. builds and signs the FC firmware (bench and rev A, Release), the flow firmware and the PWA;
+1. builds and signs the FC firmware (bench, and every FC revision: one image per `hwRev`, Release), the flow firmware
+   and the PWA;
 2. attaches the binaries to the **GitHub Release** (permanent history, also for downgrades);
 3. publishes on **GitHub Pages**, with the documentation, `releases/manifest.json` and all the release binaries.
    GitHub Pages sends the CORS header, while the Release assets do not, so the PWA could not download them directly.
@@ -132,6 +133,8 @@ releases folder, downloaded from the GitHub Releases, so a docs deploy does not 
   "flow": { "version": "1.1.0", "file": "flow-1.1.0.signed.bin", "size": 9216, "sha256": "…", "minFc": "0.16.0" }
 }
 ```
+
+`fc` has one entry per `hwRev` (`N` bench, `A` the ACwing FC rev A): a later FC revision adds its own key.
 
 ### 5. Version check and updates in the app
 
@@ -165,7 +168,8 @@ The PC tool `acwing-tools fw flash` uses the same protocol over USB, for develop
 ### 6. Recovery
 
 If the board cannot start at all (MCUboot damaged):
-- ROM USB DFU: BOOT0 (jumper on the NUCLEO, pogo pad TP1 on rev A), then STM32CubeProgrammer or `dfu-util`;
+- ROM USB DFU: BOOT0 (jumper on the NUCLEO; pogo pad TP1 on the ACwing FC rev A), then STM32CubeProgrammer or
+  `dfu-util`;
 - or SWD.
 
 This is documented in a guide and not offered by the app.
@@ -229,6 +233,6 @@ This is documented in a guide and not offered by the app.
    - the bridge firmware (bootloader entry, full version);
    - the AN4221 client in the FC, host-tested against a simulated C011 bootloader;
    - one SWD flash of the bridge.
-6. **Rev A:** slot 1 on the W25Q, together with the port of #18.
+6. **ACwing FC:** slot 1 on the W25Q (the same for every revision), together with the port to rev A of #18.
 
 Each phase opens its issue of checks on the board.
