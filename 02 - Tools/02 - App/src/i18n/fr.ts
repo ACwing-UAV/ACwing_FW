@@ -93,7 +93,7 @@ const fr: Translation = {
     5: "batterie trop faible", 6: "le Home n'est pas défini", 7: "la radio ELRS a la main", 8: "le drone est armé", 9: "retrait des hélices non confirmé",
     10: "le drone n'est pas armé", 11: "une calibration est en cours", 12: "aucune calibration en cours", 13: "le drone bouge",
     14: "valeur hors plage", 15: "réglage inconnu", 16: "capteur absent",
-    17: "un câble USB vers un ordinateur est branché : débranchez-le", 18: "interdit via USB (liaison sol)", 19: "un autre appareil contrôle les réglages", 20: "poussée insuffisante maintenant (batterie ou masse)", 21: "sorties moteurs désactivées dans ce firmware (MOTORS_ENABLE = 0)",
+    17: "un câble USB vers un ordinateur est branché : débranchez-le", 18: "interdit via USB (liaison sol)", 19: "un autre appareil contrôle les réglages", 20: "poussée insuffisante maintenant (batterie ou masse)", 21: "sorties moteurs désactivées dans ce firmware (MOTORS_ENABLE = 0)", 22: "les moteurs à balais tournent dans un seul sens : inversez les deux fils de ce moteur ou montez un moteur de l’autre sens"
   },
   cmdError: { rejected: "Non effectué : {why}", timeout: "Pas de réponse du drone", offline: "Non connecté", other: "Le drone a refusé la commande" },
   settings: {
@@ -223,7 +223,7 @@ const fr: Translation = {
       intro: "Touchez ou cliquez un moteur : il tourne lentement pendant 2 s. Vérifiez que c'est le bon et qu'il tourne dans le bon sens.",
       question: "{m} ({pos}) tourne‑t‑il dans le sens {dir} ?", yes: "Oui", reverse: "Non, l'inverser", remap: "Mauvais moteur ? Réaffecter l'ordre des moteurs",
       checked: "Disposition des moteurs vérifiée", hint: "Les moteurs inversés se changent dans les réglages ESC, sans recâbler. Montez les hélices selon le sens de chacun.",
-      testAgain: "Tester à nouveau", spinning: "en rotation", reversed: "inversé", notTested: "non testé", cw: "horaire", ccw: "antihoraire",
+      fixWiring: "Câblage des moteurs à corriger", wrongWay: "mauvais sens", hintBrushed: "Moteurs à balais : un moteur qui tourne dans le mauvais sens doit avoir ses deux fils inversés (ou être remplacé par celui de l’autre sens). Montez les hélices selon le sens de chaque moteur.", testAgain: "Tester à nouveau", spinning: "en rotation", reversed: "inversé", notTested: "non testé", cw: "horaire", ccw: "antihoraire",
       front: "AVANT", pos: { fl: "avant gauche", fr: "avant droit", rl: "arrière gauche", rr: "arrière droit" },
     },
     sticks: {

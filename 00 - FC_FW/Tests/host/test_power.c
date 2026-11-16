@@ -377,6 +377,9 @@ static uint8_t cb_rc(uint16_t st[4], uint16_t aux[4])
     return s_rc_ok;
 }
 
+static uint8_t s_test_motor;
+static uint8_t cb_test_motor(void) { return s_test_motor; }
+
 static void test_calibration(void)
 {
     static cal_set_t active;
@@ -392,6 +395,37 @@ static void test_calibration(void)
     /* a firmware without motor outputs (MOTORS_ENABLE 0): its own reason, not "sensor not fitted" (issue #61) */
     CHECK(cal_start(PV2_CAL_MOTORS, 0, 0, 0, &why) == PV2_ACK_REJECTED && why == PV2_R_MOTORS_DISABLED,
           "MOTORS calibration without motor outputs -> MOTORS_DISABLED (%u)", why);
+    /* motor outputs built: the procedure follows MOTOR_TEST (issue #61: it answered UNSUPPORTED, no reason) */
+    {
+        cc.motors_built = 1; cc.motor = cb_test_motor;
+        cal_init(&cc, &active);
+        uint8_t f[64];
+        pv2_calib_hdr_t h; pv2_cal_motors_t d;
+        CHECK(cal_start(PV2_CAL_MOTORS, 0, 0, 0, &why) == PV2_ACK_OK, "MOTORS start (%u)", why);
+        (void)cal_take_changed();
+        size_t n = cal_frame(f, sizeof f);
+        memcpy(&h, f + 4, sizeof h); memcpy(&d, f + 4 + 6, sizeof d);
+        CHECK(n == 6 + 6 + 4 && h.type == PV2_CAL_MOTORS && h.state == PV2_CS_WAITING_USER && h.step == 1 &&
+              d.motor == 0 && !d.spinning && d.ok_mask == 0 && d.rev_mask == 0, "MOTORS: WAITING_USER, nothing spun");
+        s_test_motor = 2; cal_tick(10);
+        CHECK(cal_take_changed(), "a frame when M2 starts");
+        (void)cal_frame(f, sizeof f); memcpy(&d, f + 4 + 6, sizeof d);
+        CHECK(d.motor == 2 && d.spinning && d.ok_mask == 0x02, "M2 spinning, ok bit set");
+        cal_tick(20);
+        CHECK(!cal_take_changed(), "no frame while the same motor spins");
+        s_test_motor = 0; cal_tick(2010);
+        CHECK(cal_take_changed(), "a frame when it stops");
+        (void)cal_frame(f, sizeof f); memcpy(&d, f + 4 + 6, sizeof d);
+        CHECK(d.motor == 2 && !d.spinning && d.ok_mask == 0x02, "stopped, M2 kept as tested");
+        s_test_motor = 4; cal_tick(2100); s_test_motor = 0; cal_tick(4100);
+        (void)cal_frame(f, sizeof f); memcpy(&d, f + 4 + 6, sizeof d);
+        CHECK(d.ok_mask == 0x0A, "M2 and M4 tested (0x%02X)", d.ok_mask);
+        CHECK(cal_save_check(&why) == PV2_ACK_OK, "MOTORS saved in WAITING_USER (the user decides)");
+        cal_saved();
+        (void)cal_frame(f, sizeof f);
+        CHECK(!cal_active(), "IDLE after SAVED");
+        cc.motors_built = 0; cc.motor = NULL;
+    }
     cc.sensors = PV2_S_IMU | PV2_S_CURRENT;
     cal_init(&cc, &active);
     CHECK(cal_start(PV2_CAL_BATTERY, 0, 1, 0, &why) == PV2_ACK_REJECTED && why == PV2_R_ARMED, "armed -> ARMED");

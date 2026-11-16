@@ -67,12 +67,16 @@ typedef void (*cal_batt_fn)(float *vbat, float *last_used_mah, float *last_scale
  *  AUX1-4 in us; returns 1 while the receiver link is up */
 typedef uint8_t (*cal_rc_fn)(uint16_t stick_us[4], uint16_t aux_us[4]);
 
+/** motor the flight core is spinning for MOTOR_TEST (fc_state_t.test_motor), 0 none: MOTORS calibration */
+typedef uint8_t (*cal_motor_fn)(void);
+
 typedef struct {
     uint16_t     sensors;        /**< CAPS bits */
     uint8_t      motors_built;
     cal_apply_fn apply;
     cal_batt_fn  batt;           /**< NULL: BATTERY -> SENSOR_MISSING */
     cal_rc_fn    rc;             /**< NULL: STICKS -> SENSOR_MISSING */
+    cal_motor_fn motor;          /**< NULL: the MOTORS calibration shows no spinning motor */
 } cal_config_t;
 
 /** active: the set in effect (RAM), owned by the caller. DONE applies the new

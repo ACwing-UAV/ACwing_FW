@@ -91,7 +91,7 @@ const en = {
     5: "battery too low", 6: "home is not set", 7: "the ELRS radio has control", 8: "the drone is armed", 9: "propellers not confirmed removed",
     10: "the drone is not armed", 11: "a calibration is running", 12: "no calibration running", 13: "the drone is moving",
     14: "value out of range", 15: "unknown setting", 16: "sensor not fitted",
-    17: "a USB cable to a computer is connected: unplug it", 18: "not allowed over USB (ground link)", 19: "another device has control of the settings", 20: "not enough thrust now (battery or weight)", 21: "motor outputs disabled in this firmware (MOTORS_ENABLE = 0)",
+    17: "a USB cable to a computer is connected: unplug it", 18: "not allowed over USB (ground link)", 19: "another device has control of the settings", 20: "not enough thrust now (battery or weight)", 21: "motor outputs disabled in this firmware (MOTORS_ENABLE = 0)", 22: "brushed motors turn one way only: swap the two wires of that motor, or fit a motor of the other direction"
   },
   cmdError: { rejected: "Not done: {why}", timeout: "No answer from the drone", offline: "Not connected", other: "The drone refused the command" },
   settings: {
@@ -221,7 +221,7 @@ const en = {
       intro: "Tap or click a motor: it spins slowly for 2 s. Check it is the right one and turns the right way.",
       question: "Is {m} ({pos}) spinning {dir}?", yes: "Yes", reverse: "No, reverse it", remap: "Wrong motor moved? Remap motor order",
       checked: "Motor layout checked", hint: "Reversed motors are changed in the ESC settings, no rewiring needed. Fit the propellers matching each direction.",
-      testAgain: "Test again", spinning: "spinning", reversed: "reversed", notTested: "not tested", cw: "clockwise", ccw: "counter‑clockwise",
+      fixWiring: "Motor wiring to fix", wrongWay: "wrong direction", hintBrushed: "Brushed motors: a motor that turns the wrong way needs its two wires swapped (or the motor for the other direction). Fit the propellers matching each direction.", testAgain: "Test again", spinning: "spinning", reversed: "reversed", notTested: "not tested", cw: "clockwise", ccw: "counter‑clockwise",
       front: "FRONT", pos: { fl: "front left", fr: "front right", rl: "rear left", rr: "rear right" },
     },
     sticks: {

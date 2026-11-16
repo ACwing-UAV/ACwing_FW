@@ -300,7 +300,8 @@ USB), `19` OTHER_LINK (a configuration change from the link that does not
 have control) — 17…19 from firmware 0.6.0, §5.2; `20` THRUST_LOW (not enough
 thrust-to-weight at the present cell voltage for the manoeuvre, firmware 0.11); `21` MOTORS_DISABLED (MOTOR_TEST or
 the motors calibration on a firmware built without motor outputs, `MOTORS_ENABLE` 0; firmware 0.16.2, before it
-`SENSOR_MISSING`). The app translates each reason into the user's language
+`SENSOR_MISSING`); `22` FIXED_DIRECTION (MOTOR_REVERSE on brushed motors, which turn one way only: the
+wires of that motor must be swapped; firmware 0.16.4). The app translates each reason into the user's language
 ("Not done: throttle is not at minimum").
 
 ### 0x0F CHECKS (2 + 4·n B)
@@ -357,7 +358,7 @@ INIT) and `0x02 N` (STATE decimation) keep their phase-2 format without seq.
 | `0x34` | CAL_RESTORE | `type u8` | restore the previous saved set of that type (keep one backup per type); `REJECTED/ARMED` if armed |
 | `0x35` | CAL_SET_REF | `type u8, index u8, value f32` | reference values typed by the user, §10.5 and §10.6 |
 | `0x36` | MOTOR_TEST | `motor u8 (1…n), pct u8 (≤ 20), ms u16 (≤ 3000), 0x50` | `PROPS_CONFIRM_MISSING` without `0x50`; `ARMED`; `INVALID/OUT_OF_RANGE`; `UNSUPPORTED/MOTORS_DISABLED` on a firmware without motor outputs. App sends pct 8, 2000 ms |
-| `0x37` | MOTOR_REVERSE | `motor u8` | toggle direction (DShot spin-direction command / ESC setting), store with CAL_SAVE |
+| `0x37` | MOTOR_REVERSE | `motor u8` | ESC motors: toggle direction (DShot spin-direction command / ESC setting), store with CAL_SAVE. Brushed motors (this board): `REJECTED/FIXED_DIRECTION`, `revMask` stays 0 (firmware 0.16.4; `UNSUPPORTED` before) |
 | `0x38` | MOTOR_REMAP | `map u8×n` (n ≤ 8; map[i] = output for motor i+1) | `ARMED`. Reserved: the app does not send it yet |
 | `0x40` | STREAM_RATES | `flight, power, nav, motors, system` u8 Hz | clamp to the ranges in §3; 0 = keep current. **Lasts one session**: the defaults of §3 again at every new subscription (and when the USB port opens with no app subscribed) — firmware 0.6.1. Reserved: the app uses the defaults today |
 | `0x41` | REQUEST | `frameType u8` | send that frame once now (CAPS, CHECKS, INIT, FLIGHT, POWER, NAV, MOTORS, SYSTEM); others `UNSUPPORTED` |
@@ -904,7 +905,10 @@ CCW, M3 rear left CCW, M4 front left CW** (the app draws this layout;
 `revMask` flips the drawn direction). `CAL_START(7)` → WAITING_USER. The app
 sends `MOTOR_TEST(m, 8 %, 2000 ms, 'P')` when the user taps a motor: spin
 that output, CALIB with `motor`, `spinning`=1, set the `okMask` bit; at the
-end `spinning`=0. `MOTOR_REVERSE(m)` toggles `revMask`. `CAL_SAVE` stores
+end `spinning`=0. `MOTOR_REVERSE(m)` toggles `revMask` (ESC motors); on brushed motors it is
+`REJECTED/FIXED_DIRECTION` and the app marks the motor "wrong direction" (swap its wires).
+Firmware 0.16.4 implements the procedure (`cal_motors.c`): WAITING_USER, step 1, a CALIB frame when a
+MOTOR_TEST starts and when it stops; before it `CAL_START(7)` answered `UNSUPPORTED` with no reason. `CAL_SAVE` stores
 direction (and remap) in flash. Any MOTOR_TEST must stop after `ms`, on
 CAL_ABORT, on link loss and on any new command other than MOTOR_TEST.
 

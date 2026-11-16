@@ -13,10 +13,10 @@
 
 #include <stdint.h>
 
+/* -DMOTORS_ENABLE (gcc gives it the value 1) or -DMOTORS_ENABLE=1 turns the outputs on; -DMOTORS_ENABLE=0 or nothing
+ * keeps them off. No #else here: it would turn an explicit -DMOTORS_ENABLE=0 into 1. */
 #ifndef MOTORS_ENABLE
 #define MOTORS_ENABLE    0        /**< 1 only with the power stage connected (the CI also builds it with 1) */
-#else
-#define MOTORS_ENABLE    1
 #endif
 #define MOTORS_PWM_TOP   1999u
 

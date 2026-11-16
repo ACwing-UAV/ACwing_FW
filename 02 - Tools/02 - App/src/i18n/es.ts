@@ -93,7 +93,7 @@ const es: Translation = {
     5: "batería demasiado baja", 6: "Home no fijado", 7: "la radio ELRS tiene el control", 8: "el dron está armado", 9: "no se ha confirmado la retirada de hélices",
     10: "el dron no está armado", 11: "hay una calibración en curso", 12: "no hay calibración en curso", 13: "el dron se está moviendo",
     14: "valor fuera de rango", 15: "ajuste desconocido", 16: "sensor no instalado",
-    17: "hay un cable USB conectado a un ordenador: desconéctalo", 18: "no permitido por USB (enlace de tierra)", 19: "otro dispositivo controla los ajustes", 20: "empuje insuficiente ahora (batería o peso)", 21: "salidas de motor desactivadas en este firmware (MOTORS_ENABLE = 0)",
+    17: "hay un cable USB conectado a un ordenador: desconéctalo", 18: "no permitido por USB (enlace de tierra)", 19: "otro dispositivo controla los ajustes", 20: "empuje insuficiente ahora (batería o peso)", 21: "salidas de motor desactivadas en este firmware (MOTORS_ENABLE = 0)", 22: "los motores con escobillas giran en un solo sentido: intercambia los dos cables de ese motor o monta un motor del otro sentido"
   },
   cmdError: { rejected: "No realizado: {why}", timeout: "Sin respuesta del dron", offline: "No conectado", other: "El dron rechazó el comando" },
   settings: {
@@ -223,7 +223,7 @@ const es: Translation = {
       intro: "Toca o haz clic en un motor: gira despacio durante 2 s. Comprueba que sea el correcto y que gire en el sentido adecuado.",
       question: "¿{m} ({pos}) gira en sentido {dir}?", yes: "Sí", reverse: "No, invertirlo", remap: "¿Se movió el motor equivocado? Reasignar el orden de motores",
       checked: "Disposición de motores comprobada", hint: "Los motores invertidos se cambian en los ajustes del ESC, sin recablear. Monta las hélices según el sentido de cada uno.",
-      testAgain: "Probar de nuevo", spinning: "girando", reversed: "invertido", notTested: "sin probar", cw: "horario", ccw: "antihorario",
+      fixWiring: "Cableado de motores por corregir", wrongWay: "sentido incorrecto", hintBrushed: "Motores con escobillas: un motor que gira al revés necesita sus dos cables intercambiados (o el motor del otro sentido). Monta las hélices según el sentido de cada motor.", testAgain: "Probar de nuevo", spinning: "girando", reversed: "invertido", notTested: "sin probar", cw: "horario", ccw: "antihorario",
       front: "FRENTE", pos: { fl: "delantero izquierdo", fr: "delantero derecho", rl: "trasero izquierdo", rr: "trasero derecho" },
     },
     sticks: {

@@ -70,6 +70,22 @@ describe("app session against the simulator (real bytes, 20-byte notifications)"
     await d.disconnect();
   }, 20000);
 
+  it("motors wizard: the test is followed in CALIB, MOTOR_REVERSE says brushed motors turn one way (FIXED_DIRECTION)", async () => {
+    const d = new Drone();
+    await d.connect(new SimTransport("indoor"));
+    await until(() => !!d.getSnapshot().caps);
+    await d.calStart(CalType.MOTORS);
+    await until(() => d.getSnapshot().calib?.type === CalType.MOTORS);
+    await d.motorTest(2);
+    await until(() => { const c = d.getSnapshot().calib?.data; return !!c && c.kind === "motors" && (c.okMask & 0x02) !== 0; });
+    const e = await d.motorReverse(2).then(() => null, (x: unknown) => x);
+    expect(e).toBeInstanceOf(CommandError);
+    expect((e as CommandError).result).toBe(AckResult.REJECTED);
+    expect((e as CommandError).reason).toBe(Reason.FIXED_DIRECTION);
+    await d.calAbort();
+    await d.disconnect();
+  }, 20000);
+
   it("firmware 0.5.0 extensions: battery params, logMode, battery EMERGENCY locks the landing", async () => {
     const t = new SimTransport("indoor");
     const d = new Drone();

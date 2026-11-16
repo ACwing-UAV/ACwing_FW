@@ -4,7 +4,7 @@ APP  = ../../App
 SRC  = $(APP)/telemetry/telemetry.c $(APP)/telemetry/proto_v2.c $(APP)/telemetry/ack_cache.c \
        $(APP)/telemetry/app_link.c $(APP)/telemetry/tlm_ble.c \
        $(APP)/app/params.c $(APP)/app/cfg_store.c $(APP)/app/fc_shared.c $(APP)/app/app_task.c \
-       $(APP)/control/fc_core.c $(APP)/control/calib_mgr.c $(APP)/control/checks.c \
+       $(APP)/control/fc_core.c $(APP)/control/calib_mgr.c $(APP)/control/cal_motors.c $(APP)/control/checks.c \
        $(APP)/control/battery.c $(APP)/app/batt_task.c $(APP)/log/log_queue.c $(APP)/log/log_feed.c \
        $(APP)/log/log_store.c $(APP)/app/log_task.c $(APP)/telemetry/usb_link.c \
        $(APP)/filters/altitude_kf/alt_est.c $(APP)/control/alt_ctrl.c \

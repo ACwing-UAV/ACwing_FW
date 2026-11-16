@@ -1440,6 +1440,11 @@ static void test_app(void)
     cmd(0x5F, 26, NULL, 0); app_run(40, &v, 1);
     a = find_ack(f0, 0x5F, 26, NULL);
     CHECK(a && a->result == PV2_ACK_UNSUPPORTED, "unknown op");
+    /* MOTOR_REVERSE: brushed motors turn one way only, said with its own reason (issue #61) */
+    { const uint8_t m1 = 1; cmd(PV2_OP_MOTOR_REVERSE, 69, &m1, 1); app_run(40, &v, 1); }
+    a = find_ack(f0, PV2_OP_MOTOR_REVERSE, 69, NULL);
+    CHECK(a && a->result == PV2_ACK_REJECTED && a->reason == PV2_R_FIXED_DIRECTION, "MOTOR_REVERSE -> FIXED_DIRECTION (%d/%d)",
+          a ? a->result : -1, a ? a->reason : -1);
     /* REQUEST POWER -> UNSUPPORTED (no ADC), REQUEST CAPS -> CAPS */
     const uint8_t rq = PV2_FT_POWER, rc2 = PV2_FT_CAPS;
     int fc0 = count_type(0, PV2_FT_CAPS);

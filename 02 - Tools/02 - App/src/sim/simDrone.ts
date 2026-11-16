@@ -105,7 +105,7 @@ export class SimDrone {
   private cal: Cal | null = null;
   private compassCalibrated = false;
   private motorTest: { motor: number; until: number; pct: number } | null = null;
-  private motorRev = 0;
+  private readonly motorRev = 0;   // brushed motors: never reversed in software (MOTOR_REVERSE refused)
   private motorOk = 0;
 
   // ---- output ----
@@ -394,8 +394,7 @@ export class SimDrone {
         const m = r.u8_();
         if (this.armed) return rej(Reason.ARMED);
         if (m < 1 || m > this.nMotors) return [AckResult.INVALID, Reason.OUT_OF_RANGE];
-        this.motorRev ^= 1 << (m - 1);
-        return ok;
+        return rej(Reason.FIXED_DIRECTION);   // brushed motors, as the firmware (app_task.c, cal_motors.h)
       }
       case OP.MOTOR_REMAP:
         return this.armed ? rej(Reason.ARMED) : ok;
