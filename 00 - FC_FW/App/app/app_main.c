@@ -417,15 +417,13 @@ static void publish_est(uint32_t now)
  * (records are queued only while a log is open, see log_feed.h) */
 static void log_records(uint32_t now, const float q[4], const fc_vert_t *v, const fc_setpoint_t *sp)
 {
-    static uint32_t last50, last10;
+    static uint32_t next50, next10;
     if (!log_q_active()) return;
-    if ((now - last50) >= 20u) {
-        last50 = now;
+    if (logf_due(&next50, now, 20u)) {
         logf_att(now, q, s_est.omega, s_est.acc_mean);
         logf_vert(now, v, sp, s_tof_mm, s_alt.baro_ok ? (uint32_t)(s_alt.pressure + 0.5f) : 0u);
     }
-    if ((now - last10) >= 100u) {
-        last10 = now;
+    if (logf_due(&next10, now, 100u)) {
         fc_state_t f;
         memset(&f, 0, sizeof f);
         fc_snapshot(&f);

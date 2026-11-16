@@ -12,6 +12,14 @@ static uint32_t (*s_clock)(void);
 
 void logf_set_clock(uint32_t (*now_ms)(void)) { s_clock = now_ms; }
 
+uint8_t logf_due(uint32_t *next, uint32_t now, uint32_t period)
+{
+    const int32_t late = (int32_t)(now - *next);
+    if (late < 0) return 0u;
+    *next = ((uint32_t)late >= period) ? now + period : *next + period;   /* resync after a gap, else exact step */
+    return 1u;
+}
+
 static int16_t  i16(float v) { return (int16_t)(v > 32767.0f ? 32767 : (v < -32768.0f ? -32768 : lrintf(v))); }
 static uint16_t u16(float v) { return (uint16_t)(v > 65535.0f ? 65535 : (v < 0.0f ? 0 : lrintf(v))); }
 static int32_t  i32(float v) { return (int32_t)(v > 2.0e9f ? 2000000000 : (v < -2.0e9f ? -2000000000 : lrintf(v))); }
