@@ -12,7 +12,7 @@
 import { StreamParser } from "../protocol/frame";
 import { decodeFrame, quatToEuler, type AckMsg, type CapsMsg, type FlightMsg, type PowerMsg, type NavMsg, type MotorsMsg, type SystemMsg, type StatusMsg, type ChecksMsg, type CalibMsg, type EventMsg } from "../protocol/messages";
 import { Cmd, type RcInput } from "../protocol/commands";
-import { FT, OP, AckResult, SENSOR, PARAM_BY_ID, EventCode } from "../protocol/ids";
+import { FT, OP, AckResult, SENSOR, PARAM_BY_ID, EventCode, Reason } from "../protocol/ids";
 import type { Transport } from "./transport";
 import { appSettings } from "../settings/appSettings";
 
@@ -303,7 +303,14 @@ export class Drone {
   paramDefaults = () => this.send((s) => Cmd.paramDefaults(s));
   calStart = (type: number, option = 0) => this.send((s) => Cmd.calStart(s, type, option));
   calCapture = () => this.send((s) => Cmd.calCapture(s));
-  calAbort = () => this.send((s) => Cmd.calAbort(s)).catch(() => undefined);
+  /** CAL_ABORT. The firmware sends no CALIB frame once it is back to IDLE, so the last frame (DONE) would stay on
+   * screen and "Discard" would look dead: the wizard state is cleared here, on the ACK (or when the drone says no
+   * calibration is running any more). */
+  calAbort = () =>
+    this.send((s) => Cmd.calAbort(s)).then(
+      () => { this.set({ calib: null }); },
+      (e: unknown) => { if (e instanceof CommandError && e.reason === Reason.NOT_CALIBRATING) this.set({ calib: null }); },
+    );
   calSave = () => this.send((s) => Cmd.calSave(s));
   calRestore = (type: number) => this.send((s) => Cmd.calRestore(s, type));
   calSetRef = (type: number, idx: number, v: number) => this.send((s) => Cmd.calSetRef(s, type, idx, v));

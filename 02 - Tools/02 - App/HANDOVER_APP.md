@@ -81,6 +81,8 @@ build clean):
 | i18n | every new string in en, it, fr, de, es |
 | Simulator | battery as the firmware: one event per level crossed (30/31/32), level latched while armed, CRITICAL → RTH/LAND once with EVENT 22, EMERGENCY → LAND locked (SET_MODE, HOLD, RTH, TAKEOFF refused with BATTERY_LOW), battery landing not replaced by the app-link failsafe, ARM refused at CRITICAL, scaleI as the firmware |
 | Tests | `drone.test.ts`: the new params, the EMERGENCY lock, the battery check values |
+| Calibration wizards | "Discard" / cancel clears the wizard on the CAL_ABORT ACK (or on `NOT_CALIBRATING`): back in IDLE the firmware sends no more CALIB frames, so the last one (DONE) would stay on screen |
+| Icons | `gear` is a cog (Feather "settings"); the old hub with 8 spokes read as a sun |
 
 ## 2. Battery: what the firmware does now
 
