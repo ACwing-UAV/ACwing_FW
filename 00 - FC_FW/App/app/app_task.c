@@ -1051,8 +1051,9 @@ static void AppTask(void *arg)
 void app_task_start(const app_task_cfg_t *cfg)
 {
     app_init(cfg);
+    /* 832 B peak measured under load (issue #61: calibrations, PARAM_SAVE, USB log, motor test, arming) */
     static const osThreadAttr_t a = { .name = "app", .priority = osPriorityBelowNormal,
-                                      .stack_size = 3072 };
+                                      .stack_size = 2048 };
     (void)osThreadNew(AppTask, NULL, &a);
 }
 #endif

@@ -671,7 +671,16 @@ typedef enum
 #define CFG_HRS_PROCESS_STACK_SIZE            (128 * 20)
 
 /* USER CODE BEGIN FreeRTOS_Defines */
-
+/* ACwing: stacks of the ST BLE tasks sized from the bench (FreeRTOS Task List under load, issue #61), about twice the
+ * peak and at least 1 KB. CubeMX writes the sizes above (they are not .ioc fields); this block survives a
+ * regeneration and check_cubemx.py checks it is here.
+ *   HCI_USER_EVT  636 B peak of 5120   SHCI_USER_EVT 740 B of 2560   ADV_UPDATE 172 B of 2560 */
+#undef  CFG_HCI_USER_EVT_PROCESS_STACK_SIZE
+#define CFG_HCI_USER_EVT_PROCESS_STACK_SIZE   (128 * 16)
+#undef  CFG_SHCI_USER_EVT_PROCESS_STACK_SIZE
+#define CFG_SHCI_USER_EVT_PROCESS_STACK_SIZE  (128 * 12)
+#undef  CFG_ADV_UPDATE_PROCESS_STACK_SIZE
+#define CFG_ADV_UPDATE_PROCESS_STACK_SIZE     (128 * 8)
 /* USER CODE END FreeRTOS_Defines */
 
 /******************************************************************************

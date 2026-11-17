@@ -112,7 +112,8 @@ reference, and to check after a regeneration:
    - *BLE* enabled, server profile, **Heart Rate** template. It is kept
      because, in the CubeMX version used, it is the template that exposes the
      advertised name (`LOCAL_NAME`); with the Custom Template the field is not
-     available. The Heart Rate service stays registered alongside ours, unused.
+     available. The Heart Rate service stays registered alongside ours, unused; its task (`HRS_PROCESS`,
+     2.5 KB of stack) is deleted at start in the USER CODE of `HRSAPP_Init` (issue #61).
    - The generated `hrs_app.c` has three unused functions (compiler warnings).
      They are outside USER CODE, so silence them for that file only:
      *Properties → C/C++ Build → Settings → MCU GCC Compiler → Miscellaneous*,

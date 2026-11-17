@@ -145,7 +145,11 @@ void HRSAPP_Init(void)
 {
   HrsProcessId = osThreadNew(HrsProcess, NULL, &HrsProcess_attr);
 /* USER CODE BEGIN HRSAPP_Init */
-
+  /* ACwing: the Heart Rate service is the CubeMX template's; nothing of ours uses it (the app finds the drone by its
+   * name and talks to ble_tlm_svc). Its task only waits for HrMeas(): delete it and give its 2.5 KB stack back to the
+   * heap. NULL makes a late osThreadFlagsSet() from HrMeas() return osErrorParameter instead of touching a freed
+   * task. Removing the service itself means changing the BLE application in CubeMX (app_ble.c regenerated). */
+  if (HrsProcessId != NULL && osThreadTerminate(HrsProcessId) == osOK) HrsProcessId = NULL;
 /* USER CODE END HRSAPP_Init */
   return;
 }
