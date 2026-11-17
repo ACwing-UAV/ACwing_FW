@@ -48,15 +48,21 @@ Every arrow between tasks is either a **lock-free single-producer
 single-consumer queue** (`telemetry/spsc.h`) or a **seqlock snapshot**. No task
 ever waits on another, and nothing in the ImuTask waits on BLE.
 
-| Task | Priority | Stack | Rate | Owns |
+| Task | Priority | Stack (peak measured) | Rate | Owns |
 |---|---|---|---|---|
-| ImuTask | Realtime | 3 KB | IMU interrupt (480 Hz), flight core every 4 ms | IMU, IEKF and altitude filter state, flight state, IWDG |
-| TelemetryTask | BelowNormal | 1 KB | queue-driven, STATUS 10 Hz | UART DMA, LO BLE ring producer |
-| AppTask | BelowNormal | 3 KB | 5 ms | ACK cache, parameters, flash image, calibration fits, HI BLE ring producer |
-| ExtTask | BelowNormal | 768 B | 10 ms | the Qwiic devices (probe, poll) |
+| ImuTask | Realtime | 3 KB (1344 B) | IMU interrupt (480 Hz), flight core every 4 ms | IMU, IEKF and altitude filter state, flight state, IWDG |
+| TelemetryTask | BelowNormal | 1 KB (428 B) | queue-driven, STATUS 10 Hz | UART DMA, LO BLE ring producer |
+| AppTask | BelowNormal | 2 KB (832 B) | 5 ms | ACK cache, parameters, flash image, calibration fits, HI BLE ring producer |
+| ExtTask | BelowNormal | 1 KB (356 B) | 10 ms | the Qwiic devices (probe, poll) |
 | BattTask | Normal | 768 B | 20 ms | ADC1, battery estimator ([Battery](battery.md)) |
-| LogTask | Low | 1.5 KB | 10 ms (1 ms while downloading) | log flash, log store, USB link ([Flight log](logging.md)) |
-| BleTxThread | (BLE glue) | 1 KB | 10 ms flush | BLE ring consumer, notifications |
+| LogTask | Low | 2 KB (1292 B, USB download) | 10 ms (1 ms while downloading) | log flash, log store, USB link ([Flight log](logging.md)) |
+| BleTxThread | (BLE glue) | 1 KB (532 B) | 10 ms flush | BLE ring consumer, notifications |
+
+Peaks from the STM32CubeIDE FreeRTOS Task List (*Toggle Stack Checking*) on the NUCLEO, after calibrations,
+PARAM_SAVE, a USB log download, the motor test and arming (issue #61); the rule is about twice the peak. The ST BLE
+tasks are sized the same way in the USER CODE of `Core/Inc/app_conf.h`: HCI_USER_EVT 2 KB (636 B), SHCI_USER_EVT
+1.5 KB (740 B), ADV_UPDATE 1 KB (172 B). The Heart Rate task of the CubeMX template is deleted at start
+(`hrs_app.c`, USER CODE): its 2.5 KB go back to the heap. `check_cubemx.py` keeps both after a regeneration.
 
 ## One IMU interrupt, step by step
 

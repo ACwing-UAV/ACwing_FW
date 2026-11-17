@@ -38,7 +38,7 @@
 #include "cmsis_os2.h"
 #include "tlm_ble.h"
 #include "app_link.h"
-#include "main.h"
+#include "stm32wbxx_hal.h"   /* HAL_GetTick. Not main.h: its app_common.h redefines PAUSE of ble_common.h */
 #include <string.h>
 
 #ifndef CFG_BLE_MAX_ATT_MTU

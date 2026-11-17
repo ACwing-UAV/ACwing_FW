@@ -13,6 +13,9 @@ regeneration that changes one of them must fail here, with the reason, instead o
 - Every build configuration of the .cproject is optimised (-Og at least). With no level STM32CubeIDE compiles at
   -O0, and the firmware does not keep its real time: on the bench the ImuTask fell behind the IMU, and the flight
   core ran at ~43 Hz instead of ~250 Hz (issue #80).
+- The ST BLE task stacks are sized from the bench (issue #61) in the USER CODE block of Core/Inc/app_conf.h, and
+  the template's Heart Rate task is deleted in the USER CODE of hrs_app.c: about 8 KB of FreeRTOS heap. CubeMX
+  keeps USER CODE, but a rename or a new template would drop them silently.
 - The motor outputs are on only in the configuration made for them: Debug-Motors defines MOTORS_ENABLE=1, Debug and
   Release do not define it (motors.h keeps 0), so a bench or flight build does not drive the motor pins by accident.
 
@@ -81,6 +84,18 @@ def main():
                         errors.append(f"{mod.get('name')}: {'C++' if 'cpp' in sc else 'C'} compiler without optimization "
                                       "(-O0): set at least -Og (Properties > C/C++ Build > Settings > Optimization)")
 
+    # BLE task stacks and the Heart Rate task (USER CODE blocks)
+    conf = read("Core/Inc/app_conf.h")
+    m = re.search(r"/\* USER CODE BEGIN FreeRTOS_Defines \*/(.*?)/\* USER CODE END FreeRTOS_Defines \*/", conf, re.S)
+    for name in ("HCI_USER_EVT", "SHCI_USER_EVT", "ADV_UPDATE"):
+        if not m or not re.search(rf"#define\s+CFG_{name}_PROCESS_STACK_SIZE\b", m.group(1)):
+            errors.append(f"app_conf.h: the bench size of CFG_{name}_PROCESS_STACK_SIZE is missing from USER CODE "
+                          "FreeRTOS_Defines (issue #61)")
+    hrs = read("STM32_WPAN/App/hrs_app.c")
+    m = re.search(r"/\* USER CODE BEGIN HRSAPP_Init \*/(.*?)/\* USER CODE END HRSAPP_Init \*/", hrs, re.S)
+    if not m or "osThreadTerminate(HrsProcessId)" not in m.group(1):
+        errors.append("hrs_app.c: the template's HRS_PROCESS task is no longer deleted (USER CODE HRSAPP_Init)")
+
     # MOTORS_ENABLE only in Debug-Motors
     names = []
     for c in tree.iter("cconfiguration"):
@@ -110,7 +125,7 @@ def main():
         for e in errors:
             print("  -", e)
         return 1
-    print("CubeMX project check: OK (USB owned by the app, tick priority 15, TIM2 motor PWM, LF endings, optimised builds, motors only in Debug-Motors)")
+    print("CubeMX project check: OK (USB owned by the app, tick priority 15, TIM2 motor PWM, LF endings, optimised builds, motors only in Debug-Motors, BLE task stacks)")
     return 0
 
 
