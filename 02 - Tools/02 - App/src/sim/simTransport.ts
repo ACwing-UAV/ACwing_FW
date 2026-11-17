@@ -16,19 +16,23 @@ export class SimTransport implements Transport {
   private timer: ReturnType<typeof setInterval> | null = null;
   private pending: number[] = [];
   private last = 0;
+  private onClose: ((reason: string) => void) | null = null;
+  private downUntil = 0;
 
   constructor(model: SimModel, private chunk = 20) {
     this.drone = new SimDrone(model);
     latest = new WeakRef(this.drone);
     // development builds: the simulated drone is reachable from the console (window.acwingSim), e.g. to drain its battery
-    if (import.meta.env?.DEV && typeof window !== "undefined") (window as unknown as { acwingSim: SimDrone }).acwingSim = this.drone;
+    if (import.meta.env?.DEV && typeof window !== "undefined") { (window as unknown as { acwingSim: SimDrone }).acwingSim = this.drone; (window as unknown as { acwingSimLink: SimTransport }).acwingSimLink = this; }
   }
 
   get deviceName() {
     return `${this.drone.name} (simulator)`;
   }
 
-  async open(onData: (chunk: Uint8Array) => void) {
+  async open(onData: (chunk: Uint8Array) => void, onClose?: (reason: string) => void) {
+    if (Date.now() < this.downUntil) throw new Error("drone not reachable");   // outage(): still off
+    this.onClose = onClose ?? null;
     this.drone.onSubscribe();
     this.last = performance.now();
     this.timer = setInterval(() => {
@@ -52,6 +56,13 @@ export class SimTransport implements Transport {
   async close() {
     if (this.timer) clearInterval(this.timer);
     this.timer = null;
+  }
+
+  /** Simulates a lost link, as a drone switched off for `ms`: the link closes now, open() fails until then. */
+  outage(ms: number) {
+    this.downUntil = Date.now() + ms;
+    void this.close();
+    this.onClose?.("disconnected");
   }
 
   async rssi() {

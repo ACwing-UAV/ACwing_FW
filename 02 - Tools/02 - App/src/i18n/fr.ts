@@ -11,6 +11,7 @@ const fr: Translation = {
   },
   link: {
     connected: "Connecté", connecting: "Connexion…", lost: "Liaison perdue – le drone applique son failsafe",
+    reconnecting: "Liaison perdue – reconnexion… le drone applique son failsafe", reconnectingShort: "Reconnexion…", dropped: "Liaison avec {name} perdue", reconnectTo: "Reconnecter {name}",
     notConnected: "Non connecté", reconnect: "Reconnecter", disconnect: "Déconnecter",
   },
   connect: {

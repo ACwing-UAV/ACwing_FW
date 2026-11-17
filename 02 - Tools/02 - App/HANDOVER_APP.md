@@ -86,6 +86,7 @@ build clean):
 | MOTORS wizard | "No, reverse it" refused with `FIXED_DIRECTION` (brushed motors, firmware 0.16.4): its own toast ("Not done. Brushed motors turn one way only: …", `calib.motors.fixedDirection`), the motor shows "wrong direction", the result says "Motor wiring to fix" and the brushed hint (swap the wires) |
 | Slide to arm / disarm | once confirmed, the knob waits at the end until the drone's armed state changes (at most `SLIDE_HOLD_MS` 1.5 s, or until the command is refused): it used to jump back to the start and show the old state for a few frames |
 | Calibration "Retry" after FAILED | gyro and flow wizards send CAL_ABORT, then CAL_START: firmware before 0.16.5 answered `BUSY/CALIBRATING` to a start over a FAILED calibration |
+| Link loss | a closed link (BLE disconnection) stops the session at once: timers off, commands waiting refused (`offline`), nothing sent. BLE is opened again for `RECONNECT_MS` (5 s, every 1 s): the screens stay, the cockpit shows "reconnecting" and greys the attitude. Back: a fresh session (CAPS, CHECKS, params). Not back, or USB: the session ends, the data is cleared, `dropped` names the drone; `LinkWatcher` says it and goes to the connect screen (not from Logs or Help), which offers "Reconnect to <name>" without the device picker. Silence on an open link stays "lost" (it comes back by itself) |
 | Icons | `gear` is a cog (Feather "settings"); the old hub with 8 spokes read as a sun |
 
 ## 2. Battery: what the firmware does now

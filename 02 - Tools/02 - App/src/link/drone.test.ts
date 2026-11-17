@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { Drone, CommandError } from "./drone";
+import { Drone, CommandError, RECONNECT_MS } from "./drone";
 import { SimTransport } from "../sim/simTransport";
 import { CalType, CalState, Reason, AckResult, ArmState, SENSOR, AutoAction, BattWarn, EventCode, FS, FlightMode, PARAM_BY_KEY, CheckId, CheckState } from "../protocol/ids";
 import { checkValue } from "../screens/ConnectScreen";
@@ -84,6 +84,60 @@ describe("app session against the simulator (real bytes, 20-byte notifications)"
     expect((e as CommandError).reason).toBe(Reason.FIXED_DIRECTION);
     await d.calAbort();
     await d.disconnect();
+  }, 20000);
+
+  it("link closed and back within RECONNECT_MS: reconnecting, commands offline meanwhile, then a fresh session", async () => {
+    const d = new Drone();
+    const t = new SimTransport("indoor");
+    await d.connect(t);
+    await until(() => !!d.getSnapshot().caps);
+    const pending = d.calStart(CalType.GYRO).then(() => null, (e: unknown) => e);
+    t.outage(2000);                                                     // drone off for 2 s
+    expect(d.getSnapshot().link).toBe("reconnecting");
+    const e = await pending;
+    expect(e).toBeInstanceOf(CommandError);                             // the waiting command is refused at once
+    expect((e as CommandError).result).toBe("offline");
+    await expect(d.arm()).rejects.toMatchObject({ result: "offline" }); // nothing is sent into a closed link
+    await until(() => d.getSnapshot().link === "connected", 4000);
+    expect(d.getSnapshot().dropped).toBeNull();
+    await until(() => !!d.getSnapshot().flight);                        // telemetry flows again
+    await d.disconnect();
+  }, 20000);
+
+  it("link closed and not back: the session ends after RECONNECT_MS, old data cleared, `dropped` names the drone; Reconnect works", async () => {
+    const d = new Drone();
+    const t = new SimTransport("indoor");
+    await d.connect(t);
+    await until(() => !!d.getSnapshot().caps && !!d.getSnapshot().flight);
+    const name = d.getSnapshot().caps!.name;
+    const t0 = Date.now();
+    t.outage(RECONNECT_MS + 3000);
+    await until(() => d.getSnapshot().link === "idle", RECONNECT_MS + 3000);
+    const dt = Date.now() - t0;
+    expect(dt).toBeGreaterThanOrEqual(RECONNECT_MS - 50);
+    expect(dt).toBeLessThan(RECONNECT_MS + 1500);
+    const s = d.getSnapshot();
+    expect(s.dropped?.name).toBe(name);
+    expect(s.caps).toBeNull();                                          // no stale drone left on the screens
+    expect(s.flight).toBeNull();
+    await wait(3100);                                                   // the drone is back on
+    await d.reconnect();
+    await until(() => !!d.getSnapshot().caps);
+    expect(d.getSnapshot().link).toBe("connected");
+    expect(d.getSnapshot().dropped).toBeNull();
+    await d.disconnect();
+  }, 30000);
+
+  it("Disconnect while reconnecting stops the attempts, no `dropped`", async () => {
+    const d = new Drone();
+    const t = new SimTransport("indoor");
+    await d.connect(t);
+    await until(() => !!d.getSnapshot().caps);
+    t.outage(RECONNECT_MS * 2);
+    await d.disconnect();
+    await wait(RECONNECT_MS + 500);
+    expect(d.getSnapshot().link).toBe("idle");
+    expect(d.getSnapshot().dropped).toBeNull();
   }, 20000);
 
   it("firmware 0.5.0 extensions: battery params, logMode, battery EMERGENCY locks the landing", async () => {

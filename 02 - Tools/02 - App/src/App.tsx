@@ -8,6 +8,7 @@ import { SettingsScreen } from "./screens/settings/SettingsScreen";
 import { HelpScreen } from "./screens/HelpScreen";
 import { LogsScreen } from "./screens/LogsScreen";
 import { CalibRoute } from "./calib/wizards";
+import { LinkWatcher } from "./link/LinkWatcher";
 
 export function App() {
   const [page, arg, arg2] = useRoute();
@@ -31,6 +32,7 @@ export function App() {
   return (
     <>
       {screen}
+      <LinkWatcher />
       <Toasts />
     </>
   );

@@ -350,3 +350,5 @@ details.acc > div { padding: 12px 0; }
 :root[data-theme="day"] .on-dark { display: none !important; }
 :root[data-theme="day"] .on-day { display: inline-block !important; }
 .wiz-mark { width: min(180px, 40%); height: auto; opacity: 0.35; }
+/* cockpit: attitude from a link that went silent or closed (old data) */
+.hud.stale { opacity: 0.45; filter: grayscale(1); }
