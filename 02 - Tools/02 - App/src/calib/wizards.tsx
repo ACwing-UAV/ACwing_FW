@@ -327,7 +327,7 @@ export function GyroWizard() {
   const panel = step === 0 ? (
     <>
       <h2>{steps[0]}</h2>
-      {cal?.state === CalState.FAILED && <Failed reason={cal.reason} onRetry={() => run(drone.calStart(CalType.GYRO))} />}
+      {cal?.state === CalState.FAILED && <Failed reason={cal.reason} onRetry={async () => { await drone.calAbort(); run(drone.calStart(CalType.GYRO)); }} />}
       <p>{t("calib.gyro.intro")}</p>
       <span className="grow" />
     </>
@@ -386,7 +386,7 @@ export function FlowWizard() {
   const panel = step === 0 ? (
     <>
       <h2>{steps[0]}</h2>
-      {cal?.state === CalState.FAILED && <Failed reason={cal.reason} onRetry={() => run(drone.calStart(CalType.FLOW_TOF))} />}
+      {cal?.state === CalState.FAILED && <Failed reason={cal.reason} onRetry={async () => { await drone.calAbort(); run(drone.calStart(CalType.FLOW_TOF)); }} />}
       <p>{t("calib.flow.groundIntro")}</p>
       <div className="banner">{t("calib.flow.wipe")}</div>
       <span className="grow" />

@@ -84,6 +84,7 @@ build clean):
 | Calibration wizards | "Discard" / cancel clears the wizard on the CAL_ABORT ACK (or on `NOT_CALIBRATING`): back in IDLE the firmware sends no more CALIB frames, so the last one (DONE) would stay on screen |
 | Settings › Calibration | status and button in two fixed-width columns (aligned in the 5 languages); on a phone the status goes under the name |
 | MOTORS wizard | "No, reverse it" refused with `FIXED_DIRECTION` (brushed motors, firmware 0.16.4): the motor shows "wrong direction", the result says "Motor wiring to fix" and the brushed hint (swap the wires) |
+| Calibration "Retry" after FAILED | gyro and flow wizards send CAL_ABORT, then CAL_START: firmware before 0.16.5 answered `BUSY/CALIBRATING` to a start over a FAILED calibration |
 | Icons | `gear` is a cog (Feather "settings"); the old hub with 8 spokes read as a sun |
 
 ## 2. Battery: what the firmware does now
