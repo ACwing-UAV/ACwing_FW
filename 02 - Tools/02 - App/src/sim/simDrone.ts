@@ -236,7 +236,7 @@ export class SimDrone {
       case OP.ARM: {
         if (r.u8_() !== ARM_MAGIC[0] || r.u8_() !== ARM_MAGIC[1]) return [AckResult.INVALID, Reason.NONE];
         if (this.armed) return rej(Reason.ARMED);
-        if (this.cal) return rej(Reason.CALIBRATING);
+        if (this.calRunning()) return rej(Reason.CALIBRATING);
         if (this.inAir) return rej(Reason.NOT_LANDED);
         // throttle "low": bottom of the stick in ACRO/ANGLE, not above centre in the hold modes (centre = hold altitude)
         const holdMode = this.mode === FlightMode.ALT_HOLD || this.mode === FlightMode.POS_HOLD;
@@ -267,7 +267,7 @@ export class SimDrone {
         // hand launch (ADR 0011): the ARM checks, the beginner rule, then armed with the motors stopped
         if (r.u8_() !== ARM_MAGIC[0] || r.u8_() !== ARM_MAGIC[1]) return [AckResult.INVALID, Reason.NONE];
         if (this.armed) return rej(Reason.ARMED);
-        if (this.cal) return rej(Reason.CALIBRATING);
+        if (this.calRunning()) return rej(Reason.CALIBRATING);
         if (this.inAir) return rej(Reason.NOT_LANDED);
         if (this.p("beginner")) return rej(Reason.NONE);
         if (this.battLevel >= BattWarn.CRITICAL || this.battMonitorLost) return rej(Reason.BATTERY_LOW);
@@ -514,9 +514,14 @@ export class SimDrone {
   /* Calibration                                                       */
   /* ================================================================ */
 
+  /** as calib_mgr.c cal_running(): DONE and FAILED are finished (FAILED put the values back), they block nothing */
+  private calRunning() {
+    return !!this.cal && this.cal.state !== CalState.DONE && this.cal.state !== CalState.FAILED;
+  }
+
   private calStart(type: number, option: number): [number, number] {
     if (this.armed) return [AckResult.REJECTED, Reason.ARMED];
-    if (this.cal && this.cal.state !== CalState.DONE) return [AckResult.BUSY, Reason.CALIBRATING];
+    if (this.calRunning()) return [AckResult.BUSY, Reason.CALIBRATING];
     const base = { type, state: CalState.RUNNING, step: 1, progress: 0, quality: 0xff, reason: 0, t: 0 };
     switch (type) {
       case CalType.ACCEL:

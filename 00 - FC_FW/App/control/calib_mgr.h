@@ -100,7 +100,7 @@ void    cal_feed(const cal_sample_t *s, uint32_t now_ms);
 void    cal_tick(uint32_t now_ms);
 
 uint8_t cal_active(void);        /**< a calibration exists (any state but IDLE) */
-uint8_t cal_running(void);       /**< active and not DONE: blocks arming / other starts */
+uint8_t cal_running(void);       /**< active, not DONE nor FAILED: blocks arming / other starts */
 uint8_t cal_wants_samples(void);
 /** 1 if the state/step changed since the last call (send a CALIB frame now) */
 uint8_t cal_take_changed(void);

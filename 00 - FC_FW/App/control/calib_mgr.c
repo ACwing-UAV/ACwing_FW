@@ -133,7 +133,9 @@ static void done(uint8_t step)
 
 /* ================================================================== */
 uint8_t cal_active(void)  { return s_state != PV2_CS_IDLE; }
-uint8_t cal_running(void) { return s_state != PV2_CS_IDLE && s_state != PV2_CS_DONE; }
+/* FAILED is finished too: the values were put back by fail(), so it blocks neither a new start (the wizard's
+ * "Retry"), nor CAL_RESTORE, nor arming (issue: "Retry" answered BUSY/CALIBRATING after a failed gyro) */
+uint8_t cal_running(void) { return s_state != PV2_CS_IDLE && s_state != PV2_CS_DONE && s_state != PV2_CS_FAILED; }
 uint8_t cal_type(void)    { return s_type; }
 const cal_set_t *cal_result(void) { return &s_res; }
 
