@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode, useSyncExternalStore } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode, useSyncExternalStore } from "react";
 import { Icon } from "./icons";
 import { useT } from "../i18n";
 import { CommandError } from "../link/drone";
@@ -75,26 +75,53 @@ export function SliderRow({ label, value, min, max, step, format, onChange, onCo
 
 /* ---------- slide to confirm (arm / disarm) ---------- */
 
+/** how long a confirmed slide waits at the end for the new state before it goes back (command lost or refused late) */
+export const SLIDE_HOLD_MS = 1500;
+
+/**
+ * Slide to arm / disarm. Once confirmed, the knob stays at the end until `armed` changes: the drone's new state
+ * arrives with the telemetry (ACK, then FLIGHT), and a knob sent back to the start in the meantime showed the old
+ * state for a moment (the "flash" on arm and disarm). The armed knob sits where the unarmed one ends, so the swap is
+ * seamless. onConfirm may return the command's promise: `false` (refused, see useCommand) sends the knob back at once.
+ */
 export function SlideToConfirm({ label, aria, onConfirm, armed, disabled, compact }: {
-  label: string; aria: string; onConfirm: () => void; armed?: boolean; disabled?: boolean; compact?: boolean;
+  label: string; aria: string; onConfirm: () => unknown; armed?: boolean; disabled?: boolean; compact?: boolean;
 }) {
   const track = useRef<HTMLDivElement>(null);
   const [x, setX] = useState(0);
+  const [held, setHeld] = useState(false);
   const start = useRef<number | null>(null);
+  const holdTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const max = () => (track.current ? track.current.clientWidth - (compact ? 46 : 60) : 200);
+  const release = () => {
+    if (holdTimer.current) clearTimeout(holdTimer.current);
+    holdTimer.current = null;
+    setHeld(false);
+    setX(0);
+  };
+  // the new state is here: back to the start of the other side before the browser paints (no frame in between)
+  useLayoutEffect(release, [armed]);
+  useEffect(() => () => { if (holdTimer.current) clearTimeout(holdTimer.current); }, []);
+  const confirm = () => {
+    setX(max());
+    setHeld(true);
+    if (holdTimer.current) clearTimeout(holdTimer.current);
+    holdTimer.current = setTimeout(release, SLIDE_HOLD_MS);
+    void Promise.resolve(onConfirm()).then((ok) => { if (ok === false) release(); }, release);
+  };
   const end = () => {
     if (start.current === null) return;
     start.current = null;
-    if (x > max() * 0.85) onConfirm();
-    setX(0);
+    if (x > max() * 0.85) confirm();
+    else setX(0);
   };
   const dir = armed ? -1 : 1;
   return (
     <div ref={track} className={`slide${armed ? " armed" : ""}`} role="slider" aria-label={aria} aria-valuemin={0} aria-valuemax={100}
       aria-valuenow={Math.round((x / Math.max(1, max())) * 100)} aria-disabled={disabled} tabIndex={0}
       style={compact ? { height: 46, borderRadius: 23 } : undefined}
-      onKeyDown={(e) => { if (!disabled && (e.key === "Enter" || e.key === " " || e.key === (armed ? "ArrowLeft" : "ArrowRight"))) { e.preventDefault(); onConfirm(); } }}
-      onPointerDown={(e) => { if (disabled) return; start.current = e.clientX; (e.target as Element).setPointerCapture?.(e.pointerId); }}
+      onKeyDown={(e) => { if (!disabled && !held && (e.key === "Enter" || e.key === " " || e.key === (armed ? "ArrowLeft" : "ArrowRight"))) { e.preventDefault(); confirm(); } }}
+      onPointerDown={(e) => { if (disabled || held) return; start.current = e.clientX; (e.target as Element).setPointerCapture?.(e.pointerId); }}
       onPointerMove={(e) => { if (start.current === null) return; setX(Math.max(0, Math.min(max(), (e.clientX - start.current) * dir))); }}
       onPointerUp={end} onPointerCancel={() => { start.current = null; setX(0); }}>
       <span className="lbl" style={compact ? { fontSize: 12 } : undefined}>{label}</span>

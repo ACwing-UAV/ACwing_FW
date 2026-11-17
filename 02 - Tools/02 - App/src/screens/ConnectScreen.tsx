@@ -137,7 +137,7 @@ export function ConnectScreen() {
         <SlideToConfirm armed label={t("cockpit.slideToDisarm")} aria={t("cockpit.slideToDisarmAria")} onConfirm={() => run(drone.disarm())} />
       ) : (
         <SlideToConfirm label={t("connect.slideToArm")} aria={t("connect.slideToArmAria")}
-          onConfirm={async () => { if (await run(drone.arm())) go("cockpit"); }} />
+          onConfirm={async () => { const ok = await run(drone.arm()); if (ok) go("cockpit"); return ok; }} />
       )}
       <div style={{ display: "flex", alignItems: "center", gap: 12, justifyContent: "space-between", flexWrap: "wrap" }}>
         <span className="small muted" style={{ flex: "1 1 220px" }}>{t("connect.armHint")}</span>
