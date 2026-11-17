@@ -223,7 +223,7 @@ const fr: Translation = {
       intro: "Touchez ou cliquez un moteur : il tourne lentement pendant 2 s. Vérifiez que c'est le bon et qu'il tourne dans le bon sens.",
       question: "{m} ({pos}) tourne‑t‑il dans le sens {dir} ?", yes: "Oui", reverse: "Non, l'inverser", remap: "Mauvais moteur ? Réaffecter l'ordre des moteurs",
       checked: "Disposition des moteurs vérifiée", hint: "Les moteurs inversés se changent dans les réglages ESC, sans recâbler. Montez les hélices selon le sens de chacun.",
-      fixWiring: "Câblage des moteurs à corriger", wrongWay: "mauvais sens", hintBrushed: "Moteurs à balais : un moteur qui tourne dans le mauvais sens doit avoir ses deux fils inversés (ou être remplacé par celui de l’autre sens). Montez les hélices selon le sens de chaque moteur.", testAgain: "Tester à nouveau", spinning: "en rotation", reversed: "inversé", notTested: "non testé", cw: "horaire", ccw: "antihoraire",
+      fixedDirection: "Non effectué. Les moteurs à balais tournent dans un seul sens : inversez les deux fils de ce moteur ou montez un moteur de l’autre sens", fixWiring: "Câblage des moteurs à corriger", wrongWay: "mauvais sens", hintBrushed: "Moteurs à balais : un moteur qui tourne dans le mauvais sens doit avoir ses deux fils inversés (ou être remplacé par celui de l’autre sens). Montez les hélices selon le sens de chaque moteur.", testAgain: "Tester à nouveau", spinning: "en rotation", reversed: "inversé", notTested: "non testé", cw: "horaire", ccw: "antihoraire",
       front: "AVANT", pos: { fl: "avant gauche", fr: "avant droit", rl: "arrière gauche", rr: "arrière droit" },
     },
     sticks: {

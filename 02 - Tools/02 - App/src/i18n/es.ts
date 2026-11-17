@@ -223,7 +223,7 @@ const es: Translation = {
       intro: "Toca o haz clic en un motor: gira despacio durante 2 s. Comprueba que sea el correcto y que gire en el sentido adecuado.",
       question: "¿{m} ({pos}) gira en sentido {dir}?", yes: "Sí", reverse: "No, invertirlo", remap: "¿Se movió el motor equivocado? Reasignar el orden de motores",
       checked: "Disposición de motores comprobada", hint: "Los motores invertidos se cambian en los ajustes del ESC, sin recablear. Monta las hélices según el sentido de cada uno.",
-      fixWiring: "Cableado de motores por corregir", wrongWay: "sentido incorrecto", hintBrushed: "Motores con escobillas: un motor que gira al revés necesita sus dos cables intercambiados (o el motor del otro sentido). Monta las hélices según el sentido de cada motor.", testAgain: "Probar de nuevo", spinning: "girando", reversed: "invertido", notTested: "sin probar", cw: "horario", ccw: "antihorario",
+      fixedDirection: "No realizado. Los motores con escobillas giran en un solo sentido: intercambia los dos cables de ese motor o monta un motor del otro sentido", fixWiring: "Cableado de motores por corregir", wrongWay: "sentido incorrecto", hintBrushed: "Motores con escobillas: un motor que gira al revés necesita sus dos cables intercambiados (o el motor del otro sentido). Monta las hélices según el sentido de cada motor.", testAgain: "Probar de nuevo", spinning: "girando", reversed: "invertido", notTested: "sin probar", cw: "horario", ccw: "antihorario",
       front: "FRENTE", pos: { fl: "delantero izquierdo", fr: "delantero derecho", rl: "trasero izquierdo", rr: "trasero derecho" },
     },
     sticks: {

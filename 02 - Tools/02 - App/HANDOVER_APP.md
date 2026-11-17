@@ -83,7 +83,7 @@ build clean):
 | Tests | `drone.test.ts`: the new params, the EMERGENCY lock, the battery check values |
 | Calibration wizards | "Discard" / cancel clears the wizard on the CAL_ABORT ACK (or on `NOT_CALIBRATING`): back in IDLE the firmware sends no more CALIB frames, so the last one (DONE) would stay on screen |
 | Settings › Calibration | status and button in two fixed-width columns (aligned in the 5 languages); on a phone the status goes under the name |
-| MOTORS wizard | "No, reverse it" refused with `FIXED_DIRECTION` (brushed motors, firmware 0.16.4): the motor shows "wrong direction", the result says "Motor wiring to fix" and the brushed hint (swap the wires) |
+| MOTORS wizard | "No, reverse it" refused with `FIXED_DIRECTION` (brushed motors, firmware 0.16.4): its own toast ("Not done. Brushed motors turn one way only: …", `calib.motors.fixedDirection`), the motor shows "wrong direction", the result says "Motor wiring to fix" and the brushed hint (swap the wires) |
 | Slide to arm / disarm | once confirmed, the knob waits at the end until the drone's armed state changes (at most `SLIDE_HOLD_MS` 1.5 s, or until the command is refused): it used to jump back to the start and show the old state for a few frames |
 | Calibration "Retry" after FAILED | gyro and flow wizards send CAL_ABORT, then CAL_START: firmware before 0.16.5 answered `BUSY/CALIBRATING` to a start over a FAILED calibration |
 | Icons | `gear` is a cog (Feather "settings"); the old hub with 8 spokes read as a sun |

@@ -221,7 +221,7 @@ const en = {
       intro: "Tap or click a motor: it spins slowly for 2 s. Check it is the right one and turns the right way.",
       question: "Is {m} ({pos}) spinning {dir}?", yes: "Yes", reverse: "No, reverse it", remap: "Wrong motor moved? Remap motor order",
       checked: "Motor layout checked", hint: "Reversed motors are changed in the ESC settings, no rewiring needed. Fit the propellers matching each direction.",
-      fixWiring: "Motor wiring to fix", wrongWay: "wrong direction", hintBrushed: "Brushed motors: a motor that turns the wrong way needs its two wires swapped (or the motor for the other direction). Fit the propellers matching each direction.", testAgain: "Test again", spinning: "spinning", reversed: "reversed", notTested: "not tested", cw: "clockwise", ccw: "counter‑clockwise",
+      fixedDirection: "Not done. Brushed motors turn one way only: swap the two wires of that motor, or fit a motor of the other direction", fixWiring: "Motor wiring to fix", wrongWay: "wrong direction", hintBrushed: "Brushed motors: a motor that turns the wrong way needs its two wires swapped (or the motor for the other direction). Fit the propellers matching each direction.", testAgain: "Test again", spinning: "spinning", reversed: "reversed", notTested: "not tested", cw: "clockwise", ccw: "counter‑clockwise",
       front: "FRONT", pos: { fl: "front left", fr: "front right", rl: "rear left", rr: "rear right" },
     },
     sticks: {
