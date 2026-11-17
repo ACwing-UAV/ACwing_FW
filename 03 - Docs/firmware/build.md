@@ -25,13 +25,18 @@
      of the configuration, so the CI measures what STM32CubeIDE flashes;
    - **HAL time base TIM17 at priority 15** (NVIC → `TIM1_TRG_COM_TIM17`): FreeRTOS and the IMU interrupt must
      preempt it;
+   - **motor outputs only in `Debug-Motors`**: that configuration defines `MOTORS_ENABLE=1` (PWM on PA0–PA3, power
+     stage connected, props off); Debug and Release do not define it, so `motors.h` keeps 0 and a bench or flight
+     build never drives the motor pins by accident. To debug it, use the launch `ACwing_FC_FW Debug-Motors` (it
+     builds and loads `Debug-Motors/ACwing_FC_FW.elf`); select it in *Project → Build Configurations → Set
+     Active* to build it from the hammer button;
    - TIM1 cannot replace TIM2 for the motors: its CH4 exists only on PA11 (USB_DM);
    - commit with LF line endings: `.gitattributes` converts them, and `git add --renormalize .` fixes a commit
      made before it.
-2. Include paths: they are in `.cproject` (Debug and Release), among them `App/app`, `App/control`,
+2. Include paths: they are in `.cproject` (Debug, Debug-Motors and Release), among them `App/app`, `App/control`,
    `App/filters/iekf`, `App/filters/altitude_kf`, `App/filters/hover_est`, `App/telemetry`, `App/bsp`, `App/log`,
-   the drivers and the third-party folders. A new source folder with headers must be added to **both**
-   configurations: the CI job `firmware-target` builds the project from `.cproject` and fails otherwise.
+   the drivers and the third-party folders. A new source folder with headers must be added to **every**
+   configuration: the CI job `firmware-target` builds the project from `.cproject` and fails otherwise.
    Locally, with `arm-none-eabi-gcc` installed:
 
    ```bash
