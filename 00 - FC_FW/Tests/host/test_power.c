@@ -395,6 +395,25 @@ static void test_calibration(void)
     /* a firmware without motor outputs (MOTORS_ENABLE 0): its own reason, not "sensor not fitted" (issue #61) */
     CHECK(cal_start(PV2_CAL_MOTORS, 0, 0, 0, &why) == PV2_ACK_REJECTED && why == PV2_R_MOTORS_DISABLED,
           "MOTORS calibration without motor outputs -> MOTORS_DISABLED (%u)", why);
+    /* a failed calibration does not block "Retry" (a new start), nor arming */
+    {
+        cal_init(&cc, &active);
+        CHECK(cal_start(PV2_CAL_GYRO, 0, 0, 0, &why) == PV2_ACK_OK, "GYRO start");
+        cal_sample_t smp; memset(&smp, 0, sizeof smp); smp.acc[2] = 1.0f; smp.running = 1;
+        uint32_t t = 0;
+        for (int k = 0; k < 20 && cal_running(); ++k) {          /* moved, still, moved...: 4 restarts -> FAILED */
+            smp.gyro[0] = (k & 1) ? 0.0f : 0.5f;
+            for (int j = 0; j < 10; ++j) { t += 4; cal_feed(&smp, t); }
+        }
+        uint8_t f[64]; pv2_calib_hdr_t h;
+        (void)cal_frame(f, sizeof f); memcpy(&h, f + 4, sizeof h);
+        CHECK(h.state == PV2_CS_FAILED && h.reason == PV2_R_NOT_STILL, "GYRO failed: moved (%u/%u)", h.state, h.reason);
+        CHECK(cal_active() && !cal_running(), "FAILED: still shown, not running (arming not blocked)");
+        CHECK(cal_start(PV2_CAL_GYRO, 0, 0, t, &why) == PV2_ACK_OK, "Retry after FAILED accepted (%u)", why);
+        (void)cal_frame(f, sizeof f); memcpy(&h, f + 4, sizeof h);
+        CHECK(h.state == PV2_CS_RUNNING, "running again");
+        (void)cal_abort(&why);
+    }
     /* motor outputs built: the procedure follows MOTOR_TEST (issue #61: it answered UNSUPPORTED, no reason) */
     {
         cc.motors_built = 1; cc.motor = cb_test_motor;

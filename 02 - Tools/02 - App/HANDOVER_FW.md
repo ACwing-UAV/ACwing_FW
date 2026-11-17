@@ -817,7 +817,8 @@ remap; others recommended when their stored data is missing.
 Common rules:
 
 - Only disarmed (`CAL_START` armed → `REJECTED/ARMED`); one at a time
-  (`BUSY/CALIBRATING` if another is not DONE); missing sensor →
+  (`BUSY/CALIBRATING` if another is not DONE or FAILED: a failed one, whose values were put back, blocks neither
+  a new start nor arming, firmware 0.16.5); missing sensor →
   `REJECTED/SENSOR_MISSING`; MOTORS on a firmware without motor outputs →
   `REJECTED/MOTORS_DISABLED`; unknown type → `INVALID`.
 - During a calibration send CALIB at 10 Hz and once on every state/step

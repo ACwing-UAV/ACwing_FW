@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { SimDrone } from "./simDrone";
 import { Cmd } from "../protocol/commands";
-import { AutoAction, FlightMode } from "../protocol/ids";
+import { AckResult, AutoAction, CalState, CalType, FlightMode, Reason } from "../protocol/ids";
 
 /** private state of the simulator, read by the tests */
 type Peek = { auto: number; armed: boolean; inAir: boolean; alt: number; vz: number; vN: number; vE: number; pitch: number; roll: number; heading: number; mode: number };
@@ -169,5 +169,18 @@ describe("simulator: automatic disarm on the ground, as fc_core.c", () => {
     expect(p.armed).toBe(true);
     for (let k = 0; k < 100; k++) { d.tick(0.01); d.drain(); }
     expect(p.armed).toBe(false);
+  });
+});
+
+describe("simulator: a failed calibration blocks nothing, as calib_mgr.c", () => {
+  it("Retry after FAILED starts again; arming is not refused with CALIBRATING", () => {
+    const d = new SimDrone("indoor");
+    d.onSubscribe();
+    type CalPeek = { cal: { state: number } | null; calStart(type: number, option: number): [number, number] };
+    const p = d as unknown as CalPeek;
+    expect(p.calStart(CalType.GYRO, 0)[0]).toBe(AckResult.OK);
+    expect(p.calStart(CalType.GYRO, 0)).toEqual([AckResult.BUSY, Reason.CALIBRATING]);   // running: busy
+    p.cal!.state = CalState.FAILED;                                                     // e.g. moved during the gyro
+    expect(p.calStart(CalType.GYRO, 0)[0]).toBe(AckResult.OK);                          // "Retry"
   });
 });
