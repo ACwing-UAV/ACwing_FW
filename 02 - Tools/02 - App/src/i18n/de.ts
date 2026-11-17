@@ -223,7 +223,7 @@ const de: Translation = {
       intro: "Einen Motor antippen oder anklicken: Er dreht 2 s langsam. Prüfen, ob es der richtige ist und ob er richtig herum dreht.",
       question: "Dreht {m} ({pos}) {dir}?", yes: "Ja", reverse: "Nein, umkehren", remap: "Falscher Motor? Motorreihenfolge neu zuordnen",
       checked: "Motoranordnung geprüft", hint: "Umgekehrte Motoren werden in den ESC‑Einstellungen geändert, ohne Neuverkabelung. Propeller passend zur Drehrichtung montieren.",
-      fixWiring: "Motorverkabelung korrigieren", wrongWay: "falsche Richtung", hintBrushed: "Bürstenmotoren: Ein Motor mit falscher Drehrichtung braucht vertauschte Drähte (oder den Motor der anderen Richtung). Propeller passend zur Drehrichtung montieren.", testAgain: "Erneut testen", spinning: "dreht", reversed: "umgekehrt", notTested: "nicht getestet", cw: "im Uhrzeigersinn", ccw: "gegen den Uhrzeigersinn",
+      fixedDirection: "Nicht ausgeführt. Bürstenmotoren drehen nur in eine Richtung: die zwei Drähte dieses Motors tauschen oder einen Motor der anderen Drehrichtung einbauen", fixWiring: "Motorverkabelung korrigieren", wrongWay: "falsche Richtung", hintBrushed: "Bürstenmotoren: Ein Motor mit falscher Drehrichtung braucht vertauschte Drähte (oder den Motor der anderen Richtung). Propeller passend zur Drehrichtung montieren.", testAgain: "Erneut testen", spinning: "dreht", reversed: "umgekehrt", notTested: "nicht getestet", cw: "im Uhrzeigersinn", ccw: "gegen den Uhrzeigersinn",
       front: "VORNE", pos: { fl: "vorne links", fr: "vorne rechts", rl: "hinten links", rr: "hinten rechts" },
     },
     sticks: {

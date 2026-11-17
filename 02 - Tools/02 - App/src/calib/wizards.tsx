@@ -572,9 +572,11 @@ export function MotorsWizard() {
   const reverse = (m: number) => {
     const p = drone.motorReverse(m);
     p.then(() => setWrong({ ...wrong, [m]: false }), (e: unknown) => {
-      if (e instanceof CommandError && e.reason === Reason.FIXED_DIRECTION) setWrong({ ...wrong, [m]: true });
+      if (e instanceof CommandError && e.reason === Reason.FIXED_DIRECTION) {
+        setWrong({ ...wrong, [m]: true });
+        toast(t("calib.motors.fixedDirection"), "warn");   // its own sentence, not "Not done: <reason>" (bench, #85)
+      } else run(Promise.reject(e));
     });
-    run(p);
   };
   const label = (st: string) => (st === "ok" ? t("common.ok") : t(`calib.motors.${st}`));
   const spin = (m: number) => {

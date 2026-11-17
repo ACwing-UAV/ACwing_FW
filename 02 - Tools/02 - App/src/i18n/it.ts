@@ -223,7 +223,7 @@ const it: Translation = {
       intro: "Tocca o clicca un motore: gira lentamente per 2 s. Verifica che sia quello giusto e che giri nel verso corretto.",
       question: "{m} ({pos}) gira in senso {dir}?", yes: "Sì", reverse: "No, invertilo", remap: "Si è mosso il motore sbagliato? Rimappa l'ordine dei motori",
       checked: "Disposizione motori verificata", hint: "I motori invertiti si cambiano nelle impostazioni ESC, senza rifare i cablaggi. Monta le eliche secondo il verso di ciascuno.",
-      fixWiring: "Cablaggio motori da correggere", wrongWay: "verso sbagliato", hintBrushed: "Motori brushed: un motore che gira al contrario va ricablato invertendo i due fili (o sostituito con quello dell’altro verso). Monta le eliche secondo il verso di ogni motore.", testAgain: "Ripeti il test", spinning: "in rotazione", reversed: "invertito", notTested: "non testato", cw: "orario", ccw: "antiorario",
+      fixedDirection: "Non eseguito. I motori brushed girano in un solo verso: inverti i due fili di quel motore o monta un motore dell’altro verso", fixWiring: "Cablaggio motori da correggere", wrongWay: "verso sbagliato", hintBrushed: "Motori brushed: un motore che gira al contrario va ricablato invertendo i due fili (o sostituito con quello dell’altro verso). Monta le eliche secondo il verso di ogni motore.", testAgain: "Ripeti il test", spinning: "in rotazione", reversed: "invertito", notTested: "non testato", cw: "orario", ccw: "antiorario",
       front: "FRONTE", pos: { fl: "anteriore sinistro", fr: "anteriore destro", rl: "posteriore sinistro", rr: "posteriore destro" },
     },
     sticks: {
