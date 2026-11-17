@@ -37,7 +37,7 @@ export function ConnectScreen() {
   const [tab, setTab] = useState<"ble" | "usb" | "wifi">("ble");
   const [busy, setBusy] = useState(false);
   const ble = bleAvailable();
-  const connected = s.link === "connected" || s.link === "lost";
+  const connected = s.link === "connected" || s.link === "lost" || s.link === "reconnecting";
   const armed = s.flight?.arm === ArmState.ARMED;
 
   const connectBle = async () => {
@@ -49,6 +49,17 @@ export function ConnectScreen() {
     } catch (e) {
       if (e instanceof LinkError && e.code === "denied") toast(t("connect.cancelled"));
       else toast(t("connect.failed", { msg: e instanceof Error ? e.message : String(e) }), "error");
+    } finally {
+      setBusy(false);
+    }
+  };
+  // the drone just lost: the same device again, without the picker; if it fails, the search button is below
+  const reconnect = async () => {
+    setBusy(true);
+    try {
+      await drone.reconnect();
+    } catch (e) {
+      toast(t("connect.failed", { msg: e instanceof Error ? e.message : String(e) }), "error");
     } finally {
       setBusy(false);
     }
@@ -80,13 +91,18 @@ export function ConnectScreen() {
               {s.rssi !== null ? ` · ${s.rssi} dBm` : ""}{s.transport === "sim" ? ` · ${t("connect.simulator")}` : ""}
             </span>
           </div>
-          <span className="small" style={{ color: s.link === "lost" ? "var(--warn)" : "var(--ok)", fontWeight: 600 }}>
-            {s.link === "lost" ? t("link.lost") : t("link.connected")}
+          <span className="small" style={{ color: s.link === "connected" ? "var(--ok)" : "var(--warn)", fontWeight: 600 }}>
+            {s.link === "lost" ? t("link.lost") : s.link === "reconnecting" ? t("link.reconnectingShort") : t("link.connected")}
           </span>
         </div>
       ) : tab === "ble" ? (
         <>
           {!ble.ok && <div className="banner warn">{t("connect.noWebBluetooth")}</div>}
+          {s.dropped && (
+            <button className="btn primary big" disabled={busy} onClick={reconnect}>
+              <Icon name="bt" /> {t("link.reconnectTo", { name: s.dropped.name })}
+            </button>
+          )}
           <button className="btn primary big" disabled={busy || !ble.ok} onClick={connectBle}>
             <Icon name="bt" /> {busy ? t("connect.searching") : t("connect.search")}
           </button>

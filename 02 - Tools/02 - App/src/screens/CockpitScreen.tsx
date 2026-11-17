@@ -34,6 +34,8 @@ export function CockpitScreen() {
   const beginner = drone.param("beginner") > 0.5;
   const compact = vp.compactCockpit;
   const connected = s.link !== "idle";
+  // no fresh data (silent or closed link): the attitude shown is old, grey it out
+  const stale = s.link === "lost" || s.link === "reconnecting" ? " stale" : "";
 
   // ---- battery (firmware 0.5.0, HANDOVER_APP §3) ----
   const p0 = s.power;
@@ -283,11 +285,15 @@ export function CockpitScreen() {
           <button className="btn small" aria-label={t("common.close")} onClick={() => setLogPrompt(false)}><Icon name="close" size={14} /></button>
         </div>
       )}
-      {s.link === "lost" && <div className="override banner crit" style={{ top: compact ? 52 : 70, zIndex: 4 }}>{t("link.lost")}</div>}
+      {(s.link === "lost" || s.link === "reconnecting") && (
+        <div className="override banner crit" role="alert" style={{ top: compact ? 52 : 70, zIndex: 4 }}>
+          {t(s.link === "reconnecting" ? "link.reconnecting" : "link.lost")}
+        </div>
+      )}
 
-      <div className="hud horizon"><HorizonBackdrop rollRight={att.rollRight} pitchUp={att.pitchUp} width={hudW} /></div>
+      <div className={`hud horizon${stale}`}><HorizonBackdrop rollRight={att.rollRight} pitchUp={att.pitchUp} width={hudW} /></div>
       {!compact && <div className="tape"><HeadingTape heading={heading} width={hudW} /></div>}
-      <div className="hud"><Hud rollRight={att.rollRight} pitchUp={att.pitchUp} width={hudW} /></div>
+      <div className={`hud${stale}`}><Hud rollRight={att.rollRight} pitchUp={att.pitchUp} width={hudW} /></div>
       <div className="ck-compass" style={cmpPos}>
         <MiniCompass heading={heading} homeBearing={homeBearing} magBad={magBad} size={cmpSize}
           labels={{ n: t("cockpit.dir.n"), e: t("cockpit.dir.e"), s: t("cockpit.dir.s"), w: t("cockpit.dir.w"), mag: t("cockpit.mag") }} />

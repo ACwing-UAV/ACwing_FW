@@ -11,6 +11,7 @@ const it: Translation = {
   },
   link: {
     connected: "Connesso", connecting: "Connessione…", lost: "Collegamento perso – il drone esegue il suo failsafe",
+    reconnecting: "Collegamento perso – riconnessione… il drone esegue il suo failsafe", reconnectingShort: "Riconnessione…", dropped: "Collegamento con {name} perso", reconnectTo: "Riconnetti a {name}",
     notConnected: "Non connesso", reconnect: "Riconnetti", disconnect: "Disconnetti",
   },
   connect: {

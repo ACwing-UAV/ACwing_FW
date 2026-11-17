@@ -9,6 +9,7 @@ const en = {
   },
   link: {
     connected: "Connected", connecting: "Connecting…", lost: "Link lost – the drone keeps its failsafe",
+    reconnecting: "Link lost – reconnecting… the drone keeps its failsafe", reconnectingShort: "Reconnecting…", dropped: "Connection to {name} lost", reconnectTo: "Reconnect to {name}",
     notConnected: "Not connected", reconnect: "Reconnect", disconnect: "Disconnect",
   },
   connect: {

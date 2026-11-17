@@ -27,7 +27,7 @@ export function SettingsScreen({ section }: { section?: string }) {
   const back = s.link !== "idle" ? "#/cockpit" : "#/connect";
 
   const deviceLine = s.caps
-    ? `${s.caps.name} · ${s.caps.model === Model.OUTDOOR ? t("about.outdoor") + " (GPS)" : t("about.indoor")} · ${s.link === "lost" ? t("link.lost") : t("link.connected")}`
+    ? `${s.caps.name} · ${s.caps.model === Model.OUTDOOR ? t("about.outdoor") + " (GPS)" : t("about.indoor")} · ${s.link === "lost" ? t("link.lost") : s.link === "reconnecting" ? t("link.reconnectingShort") : t("link.connected")}`
     : t("link.notConnected");
 
   const summary: Record<string, string> = {
@@ -52,7 +52,7 @@ export function SettingsScreen({ section }: { section?: string }) {
           </header>
           <main className="content">
             <div className="card" style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
-              <Dot state={s.link === "connected" ? "ok" : s.link === "lost" ? "warn" : "na"} />
+              <Dot state={s.link === "connected" ? "ok" : s.link === "lost" || s.link === "reconnecting" ? "warn" : "na"} />
               <span style={{ display: "flex", flexDirection: "column", gap: 2 }}><b>{s.caps?.name ?? t("link.notConnected")}</b><span className="small muted">{deviceLine}</span></span>
             </div>
             <nav aria-label={t("settings.sections")} className="card tight menu-list">

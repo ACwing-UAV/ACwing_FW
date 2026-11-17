@@ -11,6 +11,7 @@ const de: Translation = {
   },
   link: {
     connected: "Verbunden", connecting: "Verbinde…", lost: "Verbindung verloren – die Drohne führt ihren Failsafe aus",
+    reconnecting: "Verbindung verloren – verbinde neu… die Drohne führt ihren Failsafe aus", reconnectingShort: "Verbinde neu…", dropped: "Verbindung zu {name} verloren", reconnectTo: "Mit {name} neu verbinden",
     notConnected: "Nicht verbunden", reconnect: "Neu verbinden", disconnect: "Trennen",
   },
   connect: {
