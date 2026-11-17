@@ -93,7 +93,7 @@ const de: Translation = {
     5: "Akku zu schwach", 6: "Home ist nicht gesetzt", 7: "der ELRS‑Funk hat die Kontrolle", 8: "die Drohne ist scharf", 9: "Propellerabbau nicht bestätigt",
     10: "die Drohne ist nicht scharf", 11: "eine Kalibrierung läuft", 12: "keine Kalibrierung aktiv", 13: "die Drohne bewegt sich",
     14: "Wert außerhalb des Bereichs", 15: "unbekannte Einstellung", 16: "Sensor nicht verbaut",
-    17: "ein USB-Kabel zu einem Computer ist angeschlossen: abziehen", 18: "über USB nicht erlaubt (Bodenverbindung)", 19: "ein anderes Gerät steuert die Einstellungen", 20: "zu wenig Schub jetzt (Akku oder Gewicht)", 21: "Motorausgänge in dieser Firmware deaktiviert (MOTORS_ENABLE = 0)",
+    17: "ein USB-Kabel zu einem Computer ist angeschlossen: abziehen", 18: "über USB nicht erlaubt (Bodenverbindung)", 19: "ein anderes Gerät steuert die Einstellungen", 20: "zu wenig Schub jetzt (Akku oder Gewicht)", 21: "Motorausgänge in dieser Firmware deaktiviert (MOTORS_ENABLE = 0)", 22: "Bürstenmotoren drehen nur in eine Richtung: die zwei Drähte dieses Motors tauschen oder einen Motor der anderen Drehrichtung einbauen"
   },
   cmdError: { rejected: "Nicht ausgeführt: {why}", timeout: "Keine Antwort von der Drohne", offline: "Nicht verbunden", other: "Die Drohne hat den Befehl abgelehnt" },
   settings: {
@@ -223,7 +223,7 @@ const de: Translation = {
       intro: "Einen Motor antippen oder anklicken: Er dreht 2 s langsam. Prüfen, ob es der richtige ist und ob er richtig herum dreht.",
       question: "Dreht {m} ({pos}) {dir}?", yes: "Ja", reverse: "Nein, umkehren", remap: "Falscher Motor? Motorreihenfolge neu zuordnen",
       checked: "Motoranordnung geprüft", hint: "Umgekehrte Motoren werden in den ESC‑Einstellungen geändert, ohne Neuverkabelung. Propeller passend zur Drehrichtung montieren.",
-      testAgain: "Erneut testen", spinning: "dreht", reversed: "umgekehrt", notTested: "nicht getestet", cw: "im Uhrzeigersinn", ccw: "gegen den Uhrzeigersinn",
+      fixWiring: "Motorverkabelung korrigieren", wrongWay: "falsche Richtung", hintBrushed: "Bürstenmotoren: Ein Motor mit falscher Drehrichtung braucht vertauschte Drähte (oder den Motor der anderen Richtung). Propeller passend zur Drehrichtung montieren.", testAgain: "Erneut testen", spinning: "dreht", reversed: "umgekehrt", notTested: "nicht getestet", cw: "im Uhrzeigersinn", ccw: "gegen den Uhrzeigersinn",
       front: "VORNE", pos: { fl: "vorne links", fr: "vorne rechts", rl: "hinten links", rr: "hinten rechts" },
     },
     sticks: {

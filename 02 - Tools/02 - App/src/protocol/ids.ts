@@ -132,6 +132,8 @@ export enum Reason {
   THRUST_LOW = 20,
   /** MOTOR_TEST / motors calibration on a firmware built without motor outputs (MOTORS_ENABLE = 0; firmware >= 0.16.2) */
   MOTORS_DISABLED = 21,
+  /** MOTOR_REVERSE on brushed motors: one direction only, the wires must be swapped (firmware >= 0.16.4) */
+  FIXED_DIRECTION = 22,
 }
 
 export enum FlightMode {

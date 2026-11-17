@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useT } from "../i18n";
-import { drone } from "../link/drone";
-import { CalState, CalType, SENSOR, FrameType } from "../protocol/ids";
+import { CommandError, drone } from "../link/drone";
+import { CalState, CalType, SENSOR, FrameType, Reason } from "../protocol/ids";
 import type { CalibData } from "../protocol/messages";
 import { go, useDrone } from "../ui/hooks";
 import { Icon, Mark } from "../ui/icons";
@@ -555,6 +555,7 @@ export function MotorsWizard() {
   const [c2, setC2] = useState(false);
   const [sel, setSel] = useState(1);
   const [ok, setOk] = useState<Record<number, boolean>>({});
+  const [wrong, setWrong] = useState<Record<number, boolean>>({});   // turns the wrong way, brushed: wires to swap
   const [finished, setFinished] = useState(false);
   const d = cal?.data as D<"motors"> | undefined;
   const n = s.caps?.nMotors ?? 4;
@@ -564,8 +565,17 @@ export function MotorsWizard() {
   const rev = (m: number) => !!(d && d.revMask & (1 << (m - 1)));
   const cw = (m: number) => (quad ? QUAD[m - 1].cw !== rev(m) : (m % 2 === 1) !== rev(m));
   const posName = (m: number) => (quad ? t(`calib.motors.pos.${QUAD[m - 1].pos}`) : `#${m}`);
-  const stateOf = (m: number) => (d?.spinning && d.motor === m ? "spinning" : rev(m) ? "reversed" : ok[m] ? "ok" : "notTested");
-  const color = (st: string) => (st === "spinning" ? "var(--accent)" : st === "ok" ? "var(--ok)" : st === "reversed" ? "var(--warn)" : "var(--muted)");
+  const stateOf = (m: number) => (d?.spinning && d.motor === m ? "spinning" : wrong[m] ? "wrongWay" : rev(m) ? "reversed" : ok[m] ? "ok" : "notTested");
+  const color = (st: string) => (st === "spinning" ? "var(--accent)" : st === "ok" ? "var(--ok)" : st === "reversed" || st === "wrongWay" ? "var(--warn)" : "var(--muted)");
+  // "No": ESC motors are reversed by the drone; brushed motors turn one way only (FIXED_DIRECTION): the motor is
+  // marked and the toast says to swap its wires
+  const reverse = (m: number) => {
+    const p = drone.motorReverse(m);
+    p.then(() => setWrong({ ...wrong, [m]: false }), (e: unknown) => {
+      if (e instanceof CommandError && e.reason === Reason.FIXED_DIRECTION) setWrong({ ...wrong, [m]: true });
+    });
+    run(p);
+  };
   const label = (st: string) => (st === "ok" ? t("common.ok") : t(`calib.motors.${st}`));
   const spin = (m: number) => {
     setSel(m);
@@ -614,7 +624,9 @@ export function MotorsWizard() {
     )
   ) : (
     <>
-      <Success text={t("calib.motors.checked")} />
+      {Object.values(wrong).some(Boolean)
+        ? <div className="banner warn" role="status" style={{ width: "100%" }}><b>{t("calib.motors.fixWiring")}</b></div>
+        : <Success text={t("calib.motors.checked")} />}
       <div className="card tight" style={{ width: "100%" }}>
         {Array.from({ length: n }, (_, i) => i + 1).map((m, i) => (
           <div key={m} className={`row${i === 0 ? " first" : ""}`}><b className="num" style={{ width: 40 }}>M{m}</b><span className="grow muted">{posName(m)} · {cw(m) ? t("calib.motors.cw") : t("calib.motors.ccw")}</span><span style={{ color: color(stateOf(m)) }}>{label(stateOf(m))}</span></div>
@@ -639,8 +651,8 @@ export function MotorsWizard() {
       <div className="card accent" role="status">
         <b>{t("calib.motors.question", { m: `M${sel}`, pos: posName(sel), dir: cw(sel) ? t("calib.motors.cw") : t("calib.motors.ccw") })}</b>
         <div className="btn-row">
-          <button className="btn" style={{ flex: 1, background: "var(--ok)", color: "#04140b", borderColor: "var(--ok)" }} onClick={() => { setOk({ ...ok, [sel]: true }); setSel((sel % n) + 1); }}>{t("calib.motors.yes")}</button>
-          <button className="btn warn" style={{ flex: 1 }} onClick={() => run(drone.motorReverse(sel))}>{t("calib.motors.reverse")}</button>
+          <button className="btn" style={{ flex: 1, background: "var(--ok)", color: "#04140b", borderColor: "var(--ok)" }} onClick={() => { setOk({ ...ok, [sel]: true }); setWrong({ ...wrong, [sel]: false }); setSel((sel % n) + 1); }}>{t("calib.motors.yes")}</button>
+          <button className="btn warn" style={{ flex: 1 }} onClick={() => reverse(sel)}>{t("calib.motors.reverse")}</button>
         </div>
         <button className="btn ghost" style={{ alignSelf: "flex-start", padding: 0, color: "var(--accent)", minHeight: 30 }} onClick={() => toast(t("calib.motors.remap"))}>{t("calib.motors.remap")}</button>
       </div>
@@ -650,7 +662,7 @@ export function MotorsWizard() {
   ) : (
     <>
       <h2>{steps[2]}</h2>
-      <p>{t("calib.motors.hint")}</p>
+      <p>{t(Object.values(wrong).some(Boolean) ? "calib.motors.hintBrushed" : "calib.motors.hint")}</p>
       <span className="grow" />
       <div className="btn-row end">
         <button className="btn big" onClick={() => setFinished(false)}>{t("calib.motors.testAgain")}</button>

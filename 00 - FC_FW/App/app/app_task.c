@@ -530,6 +530,14 @@ static uint8_t cal_rc(uint16_t stick_us[4], uint16_t aux_us[4])
     return 1u;
 }
 
+/* MOTORS calibration: the motor MOTOR_TEST is spinning now (cal_motors.c follows it) */
+static uint8_t cal_test_motor(void)
+{
+    fc_state_t f;
+    fc_snapshot(&f);
+    return f.test_motor;
+}
+
 /* BATTERY calibration readings */
 static void cal_batt(float *vbat, float *used, float *scale_i)
 {
@@ -661,9 +669,11 @@ static void local_cmd(uint8_t op, uint8_t seq, const uint8_t *p, uint8_t plen, u
         ack(op, seq, cal_set_ref(p[0], p[1], pv2_rd_f32(&p[2]), &why), why);
         return;
 
-    case PV2_OP_MOTOR_REVERSE:
+    case PV2_OP_MOTOR_REVERSE:                             /* brushed motors: one direction only (cal_motors.h) */
+        ack(op, seq, PV2_ACK_REJECTED, PV2_R_FIXED_DIRECTION);
+        return;
     case PV2_OP_MOTOR_REMAP:
-        ack(op, seq, PV2_ACK_UNSUPPORTED, PV2_R_NONE);     /* no DShot / ESC link yet */
+        ack(op, seq, PV2_ACK_UNSUPPORTED, PV2_R_NONE);     /* outputs bound in bsp/motor_pwm.c */
         return;
 
     case PV2_OP_STREAM_RATES: {
@@ -933,7 +943,7 @@ void app_init(const app_task_cfg_t *cfg)
     fc_set_sensors(s_sensors);
     ackc_reset();
     const cal_config_t cc = { s_sensors, s_cfg.motors_built, cal_apply,
-                              s_cfg.batt_monitor ? cal_batt : NULL, cal_rc };
+                              s_cfg.batt_monitor ? cal_batt : NULL, cal_rc, cal_test_motor };
     cal_init(&cc, &s_cal);
     s_pend = 0u; s_list_next = -1;
     memset(s_rep, 0, sizeof s_rep);

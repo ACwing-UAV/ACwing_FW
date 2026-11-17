@@ -9,6 +9,10 @@ import { Confirm, Dot, GpsBadge, Row, Seg, SliderRow, Switch, useCommand } from 
 import { gamepad } from "../../input/controls";
 import { ParamNumber, ParamSelect, ParamSlider, ParamSwitch, useVisible } from "./params";
 
+/** Settings › Calibration list: widths of the status and button columns (fit the longest of the 5 languages) */
+const CAL_STATUS_W = 104;
+const CAL_BTN_W = 116;
+
 /* ---------------- General ---------------- */
 
 export function General() {
@@ -234,6 +238,8 @@ export function Calibration() {
   const types = calibTypes(s);
   const rec = types.filter((ct) => calibStatus(s, ct) !== "ok").length;
   const btn = (ct: number) => (ct === CalType.GYRO ? t("calib.rerun") : ct === CalType.BATTERY ? t("calib.adjust") : ct === CalType.MOTORS ? t("common.open") : ct === CalType.STICKS ? t("calib.check") : t("calib.calibrate"));
+  const statusColor = (st: string) => (st === "ok" ? "var(--muted)" : st === "warn" ? "var(--warn)" : "var(--crit)");
+  const statusText = (st: string) => (st === "ok" ? t("calib.ok") : st === "warn" ? t("calib.recommended") : t("calib.required"));
   const detail = (ct: number) => (ct === CalType.COMPASS ? t("calib.details.4", { i: s.system?.magInterfPct ?? 0 }) : t(`calib.details.${ct}`));
   return (
     <div className="grid" style={{ gridTemplateColumns: vp.wide ? "minmax(0,1.75fr) minmax(0,1fr)" : "minmax(0,1fr)", alignItems: "start" }}>
@@ -247,11 +253,15 @@ export function Calibration() {
           return (
             <a key={ct} className="row" href={`#/calib/${ct}`} style={st !== "ok" ? { background: "color-mix(in srgb, var(--warn) 6%, transparent)" } : undefined}>
               <Dot state={st} />
-              <div className="grow"><span className="label" style={{ fontWeight: 600 }}>{t(`calib.names.${ct}`)}</span><span className="hint">{detail(ct)}</span></div>
-              <span className="small" style={{ color: st === "ok" ? "var(--muted)" : st === "warn" ? "var(--warn)" : "var(--crit)", minWidth: 96 }}>
-                {st === "ok" ? t("calib.ok") : st === "warn" ? t("calib.recommended") : t("calib.required")}
-              </span>
-              <span className={`btn small${st !== "ok" ? " warn" : ""}`} aria-hidden="true">{btn(ct)}</span>
+              <div className="grow">
+                <span className="label" style={{ fontWeight: 600 }}>{t(`calib.names.${ct}`)}</span>
+                <span className="hint">{detail(ct)}</span>
+                {!vp.wide && <span className="small" style={{ color: statusColor(st) }}>{statusText(st)}</span>}
+              </div>
+              {/* fixed widths: status and button line up as two columns whatever the text (5 languages);
+                  on a phone the status goes under the name, so the name keeps its room */}
+              {vp.wide && <span className="small" style={{ color: statusColor(st), width: CAL_STATUS_W, flexShrink: 0 }}>{statusText(st)}</span>}
+              <span className={`btn small${st !== "ok" ? " warn" : ""}`} aria-hidden="true" style={{ width: CAL_BTN_W, flexShrink: 0, justifyContent: "center" }}>{btn(ct)}</span>
             </a>
           );
         })}

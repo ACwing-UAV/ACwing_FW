@@ -4,6 +4,7 @@
  *        Behavioural reference: calStart/calCapture/stepCal in simDrone.ts.
  */
 #include "calib_mgr.h"
+#include "cal_motors.h"
 #include "proto_v2.h"
 #include <math.h>
 #include <string.h>
@@ -29,6 +30,7 @@ static uint8_t  s_changed, s_failed_type;
 static uint32_t s_t0;               /* start of the current window (ms)        */
 static uint32_t s_now;
 static cs_proc_t S;                 /* STICKS procedure (cal_sticks.c)            */
+static cm_proc_t M;                 /* MOTORS procedure (cal_motors.c)            */
 
 /* ---- per-type working data ---- */
 static struct {                      /* ACCEL */
@@ -174,8 +176,8 @@ uint8_t cal_start(uint8_t type, uint8_t option, uint8_t armed, uint32_t now, uin
     default:
         break;
     }
-    /* the sensors exist but this firmware has no procedure for them yet */
-    if (type == PV2_CAL_FLOW_TOF || type == PV2_CAL_MOTORS) return PV2_ACK_UNSUPPORTED;
+    /* the sensor exists but this firmware has no procedure for it yet */
+    if (type == PV2_CAL_FLOW_TOF) return PV2_ACK_UNSUPPORTED;
 
     /* a previous calibration left in DONE (not saved) is discarded */
     if (s_state == PV2_CS_DONE) revert();
@@ -214,6 +216,10 @@ uint8_t cal_start(uint8_t type, uint8_t option, uint8_t armed, uint32_t now, uin
         break;
     case PV2_CAL_STICKS:
         cs_start(&S);
+        set_state(PV2_CS_WAITING_USER, 1);
+        break;
+    case PV2_CAL_MOTORS:
+        cm_start(&M);
         set_state(PV2_CS_WAITING_USER, 1);
         break;
     default:
@@ -533,6 +539,8 @@ void cal_tick(uint32_t now)
         if (s_cfg.rc(st, aux)) cs_sample(&S, st, aux);
         s_progress = cs_progress(&S);
     }
+    if (s_type == PV2_CAL_MOTORS && s_state == PV2_CS_WAITING_USER && s_cfg.motor &&
+        cm_sample(&M, s_cfg.motor())) s_changed = 1;                 /* a frame per start / stop of a test */
 }
 
 uint8_t cal_capture(uint32_t now, uint8_t *reason)
@@ -614,7 +622,7 @@ size_t cal_frame(uint8_t *out, size_t cap)
     pv2_calib_hdr_t h = { s_type, s_state, s_step, s_progress, s_quality, s_reason };
     union {
         pv2_cal_accel_t a; pv2_cal_level_t l; pv2_cal_gyro_t g; pv2_cal_compass_t c;
-        pv2_cal_battery_t b; pv2_cal_sticks_t s;
+        pv2_cal_battery_t b; pv2_cal_sticks_t s; pv2_cal_motors_t m;
     } d;
     uint8_t n = 0;
     memset(&d, 0, sizeof d);
@@ -679,6 +687,11 @@ size_t cal_frame(uint8_t *out, size_t cap)
         n = sizeof d.s;
         break;
     }
+    case PV2_CAL_MOTORS:
+        d.m.motor = M.motor; d.m.spinning = M.spinning;
+        d.m.rev_mask = s_res.motors.rev_mask; d.m.ok_mask = M.ok_mask;
+        n = sizeof d.m;
+        break;
     default:
         break;
     }
