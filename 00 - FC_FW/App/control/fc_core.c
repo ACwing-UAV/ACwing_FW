@@ -1139,7 +1139,9 @@ static void control_step(uint32_t dt_ms)
 /* ---- hover thrust (hover_track.c): the flight core only reports its state ---- */
 static uint8_t hover_airborne(uint32_t now)
 {
-    return (uint8_t)(s_in_air && alt_ok() && !s_v.tof_ground && s_auto != PV2_AUTO_LAUNCH && s_auto != PV2_AUTO_FLIP &&
+    /* not while the debugger forces "in the air" (g_fc_dbg_in_air): a board on the bench has zero acceleration at
+     * any thrust, so the estimate would follow the thrust up to its clamp (#95: 0.84, "Hover thrust abnormal") */
+    return (uint8_t)(s_in_air && !s_dbg_forced && alt_ok() && !s_v.tof_ground && s_auto != PV2_AUTO_LAUNCH && s_auto != PV2_AUTO_FLIP &&
         (now - s_lift_ms) > FC_HOVER_SPOOL_MS &&
         !(s_auto == PV2_AUTO_TAKEOFF && !s_to_lifted) &&
         !(s_v.tof_valid && s_v.tof_h < FC_HOVER_MIN_TOF_H) &&

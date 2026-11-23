@@ -301,6 +301,38 @@ static void test_touchdown_no_tof(void)
     }
 }
 
+/* #95: with g_fc_dbg_in_air the board is static on the bench, zero acceleration at any thrust: the hover
+ * estimate must not learn (it climbed to 0.84 and warned "Hover thrust abnormal") */
+static void test_no_hover_learning_dbg(void)
+{
+    fc_setup(PV2_S_IMU | PV2_S_BARO);
+    now = 1000; heartbeat();
+    fc_vert_t v = { 1, 0, 0, 0, 0, 0, 1.0f, 0xFF, 0, 0, { 0, 0 }, 0, 1.0f, { 0, 0, 0 }, 0, 0, 0, { 0, 0, 0 } };
+    fc_service(now, 1, &v);
+    const uint8_t arm[2] = { 0xA5, 0x5A };
+    fc_res_t r = post(PV2_OP_ARM, 1, arm, 2, &v);
+    CHECK(r.result == PV2_ACK_OK, "dbg hover: arm");
+    g_fc_dbg_in_air = 1;
+    const uint8_t mode = PV2_MODE_ALT_HOLD;
+    (void)post(PV2_OP_SET_MODE, 2, &mode, 1, &v);
+    fc_state_t s;
+    int warn = 0;
+    for (int k = 0; k < 30000 / 4; ++k) {
+        now += 4;
+        if (k % 25 == 0) heartbeat();
+        v.h -= 0.003f * 0.004f;                       /* baro drifting down, ~17 cm/min as on the bench */
+        fc_service(now, 1, &v);
+        fc_event_t e; while (fc_take_event(&e)) warn += (e.code == PV2_E_HOVER_THRUST);
+    }
+    fc_snapshot(&s);
+    CHECK(s.in_air, "dbg hover: in the air (forced)");
+    CHECK(fabsf(s.hover - 0.42f) < 1e-4f, "dbg hover: no learning while forced (hover %.3f)", s.hover);
+    CHECK(warn == 0, "dbg hover: no 'Hover thrust abnormal' (%d)", warn);
+    g_fc_dbg_in_air = 0;
+    fc_service(now += 4, 1, &v);
+    (void)post(PV2_OP_DISARM, 3, NULL, 0, &v);
+}
+
 /* armed on the ground, then left alone: the DISARMED event says why (issue #61 "it disarms by itself") */
 static int disarm_cause(uint32_t run_ms, int beat, uint32_t *at)
 {
@@ -1634,6 +1666,7 @@ int main(void)
     test_takeoff_rules();
     test_takeoff_land();
     test_touchdown_no_tof();
+    test_no_hover_learning_dbg();
     test_disarm_causes();
     test_takeoff_tof();
     test_app_link_failsafe();
