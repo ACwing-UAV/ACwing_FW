@@ -746,6 +746,13 @@ static void test_manual_collective(void)
     fc_snapshot(&s);
     CHECK(s.autom == PV2_AUTO_NONE, "HOLD cancelled by +40 %% throttle (auto %d)", s.autom);
 
+    /* 4. full stick in ANGLE far from the ceiling (30 m): collective 1.0. The geofence limiter used to cap it at the
+     *    vertical loop's thr_max 0.95 whenever in the air (#95, E7: 0.94 at full throttle) */
+    run_plant(&pl, &v, 100, 1000);
+    fc_setpoint(&sp);
+    CHECK(sp.thrust > 0.999f, "ANGLE full stick far from the ceiling: collective 1.0 (%.3f)", sp.thrust);
+    run_plant(&pl, &v, 1500, 0);
+
     /* 5. geofence in ANGLE: full collective does not climb above gfMaxAlt */
     { uint8_t why; (void)params_set(30, 5.0f, &why); }
     (void)drain_events(0);
