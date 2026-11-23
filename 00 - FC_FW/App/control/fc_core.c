@@ -68,6 +68,7 @@ static float      s_to_target;      /* TAKEOFF target height (h frame)         *
 static uint32_t   s_to_t0;
 static uint8_t    s_to_lifted, s_dbg_forced, s_landed, s_geofence, s_geofence_ev;
 static uint32_t   s_touch_ms, s_flow_bad_ms;
+static uint32_t   s_desc_ms, s_sink_ms;  /* no ToF: descent commanded for, sinking for (#98) */
 static ctl_ref_t s_ref;             /* reference for the control law (ctl_api.h) */
 static fc_setpoint_t s_ref_sp;     /* its manager part, before the law            */
 static uint8_t  s_ctl_sat;         /* the law's collective at a limit              */
@@ -120,6 +121,7 @@ void fc_init(const fc_config_t *cfg)
     g_fc_dbg_in_air = 0u;
     s_have_v = 0u; s_dbg_forced = 0u; s_landed = 0u; s_geofence = s_geofence_ev = 0u;
     s_touch_ms = s_flow_bad_ms = 0u;
+    s_desc_ms = s_sink_ms = 0u;
     s_lift_ms = s_now = 0u;
     hover_track_init();
     s_hover = hover_track_value();
@@ -221,6 +223,7 @@ static void lift_off(void)
 {
     s_lift_ms = s_now;
     s_in_air = 1u; s_took_off = 1u; s_landed = 0u; s_touch_ms = 0u; s_land_idle = 0u;
+    s_desc_ms = s_sink_ms = 0u;
 }
 
 static void touch_down(uint32_t now)
@@ -236,6 +239,7 @@ static void touch_down(uint32_t now)
     s_auto = PV2_AUTO_NONE;
     s_landed_ms = now;
     s_touch_ms = 0u;
+    s_desc_ms = s_sink_ms = 0u;
 }
 static uint8_t hold_mode(void)    { return s_mode == PV2_MODE_ALT_HOLD || s_mode == PV2_MODE_POS_HOLD; }
 
@@ -795,7 +799,18 @@ static void air_ground(uint32_t now, uint32_t dt)
     else if (hold_mode()) descending = (uint8_t)(s_stick[0] < -0.3f);
     else descending = (uint8_t)(s_stick[0] < -0.9f);
     const uint8_t tof = (uint8_t)(has(PV2_S_TOF) && (s_v.tof_valid || s_v.tof_ground));
-    const uint8_t near = tof ? (uint8_t)(s_v.tof_ground || s_v.tof_h < 0.08f) : 1u;
+    /* no ToF, no height above the floor. Before #98 "near" was always 1: |vz| < 0.12 m/s for 1 s with a descent
+     * commanded meant touchdown at any height (a board held by hand, a drone that had not started to sink yet).
+     * Now the drone must have sunk since the descent was commanded (or the descent has been commanded for
+     * FC_TOUCH_NOSINK_MS: it was already down), and it must stay put although the collective is well under the
+     * hover thrust: something holds it up, the ground. */
+    if (descending) {
+        if (s_desc_ms < FC_TOUCH_NOSINK_MS) s_desc_ms += dt;
+        if (s_sink_ms < FC_TOUCH_SINK_MS && s_v.vz < -FC_TOUCH_SINK_VZ) s_sink_ms += dt;
+    } else s_desc_ms = s_sink_ms = 0u;
+    const uint8_t near = tof ? (uint8_t)(s_v.tof_ground || s_v.tof_h < 0.08f)
+                             : (uint8_t)((s_sink_ms >= FC_TOUCH_SINK_MS || s_desc_ms >= FC_TOUCH_NOSINK_MS) &&
+                                         s_sp.thrust < s_hover - FC_TOUCH_DTHR_NO_TOF);
     if (descending && near && fabsf(s_v.vz) < FC_TOUCH_VZ) s_touch_ms += dt;
     else s_touch_ms = 0u;
     if (s_touch_ms > (tof ? FC_TOUCH_MS : FC_TOUCH_MS_NO_TOF)) touch_down(now);

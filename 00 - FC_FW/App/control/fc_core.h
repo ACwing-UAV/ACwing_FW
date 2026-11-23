@@ -41,6 +41,15 @@
 #define FC_TOUCH_VZ          0.12f   /**< |vz| below this ...                      */
 #define FC_TOUCH_MS          700u    /**< ... for this long (descent commanded)    */
 #define FC_TOUCH_MS_NO_TOF   1000u
+/** without ToF also: collective this far below the hover thrust (issue #98). A drone that does not sink although
+ *  the collective is well under the hover is held up by something: the ground. The vertical loop gets there on the
+ *  ground within ~2 s at the slowest landSpeed (P + I of alt_ctrl), not in a steady descent. */
+#define FC_TOUCH_DTHR_NO_TOF 0.15f
+/** without ToF also: the drone sank first (vz below -FC_TOUCH_SINK_VZ for FC_TOUCH_SINK_MS since the descent was
+ *  commanded), or the descent has been commanded for FC_TOUCH_NOSINK_MS without any sinking (it was already down) */
+#define FC_TOUCH_SINK_VZ     0.2f
+#define FC_TOUCH_SINK_MS     200u
+#define FC_TOUCH_NOSINK_MS   5000u
 #define FC_FLOW_LOST_Q       30u     /**< flow quality below this ...              */
 #define FC_FLOW_BACK_Q       40u
 #define FC_FLOW_LOST_MS      500u

@@ -227,6 +227,80 @@ static void test_takeoff_land(void)
     CHECK(s.landed, "FLIGHT LANDED flag");
 }
 
+/* issue #98: touchdown without ToF. Before, LAND gave LANDED after 1 s of |vz| < 0.12 m/s at any height. */
+static void to_1m(plant_t *pl, fc_vert_t *v, float land_speed)
+{
+    fc_setup(PV2_S_IMU | PV2_S_BARO);
+    { uint8_t why; (void)params_set(2, land_speed, &why); }
+    now = 1000;
+    heartbeat();
+    memset(pl, 0, sizeof *pl); pl->hover = 0.42f;
+    const fc_vert_t v0 = { 1, 0, 0, 0, 0, 0, 1.0f, 0xFF, 0, 0, { 0, 0 }, 0, 1.0f, { 0, 0, 0 }, 0, 0, 0, { 0, 0, 0 } };
+    *v = v0;
+    fc_service(now, 1, v);
+    const uint8_t arm[2] = { 0xA5, 0x5A };
+    (void)post(PV2_OP_ARM, 1, arm, 2, v);
+    const uint16_t alt = 100;
+    (void)post(PV2_OP_TAKEOFF, 2, &alt, 2, v);
+    for (int k = 0; k < 8000 / 4; ++k) {
+        now += 4;
+        if (k % 25 == 0) heartbeat();
+        fc_setpoint_t sp; fc_setpoint(&sp);
+        plant_step(pl, sp.thrust, sp.armed, 0.004f);
+        v->h = pl->h; v->vz = pl->vz; v->a_up = pl->a;
+        fc_service(now, 1, v);
+    }
+    (void)drain_events(0xFFFF);
+}
+
+static void test_touchdown_no_tof(void)
+{
+    plant_t pl; fc_vert_t v; fc_state_t s;
+
+    /* 1. LAND with the drone held at 1 m (the bench: the board in the hand): no LANDED while it has not sunk;
+     *    after FC_TOUCH_NOSINK_MS it counts as already down */
+    to_1m(&pl, &v, 0.7f);
+    fc_snapshot(&s);
+    CHECK(s.in_air && fabsf(pl.h - 1.0f) < 0.1f, "held: at 1 m before LAND (h %.2f)", pl.h);
+    (void)post(PV2_OP_LAND, 3, NULL, 0, &v);
+    v.vz = 0.0f; v.a_up = 0.0f;                       /* held: it does not move */
+    uint32_t t0 = now, t_land = 0;
+    for (int k = 0; k < 8000 / 4; ++k) {
+        now += 4;
+        if (k % 25 == 0) heartbeat();
+        fc_service(now, 1, &v);
+        fc_event_t e;
+        while (fc_take_event(&e)) if (e.code == PV2_E_LANDED && !t_land) t_land = now;
+    }
+    CHECK(t_land == 0 || t_land - t0 >= FC_TOUCH_NOSINK_MS, "held: no LANDED before %u ms (%u ms)",
+          (unsigned)FC_TOUCH_NOSINK_MS, (unsigned)(t_land ? t_land - t0 : 0));
+    CHECK(t_land != 0 && t_land - t0 <= FC_TOUCH_NOSINK_MS + FC_TOUCH_MS_NO_TOF + 200u,
+          "held: LANDED after the no-sink time (%u ms)", (unsigned)(t_land ? t_land - t0 : 0));
+
+    /* 2. a real landing at the slowest and the default landSpeed: LANDED soon after the contact */
+    const float speeds[2] = { 0.3f, 0.7f };
+    for (int i = 0; i < 2; ++i) {
+        to_1m(&pl, &v, speeds[i]);
+        (void)post(PV2_OP_LAND, 3, NULL, 0, &v);
+        uint32_t t_touch = 0; t_land = 0; int landed = 0;
+        for (int k = 0; k < 20000 / 4; ++k) {
+            now += 4;
+            if (k % 25 == 0) heartbeat();
+            fc_setpoint_t sp; fc_setpoint(&sp);
+            plant_step(&pl, sp.thrust, sp.armed, 0.004f);
+            if (!t_touch && pl.h <= 0.0f) t_touch = now;
+            v.h = pl.h; v.vz = pl.vz; v.a_up = pl.a;
+            fc_service(now, 1, &v);
+            fc_event_t e;
+            while (fc_take_event(&e)) if (e.code == PV2_E_LANDED) { landed++; if (!t_land) t_land = now; }
+        }
+        CHECK(t_touch != 0, "landSpeed %.1f: reaches the ground", speeds[i]);
+        CHECK(landed == 1 && t_land >= t_touch, "landSpeed %.1f: LANDED once, after the contact", speeds[i]);
+        CHECK(t_land && t_land - t_touch < 3500u, "landSpeed %.1f: LANDED %u ms after the contact", speeds[i],
+              (unsigned)(t_land - t_touch));
+    }
+}
+
 /* armed on the ground, then left alone: the DISARMED event says why (issue #61 "it disarms by itself") */
 static int disarm_cause(uint32_t run_ms, int beat, uint32_t *at)
 {
@@ -1559,6 +1633,7 @@ int main(void)
     test_ack_cache();
     test_takeoff_rules();
     test_takeoff_land();
+    test_touchdown_no_tof();
     test_disarm_causes();
     test_takeoff_tof();
     test_app_link_failsafe();

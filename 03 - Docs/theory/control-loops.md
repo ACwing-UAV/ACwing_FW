@@ -283,7 +283,7 @@ Gate, numbers and validation: [ADR 0012](../decisions/0012-autonomous-flip.md).
 ### LAND and RTH
 
 With an altitude estimate: descent at `landSpeed` (0.7 m/s), 0.3 m/s below 1 m when a ToF sees the floor;
-touchdown when $\lvert v_z\rvert$ < 0.12 m/s for 0.7 s (1 s without ToF), then disarm. Without GNSS and home, RTH
+touchdown when $\lvert v_z\rvert$ < 0.12 m/s for 0.7 s near the floor (ToF); without ToF for 1 s with the collective 0.15 under $\hat t_h$, after the drone has sunk (or 5 s of descent commanded), then disarm. Without GNSS and home, RTH
 lands in place. **Without** an altitude estimate: open-loop descent, the collective ramps in 1 s to 0.85 $\hat t_h$
 and stays there for at most 20 s.
 
