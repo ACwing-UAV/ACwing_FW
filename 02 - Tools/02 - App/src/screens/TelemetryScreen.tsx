@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useT } from "../i18n";
+import { eventText } from "../alerts/alerts";
 import { drone } from "../link/drone";
 import { flightLog } from "../link/flightLog";
 import { ArmState, SENSOR, EventLevel } from "../protocol/ids";
@@ -35,7 +36,7 @@ function Chart({ series, yMin, yMax, unit, label }: {
 }
 
 export function TelemetryScreen() {
-  const { t } = useT();
+  const { t, lang } = useT();
   const s = useDrone();
   useSettings();
   const vp = useViewport();
@@ -147,7 +148,7 @@ export function TelemetryScreen() {
               <tr key={e.id}>
                 <td className="muted">{new Date(e.at).toLocaleTimeString()}</td>
                 <td style={{ color: e.level >= EventLevel.ERROR ? "var(--crit)" : e.level === EventLevel.WARN ? "var(--warn)" : "var(--ok)" }}>{t(`levels.${e.level}`)}</td>
-                <td>{t(`events.${e.code}`) !== `events.${e.code}` ? t(`events.${e.code}`) : e.text}</td>
+                <td>{eventText(e, lang)}</td>
               </tr>
             ))}
           </tbody>

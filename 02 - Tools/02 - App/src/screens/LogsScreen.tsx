@@ -9,6 +9,7 @@
 import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { Capacitor } from "@capacitor/core";
 import { useT } from "../i18n";
+import { eventText } from "../alerts/alerts";
 import { drone } from "../link/drone";
 import { ArmState, SENSOR, EventLevel } from "../protocol/ids";
 import type { LogEntryMsg } from "../protocol/messages";
@@ -283,7 +284,7 @@ function LogsList({ autoLast }: { autoLast: boolean }) {
 const R2D = 180 / Math.PI;
 
 function LogViewer({ logKey }: { logKey: string }) {
-  const { t } = useT();
+  const { t, lang } = useT();
   const vp = useViewport();
   const [st, setSt] = useState<{ meta: StoredLogMeta; L: DecodedLog } | null | "missing">(null);
   useEffect(() => {
@@ -323,13 +324,10 @@ function LogViewer({ logKey }: { logKey: string }) {
   const { t0, t1, rel, roll, pitch, yaw } = view;
   const sm = m.summary;
   const evColor = (lv: number) => (lv >= EventLevel.ERROR ? "var(--crit)" : lv === EventLevel.WARN ? "var(--warn)" : "var(--muted)");
-  const marks = L.event.t.map((x, i) => ({ t: x - t0, color: evColor(L.event.level[i]), label: t(`events.${L.event.code[i]}`) }));
+  // the same text as the live alerts: the events with an argument (why, cm, disarm cause) are filled in
+  const evText = (i: number) => eventText({ code: L.event.code[i], text: L.event.name[i], arg: L.event.arg[i] }, lang);
+  const marks = L.event.t.map((x, i) => ({ t: x - t0, color: evColor(L.event.level[i]), label: evText(i) }));
   const T = t1 - t0;
-  const evText = (i: number) => {
-    const k = `events.${L.event.code[i]}`;
-    const s = t(k);
-    return s === k ? L.event.name[i] : s;
-  };
 
   return (
     <div className="page">

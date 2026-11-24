@@ -226,7 +226,10 @@ export function useCommand() {
       if (e instanceof CommandError) {
         const m = commandErrorToast(e, t);
         toast(m.text, m.level);
-      } else toast(String(e), "error");
+      } else {
+        console.warn("command:", e);                       // the raw text stays in the console
+        toast(t("cmdError.other"), "error");
+      }
       return false;
     }
   };
