@@ -10,7 +10,17 @@ def open_serial(port: str, baud: int = 921600, timeout: float = 0.05):
         import serial
     except ImportError as exc:                                  # pragma: no cover
         raise ImportError("pyserial is required: pip install pyserial") from exc
-    ser = serial.Serial(port, baudrate=baud, timeout=timeout)
+    try:
+        ser = serial.Serial(port, baudrate=baud, timeout=timeout)
+    except serial.SerialException as exc:
+        if isinstance(getattr(exc, "args", [None])[0], str) and "could not open port" in exc.args[0] \
+                and ("FileNotFoundError" in exc.args[0] or "No such file" in exc.args[0]):
+            raise OSError(f"port {port} not found: is the cable plugged in? The ports present: "
+                          "python -m serial.tools.list_ports -v") from None
+        raise
+    except FileNotFoundError:
+        raise OSError(f"port {port} not found: is the cable plugged in? The ports present: "
+                      "python -m serial.tools.list_ports -v") from None
     ser.reset_input_buffer()
     return ser
 
