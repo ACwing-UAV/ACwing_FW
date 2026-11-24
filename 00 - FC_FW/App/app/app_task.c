@@ -81,6 +81,7 @@ static uint32_t s_now;                    /* time of the current app_step */
  * calibrations; never flight commands, ADR 0009). The first link opened has
  * control of the configuration; the other one reads only. */
 enum { LINK_BLE = 0, LINK_USB = 1, LINK_NONE = 0xFF, DEST_ALL = 0xFE };
+#define APP_BLE_OPEN_MS 3000u            /* BLE has control while a command arrived in the last 3 s */
 static uint8_t  s_owner = LINK_NONE;
 static uint8_t  s_dest  = DEST_ALL;       /* where tx() goes: DEST_ALL or one link */
 static uint8_t  s_usb_was;                /* USB link open at the previous step */
@@ -983,7 +984,11 @@ void app_step(uint32_t now)
     /* links: who is open, who has control of the configuration */
     s_usb_now = usbl_open(now);
     {
-        const uint8_t ble = (uint8_t)(tlm_ble_state() == TLM_BLE_STREAMING);
+        /* BLE counts as open while the app talks (heartbeat 5 Hz), as USB while a program holds DTR or sent a
+         * command in the last 3 s. Windows can keep the radio link of an app that pressed "Disconnect" open, so
+         * STREAMING alone kept the control on BLE and a PC opened later never got it (#37, bench 24/11). */
+        const uint8_t ble = (uint8_t)(tlm_ble_state() == TLM_BLE_STREAMING &&
+                                      appl_silence_ms(now, 0u) < APP_BLE_OPEN_MS);
         if (s_owner == LINK_BLE && !ble) s_owner = LINK_NONE;
         if (s_owner == LINK_USB && !s_usb_now) s_owner = LINK_NONE;
         if (s_owner == LINK_NONE) s_owner = ble ? LINK_BLE : (s_usb_now ? LINK_USB : LINK_NONE);

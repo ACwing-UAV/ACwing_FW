@@ -443,7 +443,8 @@ in CMD frames `0x20`), but it **never flies the drone** (ADR 0009):
   PARAM_SET/SAVE/DEFAULTS, CAL_START/CAPTURE/SAVE/RESTORE/SET_REF,
   STREAM_RATES and SET_NAME are refused with `REJECTED / OTHER_LINK` (19);
   reads, REQUEST and CAL_ABORT are allowed. Control passes when the owner
-  closes (BLE unsubscribed or disconnected, USB closed). A calibration
+  closes (BLE unsubscribed, disconnected or silent for 3 s, since FW 0.16.8:
+  the app must keep its 5 Hz HEARTBEAT going; USB closed). A calibration
   started over USB is aborted when the USB link closes.
 
 ## 6. Link supervision, input arbitration, failsafes
