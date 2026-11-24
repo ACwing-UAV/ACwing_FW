@@ -194,3 +194,24 @@ def test_log_get_bad_id_is_a_clean_error(capsys):
     from acwing_tools.__main__ import main
     assert main(["log", "get", "first", "--port", "COM_NONE"]) == 2       # before opening the port, no traceback
     assert "'last'" in capsys.readouterr().err
+
+
+def test_log_link_lost_is_a_link_error():
+    """#37 F: pulling the cable during 'log get' raised a SerialException traceback on Windows."""
+    from acwing_tools import flightlog as fl
+
+    class SerialException(OSError):            # pyserial: class SerialException(IOError)
+        pass
+
+    class Pulled:
+        def read(self, n):
+            raise SerialException("ClearCommError failed")
+
+        def write(self, b):
+            return len(b)
+
+        def close(self):
+            pass
+    link = fl.FcLink(Pulled(), timeout=0.5)
+    with pytest.raises(fl.LinkError, match="cable unplugged"):
+        link.list_logs()
