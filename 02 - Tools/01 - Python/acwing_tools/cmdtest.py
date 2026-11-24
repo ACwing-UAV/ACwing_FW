@@ -1,4 +1,4 @@
-"""Protocol v2 commands from the PC, over USB or BLE: ``acwing-tools cmd_test``.
+"""Protocol v2 commands from the PC, over USB or BLE: ``acwing-tools cmd``.
 
 A bench tool for the checks that the app cannot do (#37, #74):
 
@@ -6,7 +6,7 @@ A bench tool for the checks that the app cannot do (#37, #74):
   and repetitions; prints the ACK (result, reason) and the answers.
 * ``listen`` prints ACK, EVENT, PARAM, CALIB and CHECKS frames for a while
   (for example while the app works on the other link).
-* ``suite``  a ready-made sequence with an expected result per step:
+* ``test_suite`` a ready-made sequence with an expected result per step:
 
   ==============  ==========================================================
   ``repeat``      the same command twice with the same ``seq``: one effect,
@@ -151,7 +151,7 @@ def encode_args(name: str, args: List[str]) -> Tuple[int, bytes]:
     return op, b""
 
 
-def describe(f) -> Optional[str]:
+def describe(f, listing: bool = False) -> Optional[str]:
     """One line for the frames worth printing (ACK, EVENT, PARAM, CALIB, CHECKS); None for the rest."""
     p = f.payload
     if f.type == FT["ack"] and len(p) >= 4:
@@ -162,7 +162,8 @@ def describe(f) -> Optional[str]:
     if f.type == FT["param"] and len(p) >= 11:
         i, v, fl, idx, cnt = struct.unpack_from("<HfBHH", p)
         name = {v_: k for k, v_ in param_names().items()}.get(i, "")
-        return f"PARAM  {i} {name} = {v:g}" + (f"  ({idx + 1}/{cnt})" if cnt > 1 else "")
+        # index/count is the place in the parameter table: shown only while listing (PARAM_LIST)
+        return f"PARAM  {i} {name} = {v:g}" + (f"  ({idx + 1}/{cnt})" if listing and cnt > 1 else "")
     if f.type == FT["calib"] and len(p) >= 2:
         return f"CALIB  type {p[0]} state {p[1]}"
     if f.type == FT["checks"] and len(p) >= 2:
