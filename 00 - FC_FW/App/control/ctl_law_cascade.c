@@ -90,7 +90,8 @@ static float vertical(const ctl_ref_t *r, float dt, float *vz_out)
             /* geofence in the open-loop modes: the collective may not push the climb rate above vz_ceiling; the
              * vertical loop limits it only while it asks for less (ready for a bumpless change) */
             const float lim = alt_ctrl_step(&s_ac, r->vz_ceiling, vz, ct, dt);
-            if (lim < thr) thr = lim;
+            /* at the loop's own ceiling (thr_max) it asks for no limit: full stick stays 1.0 far from the fence (#95) */
+            if (lim < thr && lim < s_ac.thr_max - 0.001f) thr = lim;
             else alt_ctrl_reset(&s_ac, 0.0f);
         }
         return clampf(thr, 0.0f, 1.0f);

@@ -144,7 +144,13 @@ details are in [Battery and failsafes](battery.md#failsafes).
     10 s no-takeoff auto-disarm restarts.
 - **LAND** descends at `landSpeed`, slowing to 0.3 m/s below 1 m when the ToF
   is valid. Touchdown is detected when a descent is commanded and the vertical
-  speed stays below 0.12 m/s for 0.7 s close to the floor (1 s without ToF).
+  speed stays below 0.12 m/s for 0.7 s close to the floor (ToF). Without ToF
+  there is no height above the floor, so for 1 s the drone must also stay put
+  with the collective at least 0.15 below the hover thrust, after having sunk
+  (vz < −0.2 m/s for 0.2 s) since the descent was commanded, or after 5 s of
+  descent commanded without sinking (it was already down). Before FW 0.16.7
+  (#98) 1 s of no vertical motion was enough at any height: a board held by
+  hand on the bench reported "Landed" 1 s after LAND.
   Then come EVENT 4, `flags.LANDED`, and the auto-disarm after `autoDisarm`
   seconds.
 - **EVENT 2 DISARMED** carries the cause in `arg` (firmware 0.16.3): 0 a
