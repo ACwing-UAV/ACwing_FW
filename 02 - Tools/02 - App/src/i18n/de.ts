@@ -94,7 +94,7 @@ const de: Translation = {
     5: "Akku zu schwach", 6: "Home ist nicht gesetzt", 7: "der ELRS‑Funk hat die Kontrolle", 8: "die Drohne ist scharf", 9: "Propellerabbau nicht bestätigt",
     10: "die Drohne ist nicht scharf", 11: "eine Kalibrierung läuft", 12: "keine Kalibrierung aktiv", 13: "die Drohne bewegt sich",
     14: "Wert außerhalb des Bereichs", 15: "unbekannte Einstellung", 16: "Sensor nicht verbaut",
-    17: "ein USB-Kabel zu einem Computer ist angeschlossen: abziehen", 18: "über USB nicht erlaubt (Bodenverbindung)", 19: "ein anderes Gerät steuert die Einstellungen", 20: "zu wenig Schub jetzt (Akku oder Gewicht)", 21: "Motorausgänge in dieser Firmware deaktiviert (MOTORS_ENABLE = 0)", 22: "Bürstenmotoren drehen nur in eine Richtung: die zwei Drähte dieses Motors tauschen oder einen Motor der anderen Drehrichtung einbauen"
+    17: "ein USB-Kabel zu einem Computer ist angeschlossen, bitte abziehen", 18: "über USB nicht erlaubt (Bodenverbindung)", 19: "ein anderes Gerät steuert die Einstellungen", 20: "zu wenig Schub jetzt (Akku oder Gewicht)", 21: "Motorausgänge in dieser Firmware deaktiviert (MOTORS_ENABLE = 0)", 22: "Bürstenmotoren drehen nur in eine Richtung, also die zwei Drähte dieses Motors tauschen oder einen Motor der anderen Drehrichtung einbauen"
   },
   cmdError: { rejected: "Nicht ausgeführt: {why}", timeout: "Keine Antwort von der Drohne", offline: "Nicht verbunden", other: "Die Drohne hat den Befehl abgelehnt" },
   settings: {
