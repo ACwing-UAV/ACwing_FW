@@ -54,7 +54,11 @@ flowchart LR
   the open log **before** answering, and pauses recording for 5 s after the
   last command. A download never reads a log that is still being written, and
   the list shows every log final. Since firmware 0.16.1 this holds for the
-  list too; before, it showed the newest log as "recording".
+  list too; before, it showed the newest log as "recording". The same holds
+  for the BLE "last flight". With `logMode` 2 a new log opens when the 5 s
+  pause ends, so while the Flight logs screen shows a BLE entry the app
+  repeats the list every 3 s to keep the pause going (#97). Otherwise a
+  Download pressed later got the short new log.
 - **Record rates are exact on average.** The 50 Hz and 10 Hz records advance
   their next time by exactly one period (`logf_due`), so the IMU rate does not
   slow them down. Before firmware 0.16.1, with the real 916 Hz of the bench
