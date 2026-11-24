@@ -188,3 +188,9 @@ def test_cli_test_suite_name(capsys):
     from acwing_tools.__main__ import build_parser
     a = build_parser().parse_args(["cmd", "test_suite", "usb", "--port", "COM7"])
     assert a.action == "test_suite" and a.what == ["usb"] and a.port == "COM7"
+
+
+def test_log_get_bad_id_is_a_clean_error(capsys):
+    from acwing_tools.__main__ import main
+    assert main(["log", "get", "first", "--port", "COM_NONE"]) == 2       # before opening the port, no traceback
+    assert "'last'" in capsys.readouterr().err
