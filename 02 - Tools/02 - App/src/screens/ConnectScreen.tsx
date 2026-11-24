@@ -48,7 +48,10 @@ export function ConnectScreen() {
       appSettings.set({ lastLink: "ble" });
     } catch (e) {
       if (e instanceof LinkError && e.code === "denied") toast(t("connect.cancelled"));
-      else toast(t("connect.failed", { msg: e instanceof Error ? e.message : String(e) }), "error");
+      else {
+        console.warn("connect:", e);                       // the browser's text stays in the console
+        toast(t("connect.failed"), "error");
+      }
     } finally {
       setBusy(false);
     }
@@ -59,7 +62,8 @@ export function ConnectScreen() {
     try {
       await drone.reconnect();
     } catch (e) {
-      toast(t("connect.failed", { msg: e instanceof Error ? e.message : String(e) }), "error");
+      console.warn("reconnect:", e);
+      toast(t("connect.noReply", { name: s.dropped?.name ?? "" }), "error");
     } finally {
       setBusy(false);
     }

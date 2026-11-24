@@ -21,7 +21,7 @@ const it: Translation = {
     bleHint: "Il Bluetooth funziona su PC, Mac, tablet e telefoni. L'USB serve per configurazione e aggiornamenti firmware.",
     noWebBluetooth: "Questo browser non può usare il Bluetooth. Usa Chrome o Edge su PC, Mac o Android, oppure l'app ACwing Pilot su iPhone e iPad.",
     usbSoon: "Oggi via USB il drone fornisce i suoi log di volo; il volo via USB arriverà più avanti.", wifiSoon: "Il bridge Wi‑Fi a terra è un modulo opzionale, non ancora disponibile.",
-    failed: "Connessione non riuscita: {msg}", cancelled: "Nessun drone selezionato",
+    failed: "Connessione non riuscita. Riprova.", noReply: "{name} non risponde. Controlla che sia acceso e riprova.", cancelled: "Nessun drone selezionato",
     preflight: "Controlli pre‑volo", okCount: "{ok} / {total} OK", slideToArm: "SCORRI PER ARMARE", slideToArmAria: "Scorri per armare i motori",
     armHint: "Si arma solo con tutti i controlli verdi e gas al minimo.", openCockpit: "Apri cockpit",
     indoorNote: "Sui modelli indoor GNSS e Home sono sostituiti da flusso ottico e ToF.", calibrate: "Calibra",

@@ -19,7 +19,7 @@ const en = {
     bleHint: "Bluetooth works on PC, Mac, tablets and phones. USB is for setup and firmware updates.",
     noWebBluetooth: "This browser cannot use Bluetooth. Use Chrome or Edge on PC, Mac or Android, or the ACwing Pilot app on iPhone and iPad.",
     usbSoon: "Over USB the drone serves its flight logs today; flying over USB will come later.", wifiSoon: "The Wi‑Fi ground bridge is an optional module, not available yet.",
-    failed: "Connection failed: {msg}", cancelled: "No drone selected",
+    failed: "Connection failed. Try again.", noReply: "{name} does not answer. Check that it is on, then try again.", cancelled: "No drone selected",
     preflight: "Pre‑flight checks", okCount: "{ok} / {total} OK", slideToArm: "SLIDE TO ARM", slideToArmAria: "Slide to arm the motors",
     armHint: "Arms only when every check is green and throttle is at minimum.", openCockpit: "Open cockpit",
     indoorNote: "On indoor models GNSS and Home are replaced by optical flow and ToF.", calibrate: "Calibrate",

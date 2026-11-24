@@ -147,15 +147,31 @@ export class Drone {
     this.parser = new StreamParser();
     this.s = { ...initial(), events: this.s.events };
     this.set({ link: "connecting", deviceName: t.deviceName, transport: t.kind });
-    await this.openLink(t);
+    try {
+      await this.openLink(t);
+    } catch (e) {
+      // the drone did not answer: back to idle, not stuck in "connecting" (bench report, #95)
+      if (this.transport === t) {
+        this.transport = null;
+        this.set({ ...initial(), events: this.s.events });
+      }
+      throw e;
+    }
     await this.startSession(t);
   }
 
-  /** "Reconnect" after a dropped link: the same drone, no device picker. */
+  /** "Reconnect" after a dropped link: the same drone, no device picker. If the drone is not back yet, the
+   *  attempt fails and "Reconnect to <name>" stays, so it can be pressed again. */
   async reconnect() {
     const t = this.lastTransport;
     if (!t) throw new CommandError("offline", 0);
-    await this.connect(t);
+    const dropped = this.s.dropped;
+    try {
+      await this.connect(t);
+    } catch (e) {
+      if (this.s.link === "idle" && dropped) this.set({ dropped });   // same `at`: no second "lost" toast
+      throw e;
+    }
   }
 
   private openLink(t: Transport) {

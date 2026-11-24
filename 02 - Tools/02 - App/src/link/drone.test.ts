@@ -128,6 +128,26 @@ describe("app session against the simulator (real bytes, 20-byte notifications)"
     await d.disconnect();
   }, 30000);
 
+  it("Reconnect pressed before the drone is back: it fails, the app is idle and Reconnect stays; later it works", async () => {
+    const d = new Drone();
+    const t = new SimTransport("indoor");
+    await d.connect(t);
+    await until(() => !!d.getSnapshot().caps);
+    t.outage(RECONNECT_MS + 2500);
+    await until(() => !!d.getSnapshot().dropped, RECONNECT_MS + 3000);
+    const at = d.getSnapshot().dropped!.at;
+    await expect(d.reconnect()).rejects.toBeTruthy();                   // the drone is still off
+    await wait(100);
+    expect(d.getSnapshot().link).toBe("idle");                          // not stuck in "connecting"
+    expect(d.getSnapshot().dropped?.at).toBe(at);                       // the button stays, same drop (no new toast)
+    await wait(2600);
+    await d.reconnect();
+    await until(() => !!d.getSnapshot().caps);
+    expect(d.getSnapshot().link).toBe("connected");
+    expect(d.getSnapshot().dropped).toBeNull();
+    await d.disconnect();
+  }, 30000);
+
   it("Disconnect while reconnecting stops the attempts, no `dropped`", async () => {
     const d = new Drone();
     const t = new SimTransport("indoor");
