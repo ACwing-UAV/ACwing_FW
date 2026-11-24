@@ -387,6 +387,43 @@ static void test_owner(void)
     k = ack_in(&B, fb, PV2_OP_PARAM_SET, 1);
     CHECK(k && k->result == PV2_ACK_REJECTED && k->reason == PV2_R_OTHER_LINK, "BLE re-subscribe: BLE seq 1 evaluated again (USB has control)");
     CHECK(U.bad == 0 && B.bad == 0, "every frame whole on both links");
+
+    /* bench 24/11 (#37): the app pressed "Disconnect" but Windows kept the radio link: STREAMING, no command.
+     * After 3 s of silence BLE no longer holds the control, so a PC that opens the port gets it. */
+    setup();
+    ble_connect();
+    run(300);
+    usbl_set_configured(1);
+    usbl_set_dtr(0);
+    fu = U.n;
+    usb_cmd(PV2_OP_PARAM_SET, 9, a, 6);                     /* the app talks: BLE has control */
+    run(100);
+    k = ack_in(&U, fu, PV2_OP_PARAM_SET, 9);
+    CHECK(k && k->reason == PV2_R_OTHER_LINK, "app active: a USB write -> OTHER_LINK");
+    s_ble_hb = 0;                                           /* the app is gone, the radio link stays */
+    run(3500);
+    usbl_set_dtr(1);                                        /* a program opens the port */
+    run(200);
+    fu = U.n;
+    usb_cmd(PV2_OP_PARAM_SET, 10, a, 6);
+    run(100);
+    k = ack_in(&U, fu, PV2_OP_PARAM_SET, 10);
+    CHECK(k && k->result == PV2_ACK_OK, "BLE silent > 3 s, port opened: USB gets the control (%d/%d)",
+          k ? k->result : -1, k ? k->reason : -1);
+    s_ble_hb = 1;                                           /* the app comes back on the same radio link */
+    run(300);
+    fb = B.n;
+    ble_cmd(PV2_OP_PARAM_SET, 11, a, 6);
+    run(100);
+    k = ack_in(&B, fb, PV2_OP_PARAM_SET, 11);
+    CHECK(k && k->result == PV2_ACK_REJECTED && k->reason == PV2_R_OTHER_LINK, "the app back: USB keeps the control");
+    usbl_set_dtr(0);
+    run(3500);                                              /* USB closed (no command for 3 s) */
+    fb = B.n;
+    ble_cmd(PV2_OP_PARAM_SET, 12, a, 6);
+    run(100);
+    k = ack_in(&B, fb, PV2_OP_PARAM_SET, 12);
+    CHECK(k && k->result == PV2_ACK_OK, "port closed: the app gets the control back");
 }
 
 /* ================================================================== three USB producers */

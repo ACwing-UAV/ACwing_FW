@@ -27,7 +27,8 @@ flight commands next to the pilot's phone is a second pilot.
   does not enumerate and does not block. Plugged in while armed, nothing is
   cut (DISARM, LAND, KILL still work).
 - **The first link opened has control of the configuration.** With BLE
-  (subscribed) and USB (port open: DTR, or a command in the last 3 s) both
+  (subscribed, and a command in the last 3 s: the app's heartbeat; FW
+  0.16.8, because Windows can keep the radio link of a closed app open) and USB (port open: DTR, or a command in the last 3 s) both
   open, configuration changes (PARAM_SET/SAVE/DEFAULTS, CAL_* except ABORT,
   STREAM_RATES, SET_NAME) from the other link are refused with
   `REJECTED / OTHER_LINK` (reason 19); reads and requests are allowed from

@@ -206,7 +206,9 @@ flowchart LR
   FAIL. A charger does not enumerate and does not block. DISARM, LAND and KILL
   always work.
 - **The first link opened has control** of the configuration. BLE is open
-  while subscribed; USB while a program holds the port (DTR) or sent a
+  while subscribed and a command arrived in the last 3 s (the app's 5 Hz
+  heartbeat; FW 0.16.8: Windows can keep the radio link of a closed app
+  open); USB while a program holds the port (DTR) or sent a
   command in the last 3 s. Configuration changes from the other link are
   refused with `REJECTED / OTHER_LINK` (19); reads, requests and CAL_ABORT
   are allowed from both, telemetry and events go to both, ACKs only to the
