@@ -62,6 +62,24 @@ export const logsSession = {
     if (s.ble.listed || s.ble.entry) set({ ble: { entry: null, listed: false, busy: false } });
   },
 
+  /**
+   * #97: with logMode 2 the drone records again 5 s after a log command (LOG_USB_PAUSE_MS) and opens a new log,
+   * which then becomes "the last flight" over BLE: Download got that short log, or OUT_OF_RANGE. While the Flight
+   * logs screen shows a BLE entry, the screen calls this every BLE_HOLD_MS: one more LOG_LIST keeps the pause going,
+   * so no new log opens and the entry stays the log that was recording. Recording resumes 5 s after the screen closes.
+   */
+  async holdBle() {
+    if (s.ble.busy || !s.ble.listed || !s.ble.entry || s.job?.state === "running" || !bleReady()) return;
+    if (Math.round(drone.param("logMode")) !== 2) return;
+    try {
+      const [e] = await new LogClient(new BleLogPort()).list();
+      const cur = s.ble.entry;
+      if (e && cur && (e.id !== cur.id || e.bytes !== cur.bytes)) set({ ble: { ...s.ble, entry: e } });
+    } catch {
+      /* the next Refresh or Download reports it */
+    }
+  },
+
   /** BLE: the last flight (drone connected and disarmed). */
   async listBle() {
     if (s.ble.busy) return;
@@ -179,6 +197,17 @@ async function run(list: LogEntryMsg[], source: "ble" | "usb", client: LogClient
     }
   }
 }
+
+/** The pause of the drone's recording after a log command is 5 s (log_task.h LOG_USB_PAUSE_MS): hold it below that. */
+export const BLE_HOLD_MS = 3000;
+
+// a new flight makes the last-flight entry stale: the card went on offering the log listed before (bench, #95)
+let wasArmed = false;
+drone.subscribe(() => {
+  const armed = drone.getSnapshot().flight?.arm === ArmState.ARMED;
+  if (armed && !wasArmed) logsSession.resetBle();
+  wasArmed = armed;
+});
 
 /** Already on this device? (same log id and start time; the drone name comes from the log itself) */
 export const storedAs = (metas: StoredLogMeta[], e: LogEntryMsg) => metas.find((m) => m.logId === e.id && m.t0Ms === e.t0Ms) ?? null;

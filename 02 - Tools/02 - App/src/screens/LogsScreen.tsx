@@ -18,7 +18,7 @@ import { Confirm, Row, toast } from "../ui/kit";
 import { fmt } from "../ui/format";
 import { TimeChart } from "../ui/timeChart";
 import { ParamSelect } from "./settings/params";
-import { logsSession, storedAs, type Job } from "../log/session";
+import { BLE_HOLD_MS, logsSession, storedAs, type Job } from "../log/session";
 import { logStore, type StoredLogMeta } from "../log/store";
 import { decodeLog, toCsv, type DecodedLog } from "../log/format";
 import { shareFiles } from "../log/share";
@@ -106,6 +106,11 @@ function LogsList({ autoLast }: { autoLast: boolean }) {
   useEffect(() => {
     if (!connected) logsSession.resetBle();
   }, [connected]);
+  // logMode 2: keep the drone's recording paused while a BLE entry is shown (#97)
+  useEffect(() => {
+    const id = setInterval(() => void logsSession.holdBle(), BLE_HOLD_MS);
+    return () => clearInterval(id);
+  }, []);
   // a USB port granted earlier: reopen it without the picker
   useEffect(() => {
     if (logsSession.usbSupported()) void logsSession.connectUsb({ silent: true });
