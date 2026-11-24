@@ -279,11 +279,17 @@ class FcLink:
     def _send(self, op: int, args: bytes = b"") -> int:
         self.seq = (self.seq + 1) & 0xFF
         cmd = bytes([op, self.seq]) + bytes(args)
-        self.port.write(cmd if self.raw else encode_frame(FT_CMD, cmd))
+        try:
+            self.port.write(cmd if self.raw else encode_frame(FT_CMD, cmd))
+        except (OSError, ValueError) as exc:          # pyserial's SerialException is an OSError
+            raise LinkError(f"the link was lost (cable unplugged?): {exc.__class__.__name__}") from exc
         return self.seq
 
     def _frames(self):
-        data = self.port.read(4096)
+        try:
+            data = self.port.read(4096)
+        except (OSError, ValueError) as exc:          # Windows: ClearCommError when the cable is pulled (#37)
+            raise LinkError(f"the link was lost (cable unplugged?): {exc.__class__.__name__}") from exc
         if not data:
             return []
         frames, self.rest = parse_telemetry(self.rest + data)

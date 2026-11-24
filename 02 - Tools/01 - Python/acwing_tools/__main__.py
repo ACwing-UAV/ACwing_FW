@@ -164,6 +164,15 @@ def _cmd_log(a):
     if a.ble is not None and a.action == "erase":
         print("log erase: USB only (--port)", file=sys.stderr)
         return 2
+    want_last = a.action == "get" and [x.lower() for x in a.target] == ["last"]
+    ids = None
+    if a.action == "get" and a.target and not want_last:
+        try:
+            ids = [int(x) for x in a.target]
+        except ValueError:
+            print("log get: give log ids (numbers, see 'log list'), 'last' for the newest, or nothing for all",
+                  file=sys.stderr)
+            return 2
     try:
         link = fl.FcLink.open_ble(a.ble) if a.ble is not None else fl.FcLink.open(a.port)
     except Exception as exc:                                    # pragma: no cover
@@ -179,7 +188,12 @@ def _cmd_log(a):
                 fl_ = ("truncated " if e.truncated else "") + ("recording" if e.active else "")
                 print(f"  log {e.id:5d}  {e.bytes / 1024:8.0f} kB  started {e.t0_ms / 1000:8.1f} s after power-on  {fl_}")
         elif a.action == "get":
-            ids = [int(x) for x in a.target] if a.target else None
+            if want_last:
+                logs = link.list_logs()
+                if not logs:
+                    print("No logs on the drone.")
+                    return 0
+                ids = [max(e.id for e in logs)]
 
             def prog(i, o, n):
                 print(f"\r  log {i}: {100 * o // max(n, 1):3d} %", end="", flush=True)
@@ -322,7 +336,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     s = sub.add_parser("log", help="flight logs: list / get / erase over the FC USB port, decode a .bin")
     s.add_argument("action", choices=("list", "get", "erase", "decode"))
-    s.add_argument("target", nargs="*", help="get: log ids (default all); decode: downloaded .bin files")
+    s.add_argument("target", nargs="*", help="get: log ids, 'last' for the newest (default all); decode: downloaded .bin files")
     s.add_argument("--port", help="FC USB port (CDC), e.g. COM7 or /dev/ttyACM0: every log")
     s.add_argument("--ble", nargs="?", const="", metavar="NAME_OR_ADDRESS",
                    help="use BLE instead (needs bleak): the last flight only")

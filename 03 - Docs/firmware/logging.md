@@ -196,6 +196,7 @@ which is about 50 times faster. From a PC: `acwing-tools log get --ble`.
 acwing-tools log list --port /dev/ttyACM0          # COM7 on Windows
 acwing-tools log get --port /dev/ttyACM0           # all logs -> acwing_flight_<id>.bin
 acwing-tools log get 12 13 --port COM7 --out-dir logs
+acwing-tools log get last --port COM7                # the newest log only
 acwing-tools log decode logs/acwing_flight_00012.bin --csv out --mat out
 acwing-tools log erase --port COM7 --yes
 acwing-tools log get --ble                         # the last flight over Bluetooth (needs bleak)
