@@ -186,6 +186,12 @@ void    fc_batt_heartbeat(uint32_t now_ms);        /**< every BattTask step     
 int     fc_post(const fc_cmd_t *c);              /**< 0 = queued, -1 = full   */
 int     fc_take_result(fc_res_t *r);              /**< 1 if a result was taken */
 int     fc_take_event(fc_event_t *e);
+/** an event raised outside the core but in its context (ImuTask: the IMU watch, #106) */
+void    fc_raise_event(uint8_t level, uint16_t code, int32_t arg);
+/** the IMU stopped (imu_watch, ImuTask context): armed -> disarm (cause PV2_DISARM_IMU). Without gyro the rate loop
+ *  has nothing to stabilise with; the rate-loop watchdog has already cut the motors, this makes it final so they do
+ *  not restart mid-air with a re-initialised estimator when the sensor comes back. */
+void    fc_imu_lost(void);
 void    fc_snapshot(fc_state_t *out);
 /** ground information computed by the AppTask (atomic byte stores) */
 void    fc_set_ground_info(uint8_t checks_ready, uint8_t battery_fail, uint8_t calibrating);

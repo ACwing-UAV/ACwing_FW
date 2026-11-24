@@ -11,6 +11,7 @@
 #include "app_link.h"
 #include "ack_cache.h"
 #include "fc_core.h"
+#include "imu_watch.h"
 #include "launch.h"
 #include "flip.h"
 #include "ctl_api.h"
@@ -331,6 +332,72 @@ static void test_no_hover_learning_dbg(void)
     g_fc_dbg_in_air = 0;
     fc_service(now += 4, 1, &v);
     (void)post(PV2_OP_DISARM, 3, NULL, 0, &v);
+}
+
+/* #106: the IMU watch (stall detection, recovery attempts, events, watchdog policy) */
+static void test_imu_watch(void)
+{
+    imw_t w; imw_out_t o;
+    uint32_t t = 1000; int lost = 0, back = 0, tries = 0;
+    imw_init(&w, t);
+    for (int k = 0; k < 500; ++k) { t += 2; imw_sample(&w, t); imw_step(&w, t, &o); lost += o.event; }
+    CHECK(lost == 0 && imw_ok(&w), "imu watch: samples every 2 ms, no event");
+
+    /* the IMU stops */
+    const uint32_t t_stop = t;
+    uint32_t t_lost = 0;
+    for (int k = 0; k < 1000; ++k) {                         /* 1 s without samples, loop every 1 ms */
+        t += 1; imw_step(&w, t, &o);
+        if (o.event && o.code == PV2_E_IMU_LOST) { lost++; if (!t_lost) t_lost = t; CHECK(o.level == PV2_EV_ERROR && o.arg == 1, "imu watch: IMU_LOST is an ERROR, arg = outage 1"); }
+        tries += o.recover;
+        if (o.recover && tries == 1) CHECK(t == t_lost, "imu watch: first recovery at the detection");
+    }
+    CHECK(lost == 1, "imu watch: one IMU_LOST per outage (%d)", lost);
+    CHECK(t_lost - t_stop > IMW_STALL_MS && t_lost - t_stop <= IMW_STALL_MS + 2u, "imu watch: lost after %u ms", t_lost - t_stop);
+    CHECK(tries >= 4 && tries <= 5, "imu watch: an attempt every %u ms (%d in ~950 ms)", IMW_RETRY_MS, tries);
+    CHECK(!imw_ok(&w), "imu watch: not ok while lost");
+    CHECK(imw_feed_wdg(&w, t, 0) == 1, "imu watch: watchdog still fed after 1 s");
+
+    /* samples come back for 60 ms only, then stop again: not recovered */
+    for (int k = 0; k < 30; ++k) { t += 2; imw_sample(&w, t); imw_step(&w, t, &o); back += (o.code == PV2_E_IMU_RECOVERED); tries += o.recover; }
+    const int tries_before = tries;
+    for (int k = 0; k < 300; ++k) { t += 1; imw_step(&w, t, &o); back += (o.code == PV2_E_IMU_RECOVERED); tries += o.recover; }
+    CHECK(back == 0 && !imw_ok(&w), "imu watch: 60 ms of samples then silence: still lost");
+    CHECK(tries > tries_before, "imu watch: attempts start again after a short comeback");
+
+    /* recovered */
+    int32_t outage = 0;
+    for (int k = 0; k < 100; ++k) {
+        t += 2; imw_sample(&w, t); imw_step(&w, t, &o);
+        if (o.event && o.code == PV2_E_IMU_RECOVERED) { back++; outage = o.arg; CHECK(o.level == PV2_EV_INFO, "imu watch: IMU_RECOVERED is INFO"); }
+        CHECK(!o.recover, "imu watch: no attempt while samples flow");
+    }
+    CHECK(back == 1 && imw_ok(&w), "imu watch: recovered once");
+    CHECK(outage > 1300 && outage < 1500, "imu watch: RECOVERED arg = outage %d ms", (int)outage);
+
+    /* a second outage, disarmed for 5 s: the watchdog is no longer fed; armed it always is */
+    for (int k = 0; k < 5100; ++k) { t += 1; imw_step(&w, t, &o); if (o.event && o.code == PV2_E_IMU_LOST) CHECK(o.arg == 2, "imu watch: second outage, arg 2"); }
+    CHECK(imw_feed_wdg(&w, t, 0) == 0, "imu watch: disarmed and lost > %u ms: watchdog not fed (reset)", IMW_RESET_MS);
+    CHECK(imw_feed_wdg(&w, t, 1) == 1, "imu watch: armed: watchdog always fed");
+
+    /* the flight core: IMU lost while armed -> disarm, cause IMU; disarmed -> nothing */
+    fc_setup(PV2_S_IMU | PV2_S_BARO);
+    now = 1000; heartbeat();
+    fc_vert_t v = { 1, 0, 0, 0, 0, 0, 1.0f, 0xFF, 0, 0, { 0, 0 }, 0, 1.0f, { 0, 0, 0 }, 0, 0, 0, { 0, 0, 0 } };
+    fc_service(now, 1, &v);
+    const uint8_t arm[2] = { 0xA5, 0x5A };
+    fc_res_t r = post(PV2_OP_ARM, 1, arm, 2, &v);
+    CHECK(r.result == PV2_ACK_OK, "imu lost: armed");
+    (void)drain_events(0xFFFF);
+    fc_imu_lost();
+    fc_service(now += 4, 0, &v);                            /* the snapshot is published by fc_service */
+    fc_state_t st; fc_snapshot(&st);
+    fc_event_t e; int dis = 0; int32_t cause = -1;
+    while (fc_take_event(&e)) if (e.code == PV2_E_DISARMED) { dis++; cause = e.arg; }
+    CHECK(!st.armed && dis == 1 && cause == PV2_DISARM_IMU, "imu lost while armed: disarmed, cause IMU (%d)", (int)cause);
+    fc_imu_lost();
+    dis = 0; while (fc_take_event(&e)) dis += (e.code == PV2_E_DISARMED);
+    CHECK(dis == 0, "imu lost while disarmed: nothing");
 }
 
 /* armed on the ground, then left alone: the DISARMED event says why (issue #61 "it disarms by itself") */
@@ -1673,6 +1740,7 @@ int main(void)
     test_takeoff_rules();
     test_takeoff_land();
     test_touchdown_no_tof();
+    test_imu_watch();
     test_no_hover_learning_dbg();
     test_disarm_causes();
     test_takeoff_tof();

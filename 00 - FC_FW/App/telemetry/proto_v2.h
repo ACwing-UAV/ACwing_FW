@@ -160,6 +160,8 @@ enum {
     PV2_E_MAG_INTERFERENCE = 40, PV2_E_HIGH_VIBRATION = 41, PV2_E_MOTOR_HOT = 42,
     PV2_E_RADIO_OVERRIDE = 43,
     PV2_E_HOVER_THRUST = 44,         /**< firmware 0.7 (WARN): hover thrust outside 0.35..0.75, arg = t_h x 1000 */
+    PV2_E_IMU_LOST = 45,             /**< firmware 0.16.9 (ERROR): no gyro sample for 50 ms; recovery under way, arg = outages since boot */
+    PV2_E_IMU_RECOVERED = 46,        /**< firmware 0.16.9 (INFO): IMU back after a bus recovery and re-init, arg = outage ms */
     PV2_E_CALIB_DONE = 50, PV2_E_CALIB_FAILED = 51,
     PV2_E_PARAMS_SAVED = 60, PV2_E_MOTOR_KILLED = 70
 };
@@ -172,7 +174,8 @@ enum {
     PV2_DISARM_APP_LINK   = 3,  /**< armed on the ground, app silent for FC_GROUND_DISARM_MS (3 s)    */
     PV2_DISARM_RADIO_LINK = 4,  /**< radio failsafe: disarm                                           */
     PV2_DISARM_KILL       = 5,  /**< KILL                                                             */
-    PV2_DISARM_LAUNCH     = 6   /**< hand launch cancelled                                            */
+    PV2_DISARM_LAUNCH     = 6,  /**< hand launch cancelled                                            */
+    PV2_DISARM_IMU        = 7   /**< firmware 0.16.9: no gyro for 50 ms while armed (imu_watch, #106)  */
 };
 
 enum { PV2_CAL_ACCEL = 1, PV2_CAL_LEVEL = 2, PV2_CAL_GYRO = 3, PV2_CAL_COMPASS = 4,

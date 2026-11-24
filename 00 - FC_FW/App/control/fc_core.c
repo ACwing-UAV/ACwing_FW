@@ -189,6 +189,11 @@ static void event(uint8_t level, uint16_t code, int32_t arg)
     if (s_cfg.on_event) s_cfg.on_event(&e);
 }
 
+void fc_raise_event(uint8_t level, uint16_t code, int32_t arg) { event(level, code, arg); }
+
+static void disarm(uint8_t cause);
+void fc_imu_lost(void) { if (s_armed) disarm(PV2_DISARM_IMU); }
+
 static uint8_t has(uint16_t bits) { return (uint8_t)((s_sensors & bits) != 0u); }
 /* GNSS usable for navigation. The GPS board found (PV2_S_GNSS, CAPS) is not enough: without a position estimate
  * that fuses it, POS_HOLD would fly as ALT_HOLD and RTH would have no position. 0 until the horizontal estimator

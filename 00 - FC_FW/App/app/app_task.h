@@ -23,7 +23,7 @@
 
 #define APP_FW_MAJOR  0u
 #define APP_FW_MINOR  16u
-#define APP_FW_PATCH  8u
+#define APP_FW_PATCH  9u
 
 typedef struct {
     char     hw_rev;              /**< CAPS hwRev: 'N' Nucleo bench, 'A' ACwing FC rev A */

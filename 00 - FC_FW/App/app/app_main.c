@@ -59,6 +59,7 @@
 #include "usb_cdc.h"
 #include "usb_link.h"
 #include "rc_task.h"
+#include "imu_watch.h"
 #include <string.h>
 #include <math.h>
 
@@ -90,6 +91,12 @@ static volatile uint32_t  s_wordsMax;
 static volatile uint32_t  s_drainReads;   /* immediate re-reads (INT1 edge recovery) */
 static volatile float     s_odrHz;        /* IMU sample rate measured against the MCU clock */
 static volatile int8_t    s_imuInit = 1;          /* 1 = in progress, 0 = OK, <0 error */
+static imw_t              s_imw;                  /* IMU stall watch (#106), ImuTask only */
+static volatile uint8_t   s_imw_ok = 1u;          /* imw_ok(), read by publish_est (same task) */
+static uint8_t            s_wdg_feed = 1u;        /* the IWDG may be fed (imw_feed_wdg)      */
+/* bench (debugger, Live Expressions): 1 = switch the IMU off by register (accel and gyro ODR off), as a sensor that
+ * lost its configuration; the IMU watch must notice it and configure the sensor again (#106). Cleared when done. */
+volatile uint8_t          g_dbg_imu_off;
 static imu_parse_stats_t  s_psTot;                /* cumulative FIFO counters        */
 
 static imu_t   s_imu;
@@ -378,7 +385,7 @@ static void publish_est(uint32_t now)
 
     fsh_est_t o;
     memset(&o, 0, sizeof o);
-    o.imu_ok = (uint8_t)(s_imuInit == 0);
+    o.imu_ok = (uint8_t)(s_imuInit == 0 && s_imw_ok);     /* CHECKS item IMU: also a stalled sensor (#106) */
     o.running = s_est.running;
     o.acc_gated = (uint8_t)(s_est.f.acc_infl > 2.0f);
     o.mag_gated = (uint8_t)(s_est.f.mag_infl > 2.0f);
@@ -494,6 +501,34 @@ static void flight_service(uint32_t *lastSvc)
 }
 
 /* ================================================================== */
+/* IMU recovery (#106): delays that keep the IWDG fed while imu_init waits (sensor hub polls), unless the watch has
+ * decided to let it expire */
+static void dly_feed(uint32_t ms)
+{
+    if (s_wdg_feed) IWDG->KR = 0xAAAAu;
+    osDelay(ms);
+    if (s_wdg_feed) IWDG->KR = 0xAAAAu;
+}
+
+/* I2C bus recovery, then the IMU (and its sensor hub) configured again from scratch. On success the estimator
+ * restarts: the attitude across the gap is unknown, and it needs its static start (~2 s still). Returns 1 if the
+ * IMU answered. */
+static uint8_t imu_recover(const sensor_bus_t *bus, const imu_config_t *icfg)
+{
+    s_imuInit = 1;                                     /* STATUS: in progress; CHECKS IMU: FAIL */
+    if (imu_i2c_recover() != 0) s_busErr++;
+    sensor_bus_t b = *bus;
+    b.delay_ms = dly_feed;
+    const int32_t st = imu_init(&s_imu, &b, icfg);
+    s_imu.bus.delay_ms = bus->delay_ms;                /* back to the plain delay */
+    s_imu.ctx.mdelay = bus->delay_ms;
+    s_imuInit = (int8_t)st;
+    if (st != IMU_OK) return 0u;
+    est_init(&s_est, &s_ec, on_state, on_init, NULL);
+    s_est.trace_enable = APP_TLM_REPLAY;
+    return 1u;
+}
+
 static void ImuTask(void *arg)
 {
     (void)arg;
@@ -573,9 +608,40 @@ static void ImuTask(void *arg)
     iwdg_start();
     uint32_t wait_ms = 5u;
     uint32_t lastSvc = osKernelGetTickCount();
+    imw_init(&s_imw, lastSvc);
+    s_lastGyroMs = lastSvc;
     for (;;) {
-        IWDG->KR = 0xAAAAu;                    /* feed: the control loop is alive */
+        /* feed: the control loop is alive. Not when the IMU has been lost for IMW_RESET_MS while disarmed: then
+         * the IWDG resets the MCU as a last resort (#106) */
+        {
+            fc_setpoint_t sp;
+            fc_setpoint(&sp);
+            s_wdg_feed = imw_feed_wdg(&s_imw, osKernelGetTickCount(), sp.armed);
+            if (s_wdg_feed) IWDG->KR = 0xAAAAu;
+        }
         flight_service(&lastSvc);
+
+        if (g_dbg_imu_off) {
+            g_dbg_imu_off = 0u;
+            (void)lsm6dsv16x_xl_data_rate_set(&s_imu.ctx, LSM6DSV16X_ODR_OFF);
+            (void)lsm6dsv16x_gy_data_rate_set(&s_imu.ctx, LSM6DSV16X_ODR_OFF);
+        }
+        /* IMU stall watch (#106): no gyro for IMW_STALL_MS -> event, disarm if armed, bus recovery + re-init */
+        {
+            imw_out_t wo;
+            imw_step(&s_imw, osKernelGetTickCount(), &wo);
+            s_imw_ok = imw_ok(&s_imw);
+            if (wo.event) {
+                fc_raise_event(wo.level, wo.code, wo.arg);
+                if (wo.code == PV2_E_IMU_LOST) fc_imu_lost();
+            }
+            if (wo.recover) {
+                (void)imu_recover(&bus, &icfg);
+                haveRef = 0u; haveEst = 0u; dtEst = dtNom;     /* the sample-period estimate starts again */
+                wait_ms = 0u;                                  /* read the FIFO at once */
+                continue;
+            }
+        }
         const uint32_t fl = osThreadFlagsWait(FLAG_IMU_IRQ, osFlagsWaitAny, wait_ms);
         const int by_timeout = (fl & osFlagsError) != 0u;
         const uint32_t cyc = s_irqCyc;
@@ -598,7 +664,7 @@ static void ImuTask(void *arg)
         imu_parse_stats_t ps = { 0 };
         const size_t n = imu_fifo_parse(&s_imu, s_fifo, words, s_ev, IMU_FIFO_MAX_WORDS, &ps);
         correct_events(s_ev, n);
-        if (ps.gyro) s_lastGyroMs = osKernelGetTickCount();
+        if (ps.gyro) { s_lastGyroMs = osKernelGetTickCount(); imw_sample(&s_imw, s_lastGyroMs); }
         s_psTot.gyro += ps.gyro;  s_psTot.acc += ps.acc;  s_psTot.mag += ps.mag;
         s_psTot.mag_dup += ps.mag_dup;  s_psTot.sh_nack += ps.sh_nack;
 

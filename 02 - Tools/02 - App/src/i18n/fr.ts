@@ -86,7 +86,7 @@ const fr: Translation = {
     1: "Armé", 2: "Désarmé", 3: "Décollage", 4: "Atterri", 5: "Mode de vol changé", 6: "Retour au point de départ", 7: "Home défini",
     20: "Liaison app perdue : failsafe", 21: "Liaison radio perdue : failsafe", 22: "Failsafe batterie", 23: "Géobarrière atteinte",
     24: "GPS perdu", 25: "Flux optique perdu", 30: "Batterie faible", 31: "Batterie critique", 32: "Batterie vide : atterrissage",
-    40: "Interférence boussole", 41: "Vibrations élevées", 42: "Moteur ou ESC chaud", 43: "La radio ELRS a la main", 44: "Poussée de stationnaire anormale",
+    40: "Interférence boussole", 41: "Vibrations élevées", 42: "Moteur ou ESC chaud", 43: "La radio ELRS a la main", 44: "Poussée de stationnaire anormale", 45: "IMU perdue : redémarrage du capteur", 46: "IMU de nouveau active",
     50: "Calibration enregistrée", 51: "Échec de la calibration", 60: "Réglages enregistrés", 70: "Moteurs arrêtés",
   },
   reasons: {
@@ -255,7 +255,7 @@ const fr: Translation = {
     },
     say: { alt: "Altitude {v} mètres", batt: "Batterie {v} pour cent", timer: "{v} minutes" },
     radioOp: { arm: "armement", disarm: "désarmement", mode: "changement de mode", kill: "arrêt" },
-    disarmCause: { 1: "Désarmé : pas de décollage en 10 s", 2: "Désarmé : atterri", 3: "Désarmé : liaison avec l’app perdue", 4: "Désarmé : liaison radio perdue", 5: "Désarmé : moteurs coupés", 6: "Désarmé : lancer à la main annulé" },
+    disarmCause: { 1: "Désarmé : pas de décollage en 10 s", 2: "Désarmé : atterri", 3: "Désarmé : liaison avec l’app perdue", 4: "Désarmé : liaison radio perdue", 5: "Désarmé : moteurs coupés", 6: "Désarmé : lancer à la main annulé", 7: "Désarmé : IMU perdue" },
     launchAbort: { 1: "10 s dans la main", 2: "liaison perdue", 3: "non rétabli, atterrissage", 4: "estimation d’attitude perdue", 5: "lancer trop faible, moteurs arrêtés" },
     flipAbort: { 1: "rotation trop lente", 2: "manche bougé", 3: "liaison perdue", 4: "gyroscope saturé", 5: "pas à plat à temps, atterrissage", 6: "estimation d’attitude perdue, atterrissage" },
   },

@@ -140,6 +140,16 @@ flowchart TB
 - **Watchdog.** IWDG at 0.5 s, fed only by the ImuTask loop and frozen when the
   debugger halts the core. The flight core is also told "estimate not usable"
   when no gyro sample has arrived for 50 ms.
+- **IMU watch** (`app/imu_watch.c`, FW 0.16.9, #106). No gyro sample for 50 ms means the IMU is lost. On the bench
+  the sensor once stopped for good after I²C errors, and nothing noticed. When the IMU is lost:
+  - EVENT 45 `IMU_LOST` (ERROR); CHECKS item IMU goes FAIL;
+  - armed → disarm (cause 7 `IMU`): without gyro there is nothing to stabilise with, and the motors must not
+    restart mid-air with a re-initialised estimator;
+  - every 250 ms, I²C bus recovery (9 SCL clocks + STOP, peripheral re-init, `imu_i2c_recover`) and IMU re-init;
+  - samples flowing again for 100 ms → EVENT 46 `IMU_RECOVERED` (arg = outage ms), estimator restarted (~2 s still);
+  - disarmed and still lost after 5 s → the IWDG is no longer fed and resets the MCU.
+
+  Bench check: `g_dbg_imu_off = 1` in Live Expressions switches the IMU off by register.
 - **Bus sharing.** On the bench the ACwing Flow devices share I²C1 with the
   IMU. Every transaction takes a mutex with priority inheritance, so the
   ImuTask waits at most for one short expansion transaction, a few hundred

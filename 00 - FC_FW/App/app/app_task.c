@@ -155,6 +155,8 @@ static const char *ev_text(uint16_t code)
     case PV2_E_MOTOR_HOT:          return "Motor hot";
     case PV2_E_RADIO_OVERRIDE:     return "Radio took control";
     case PV2_E_HOVER_THRUST:       return "Hover thrust abnormal";
+    case PV2_E_IMU_LOST:           return "IMU lost: restarting the sensor";
+    case PV2_E_IMU_RECOVERED:      return "IMU back";
     case PV2_E_CALIB_DONE:         return "Calibration saved";
     case PV2_E_CALIB_FAILED:       return "Calibration failed";
     case PV2_E_PARAMS_SAVED:       return "Settings saved";
