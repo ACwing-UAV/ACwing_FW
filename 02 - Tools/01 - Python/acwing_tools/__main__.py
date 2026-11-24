@@ -13,6 +13,8 @@ Commands (MATLAB equivalent in brackets):
   info           summary of a capture (.bin) or log (.mat)
   log            flight logs over the FC USB port: list, get, erase, decode
                                                           [acwingLogDecode]
+  cmd_test       protocol v2 commands from the PC (USB or BLE): send, listen,
+                 ready-made checks (repeat, bad, rates, usb)
 """
 from __future__ import annotations
 
@@ -199,6 +201,59 @@ def _cmd_log(a):
     return 0
 
 
+def _cmd_cmd_test(a):
+    from . import cmdtest as ct
+    if (a.port is None) == (a.ble is None):
+        print("cmd_test: give the FC USB port (--port COM7) or --ble [NAME]", file=sys.stderr)
+        return 2
+
+    def opener():
+        return ct.CmdLink.open(port=a.port, ble=a.ble, wait=a.wait)
+    try:
+        link = opener()
+    except Exception as exc:                                    # pragma: no cover
+        print(f"ERROR: {exc}", file=sys.stderr)
+        return 2
+    try:
+        link.frames(0.3)                                        # let the link settle (BLE: INIT, CAPS ...)
+        if a.action == "send":
+            if not a.what:
+                print("cmd_test send NAME [ARGS] (or raw OP HEX...)", file=sys.stderr)
+                return 2
+            try:
+                op, payload = ct.encode_args(a.what[0], a.what[1:])
+            except ValueError as exc:
+                print(f"ERROR: {exc}", file=sys.stderr)
+                return 2
+            r = link.send(op, payload, seq=a.seq, repeat=a.repeat)
+            print(f"{link.kind.upper()} -> {ct.OP_NAMES.get(op, hex(op))} seq {r.seq} payload {payload.hex() or '-'}"
+                  + (f" x{a.repeat}" if a.repeat > 1 else ""))
+            for f in r.frames:
+                line = ct.describe(f)
+                if line and not line.startswith("CHECKS"):
+                    print("  " + line)
+            if op not in ct.NO_ACK and not r.acks:
+                print("  no ACK")
+            return 0 if (op in ct.NO_ACK or (r.acks and r.acks[0][0] == 0)) else 1
+        if a.action == "listen":
+            t_end = __import__("time").monotonic() + a.seconds
+            while __import__("time").monotonic() < t_end:
+                for f in link.frames(0.2):
+                    line = ct.describe(f)
+                    if line and (a.checks or not line.startswith("CHECKS")):
+                        print(line, flush=True)
+            return 0
+        name = a.what[0] if a.what else ""
+        if name not in ct.SUITES:
+            print(f"cmd_test suite NAME: one of {', '.join(ct.SUITES)}", file=sys.stderr)
+            return 2
+        print(f"suite {name} over {link.kind.upper()}")
+        steps = ct.suite_rates(link, opener) if name == "rates" else ct.SUITES[name](link)
+        return 1 if ct.print_steps(steps) else 0
+    finally:
+        link.close()
+
+
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="acwing_tools", description=__doc__,
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -276,6 +331,19 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--mat", metavar="FILE_OR_DIR", help="decode: save as .mat (variable F)")
     s.add_argument("--yes", action="store_true", help="erase: confirm")
     s.set_defaults(func=_cmd_log)
+
+    s = sub.add_parser("cmd_test", help="protocol v2 commands from the PC (USB or BLE): send / listen / suite")
+    s.add_argument("action", choices=("send", "listen", "suite"))
+    s.add_argument("what", nargs="*", help="send: NAME [ARGS] or raw OP HEX...; suite: repeat | bad | rates | usb")
+    s.add_argument("--port", help="FC USB port (CDC), e.g. COM7 or /dev/ttyACM0")
+    s.add_argument("--ble", nargs="?", const="", metavar="NAME_OR_ADDRESS",
+                   help="use BLE instead (needs bleak; disconnect the app first)")
+    s.add_argument("--seq", type=lambda x: int(x, 0), help="send: this sequence number (default: the next one)")
+    s.add_argument("--repeat", type=int, default=1, help="send: times, with the same seq")
+    s.add_argument("--wait", type=float, default=1.0, help="seconds to wait for an ACK")
+    s.add_argument("--seconds", type=float, default=10.0, help="listen: how long")
+    s.add_argument("--checks", action="store_true", help="listen: also print the CHECKS frames")
+    s.set_defaults(func=_cmd_cmd_test)
 
     s = sub.add_parser("info", help="summary of a capture .bin or a log .mat")
     s.add_argument("file")
