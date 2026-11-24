@@ -229,7 +229,7 @@ def _cmd_cmd(a):
             print(f"{link.kind.upper()} -> {ct.OP_NAMES.get(op, hex(op))} seq {r.seq} payload {payload.hex() or '-'}"
                   + (f" x{a.repeat}" if a.repeat > 1 else ""))
             for f in r.frames:
-                line = ct.describe(f)
+                line = ct.describe(f, listing=(op == ct.OP["param-list"]))
                 if line and not line.startswith("CHECKS"):
                     print("  " + line)
             if op not in ct.NO_ACK and not r.acks:

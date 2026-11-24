@@ -179,6 +179,9 @@ def test_describe():
     assert ct.describe(f) == "ACK    arm seq 5: REJECTED USB_CONNECTED"
     f = parse_telemetry(encode_frame(ct.FT["param"], struct.pack("<HfBHH", 70, 2.0, 0, 0, 1)))[0][0]
     assert ct.describe(f) == "PARAM  70 logMode = 2"
+    f = parse_telemetry(encode_frame(ct.FT["param"], struct.pack("<HfBHH", 1, 1.0, 0, 0, 40)))[0][0]
+    assert ct.describe(f) == "PARAM  1 takeoffAlt = 1"                          # a GET: no "(1/40)"
+    assert ct.describe(f, listing=True) == "PARAM  1 takeoffAlt = 1  (1/40)"
 
 
 def test_cli_test_suite_name(capsys):
