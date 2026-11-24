@@ -9,7 +9,7 @@ SRC  = $(APP)/telemetry/telemetry.c $(APP)/telemetry/proto_v2.c $(APP)/telemetry
        $(APP)/log/log_store.c $(APP)/app/log_task.c $(APP)/telemetry/usb_link.c \
        $(APP)/filters/altitude_kf/alt_est.c $(APP)/control/alt_ctrl.c \
        $(APP)/control/att_ctrl.c $(APP)/control/mixer.c $(APP)/control/motors.c $(APP)/app/ctrl_loop.c \
-       $(APP)/filters/hover_est/hover_est.c $(APP)/control/hover_track.c \
+       $(APP)/filters/hover_est/hover_est.c $(APP)/control/hover_track.c $(APP)/app/imu_watch.c \
        $(APP)/control/rc_input.c $(APP)/drivers/rc/rc_crsf.c $(APP)/drivers/rc/rc_sbus.c $(APP)/drivers/rc/rc_ibus.c \
        $(APP)/drivers/rc/rc_dsm.c $(APP)/control/input_arb.c $(APP)/control/radio_fs.c $(APP)/control/cal_sticks.c $(APP)/control/rc_switches.c $(APP)/control/pos_ctrl.c $(APP)/control/launch.c $(APP)/control/flip.c $(APP)/control/ctl_io.c $(APP)/control/ctl_law_cascade.c \
        $(APP)/drivers/vl53l1x/vl53l1x.c $(APP)/drivers/flow_bridge/flow_bridge.c \

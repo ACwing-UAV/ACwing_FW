@@ -113,7 +113,8 @@ by at most 2.8 %; a 1 m/s climb by 0.3 %.
   the outputs.
 - **Stall watchdog:** if the rate loop has not run for 50 ms while armed (IMU or estimator stopped), the motors are
   set to 0. A command frozen at its last value would fly the drone away. The IWDG (fed by the same task) resets the
-  MCU if the whole task stops.
+  MCU if the whole task stops. Since FW 0.16.9 the IMU watch also disarms (cause `IMU`) and tries to bring the
+  sensor back ([architecture](architecture.md), #106).
 - `MOTORS_ENABLE` = 0 keeps the PWM off on the bench (props off) until the power stage is connected. The outputs are
   bound in `bsp/motor_pwm.c` (TIM2 CH1–CH4, PA0–PA3, 32 kHz).
 

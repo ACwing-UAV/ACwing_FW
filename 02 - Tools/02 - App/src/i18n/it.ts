@@ -86,7 +86,7 @@ const it: Translation = {
     1: "Armato", 2: "Disarmato", 3: "Decollo", 4: "Atterrato", 5: "Modalità di volo cambiata", 6: "Ritorno a casa", 7: "Home impostata",
     20: "Link app perso: failsafe", 21: "Link radio perso: failsafe", 22: "Failsafe batteria", 23: "Geofence raggiunto",
     24: "GPS perso", 25: "Flusso ottico perso", 30: "Batteria bassa", 31: "Batteria critica", 32: "Batteria scarica: atterraggio",
-    40: "Interferenza bussola", 41: "Vibrazioni elevate", 42: "Motore o ESC caldo", 43: "La radio ELRS ha il controllo", 44: "Spinta di hover anomala",
+    40: "Interferenza bussola", 41: "Vibrazioni elevate", 42: "Motore o ESC caldo", 43: "La radio ELRS ha il controllo", 44: "Spinta di hover anomala", 45: "IMU persa: riavvio del sensore", 46: "IMU di nuovo attiva",
     50: "Calibrazione salvata", 51: "Calibrazione fallita", 60: "Impostazioni salvate", 70: "Motori fermati",
   },
   reasons: {
@@ -255,7 +255,7 @@ const it: Translation = {
     },
     say: { alt: "Quota {v} metri", batt: "Batteria {v} per cento", timer: "{v} minuti" },
     radioOp: { arm: "armo", disarm: "disarmo", mode: "cambio modo", kill: "arresto" },
-    disarmCause: { 1: "Disarmato: nessun decollo entro 10 s", 2: "Disarmato: atterrato", 3: "Disarmato: collegamento con l’app perso", 4: "Disarmato: collegamento radio perso", 5: "Disarmato: motori arrestati", 6: "Disarmato: lancio a mano annullato" },
+    disarmCause: { 1: "Disarmato: nessun decollo entro 10 s", 2: "Disarmato: atterrato", 3: "Disarmato: collegamento con l’app perso", 4: "Disarmato: collegamento radio perso", 5: "Disarmato: motori arrestati", 6: "Disarmato: lancio a mano annullato", 7: "Disarmato: IMU persa" },
     launchAbort: { 1: "10 s in mano", 2: "collegamento perso", 3: "non recuperato, atterraggio", 4: "stima d’assetto persa", 5: "lancio troppo debole, motori fermi" },
     flipAbort: { 1: "rotazione troppo lenta", 2: "stick mosso", 3: "collegamento perso", 4: "giroscopio saturato", 5: "non in piano in tempo, atterraggio", 6: "stima d’assetto persa, atterraggio" },
   },

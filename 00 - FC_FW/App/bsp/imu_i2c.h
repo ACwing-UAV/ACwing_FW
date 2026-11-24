@@ -25,6 +25,10 @@ void    imu_i2c_make_bus(sensor_bus_t *bus, I2C_HandleTypeDef *hi2c, uint8_t add
 /** Starts the DMA read and blocks the calling task until completion.
  * 0 = OK, -1 error/timeout. */
 int32_t imu_i2c_read_dma(uint8_t reg, uint8_t *buf, uint16_t len, uint32_t timeout_ms);
+/** Bus recovery (#106): de-initialises the I2C peripheral, clocks SCL 9 times with SDA released (a slave holding
+ *  SDA low in the middle of a byte lets it go), sends a STOP, and initialises the peripheral again (timing,
+ *  filters, DMA links, as MX_I2C1_Init). Takes the bus lock. 0 = OK. */
+int     imu_i2c_recover(void);
 /** To be called from HAL_I2C_MemRxCpltCallback / HAL_I2C_ErrorCallback */
 void    imu_i2c_rx_cplt_isr(I2C_HandleTypeDef *hi2c);
 void    imu_i2c_error_isr(I2C_HandleTypeDef *hi2c);

@@ -88,6 +88,54 @@ int32_t imu_i2c_read_dma(uint8_t reg, uint8_t *buf, uint16_t len, uint32_t timeo
     return 0;
 }
 
+/* ---- bus recovery (#106) ----
+ * NUCLEO-WB55 + IKS4A1: I2C1 on PB8 (SCL) / PB9 (SDA), AF4 (stm32wbxx_hal_msp.c). */
+#ifndef IMU_I2C_SCL_PORT
+#define IMU_I2C_SCL_PORT GPIOB
+#define IMU_I2C_SCL_PIN  GPIO_PIN_8
+#define IMU_I2C_SDA_PORT GPIOB
+#define IMU_I2C_SDA_PIN  GPIO_PIN_9
+#endif
+
+static void half_bit(void)                       /* ~5 us: 100 kHz, slow enough for any slave */
+{
+    const uint32_t n = SystemCoreClock / 200000u;
+    for (volatile uint32_t i = 0; i < n / 4u; ++i) { __NOP(); }
+}
+
+int imu_i2c_recover(void)
+{
+    if (!s_hi2c) return -1;
+    const int locked = (imu_i2c_lock() == 0);
+    (void)HAL_I2C_DeInit(s_hi2c);                /* stops the peripheral and its DMA, pins back to analog */
+
+    GPIO_InitTypeDef g = { 0 };
+    g.Mode  = GPIO_MODE_OUTPUT_OD;
+    g.Pull  = GPIO_NOPULL;                       /* the board pull-ups */
+    g.Speed = GPIO_SPEED_FREQ_LOW;
+    HAL_GPIO_WritePin(IMU_I2C_SCL_PORT, IMU_I2C_SCL_PIN, GPIO_PIN_SET);
+    HAL_GPIO_WritePin(IMU_I2C_SDA_PORT, IMU_I2C_SDA_PIN, GPIO_PIN_SET);
+    g.Pin = IMU_I2C_SCL_PIN; HAL_GPIO_Init(IMU_I2C_SCL_PORT, &g);
+    g.Pin = IMU_I2C_SDA_PIN; HAL_GPIO_Init(IMU_I2C_SDA_PORT, &g);
+    half_bit();
+    for (int k = 0; k < 9; ++k) {                /* a slave stuck mid-byte gets the clocks it waits for */
+        HAL_GPIO_WritePin(IMU_I2C_SCL_PORT, IMU_I2C_SCL_PIN, GPIO_PIN_RESET); half_bit();
+        HAL_GPIO_WritePin(IMU_I2C_SCL_PORT, IMU_I2C_SCL_PIN, GPIO_PIN_SET);   half_bit();
+    }
+    /* STOP: SDA low -> high while SCL is high */
+    HAL_GPIO_WritePin(IMU_I2C_SCL_PORT, IMU_I2C_SCL_PIN, GPIO_PIN_RESET); half_bit();
+    HAL_GPIO_WritePin(IMU_I2C_SDA_PORT, IMU_I2C_SDA_PIN, GPIO_PIN_RESET); half_bit();
+    HAL_GPIO_WritePin(IMU_I2C_SCL_PORT, IMU_I2C_SCL_PIN, GPIO_PIN_SET);   half_bit();
+    HAL_GPIO_WritePin(IMU_I2C_SDA_PORT, IMU_I2C_SDA_PIN, GPIO_PIN_SET);   half_bit();
+
+    /* as MX_I2C1_Init: hi2c->Init is still the CubeMX configuration; the MSP re-does pins, DMA and IRQs */
+    int ok = HAL_I2C_Init(s_hi2c) == HAL_OK;
+    ok = ok && HAL_I2CEx_ConfigAnalogFilter(s_hi2c, I2C_ANALOGFILTER_ENABLE) == HAL_OK;
+    ok = ok && HAL_I2CEx_ConfigDigitalFilter(s_hi2c, 0) == HAL_OK;
+    if (locked) imu_i2c_unlock();
+    return ok ? 0 : -1;
+}
+
 void imu_i2c_rx_cplt_isr(I2C_HandleTypeDef *hi2c)
 {
     if (hi2c == s_hi2c && s_waiter) (void)osThreadFlagsSet(s_waiter, FLAG_DMA_DONE);

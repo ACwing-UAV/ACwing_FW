@@ -84,7 +84,7 @@ const en = {
     1: "Armed", 2: "Disarmed", 3: "Takeoff", 4: "Landed", 5: "Flight mode changed", 6: "Returning to home", 7: "Home set",
     20: "App link lost: failsafe", 21: "Radio link lost: failsafe", 22: "Battery failsafe", 23: "Geofence reached",
     24: "GPS lost", 25: "Optical flow lost", 30: "Battery low", 31: "Battery critical", 32: "Battery empty: landing",
-    40: "Compass interference", 41: "High vibration", 42: "Motor or ESC hot", 43: "ELRS radio has control", 44: "Hover thrust abnormal",
+    40: "Compass interference", 41: "High vibration", 42: "Motor or ESC hot", 43: "ELRS radio has control", 44: "Hover thrust abnormal", 45: "IMU lost: restarting the sensor", 46: "IMU back",
     50: "Calibration saved", 51: "Calibration failed", 60: "Settings saved", 70: "Motors stopped",
   },
   reasons: {
@@ -253,7 +253,7 @@ const en = {
     },
     say: { alt: "Altitude {v} meters", batt: "Battery {v} percent", timer: "{v} minutes" },
     radioOp: { arm: "arm", disarm: "disarm", mode: "mode change", kill: "kill" },
-    disarmCause: { 1: "Disarmed: no take-off within 10 s", 2: "Disarmed: landed", 3: "Disarmed: app link lost", 4: "Disarmed: radio link lost", 5: "Disarmed: motors killed", 6: "Disarmed: hand launch cancelled" },
+    disarmCause: { 1: "Disarmed: no take-off within 10 s", 2: "Disarmed: landed", 3: "Disarmed: app link lost", 4: "Disarmed: radio link lost", 5: "Disarmed: motors killed", 6: "Disarmed: hand launch cancelled", 7: "Disarmed: IMU lost" },
     launchAbort: { 1: "10 s in the hand", 2: "link lost", 3: "not recovered, landing", 4: "attitude estimate lost", 5: "toss too weak, motors kept off" },
     flipAbort: { 1: "rotation too slow", 2: "stick moved", 3: "link lost", 4: "gyro saturated", 5: "not level in time, landing", 6: "attitude estimate lost, landing" },
   },

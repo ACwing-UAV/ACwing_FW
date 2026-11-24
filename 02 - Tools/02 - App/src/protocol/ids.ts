@@ -237,6 +237,7 @@ export enum DisarmCause {
   RADIO_LINK = 4,
   KILL = 5,
   LAUNCH = 6,
+  IMU = 7, // firmware 0.16.9: no gyro for 50 ms while armed (#106)
 }
 
 /** EVENT codes. The app translates known codes; unknown ones show the text sent by the drone. */
@@ -276,6 +277,8 @@ export enum EventCode {
   RADIO_OVERRIDE = 43,
   /** WARN: hover thrust estimate outside 0.35..0.75, arg = thrust x 1000 (firmware >= 0.7) */
   HOVER_THRUST = 44,
+  IMU_LOST = 45, // firmware 0.16.9 (ERROR): no gyro for 50 ms, the sensor is being restarted; arg = outages since boot
+  IMU_RECOVERED = 46, // firmware 0.16.9 (INFO): arg = outage ms
   CALIB_DONE = 50,
   CALIB_FAILED = 51,
   PARAMS_SAVED = 60,

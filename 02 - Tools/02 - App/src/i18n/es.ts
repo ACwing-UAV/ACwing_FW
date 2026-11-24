@@ -86,7 +86,7 @@ const es: Translation = {
     1: "Armado", 2: "Desarmado", 3: "Despegue", 4: "Aterrizado", 5: "Modo de vuelo cambiado", 6: "Volviendo a casa", 7: "Home fijado",
     20: "Enlace de la app perdido: failsafe", 21: "Enlace de radio perdido: failsafe", 22: "Failsafe de batería", 23: "Geovalla alcanzada",
     24: "GPS perdido", 25: "Flujo óptico perdido", 30: "Batería baja", 31: "Batería crítica", 32: "Batería agotada: aterrizando",
-    40: "Interferencia de brújula", 41: "Vibración alta", 42: "Motor o ESC caliente", 43: "La radio ELRS tiene el control", 44: "Empuje de estacionario anómalo",
+    40: "Interferencia de brújula", 41: "Vibración alta", 42: "Motor o ESC caliente", 43: "La radio ELRS tiene el control", 44: "Empuje de estacionario anómalo", 45: "IMU perdida: reiniciando el sensor", 46: "IMU de nuevo activa",
     50: "Calibración guardada", 51: "Calibración fallida", 60: "Ajustes guardados", 70: "Motores parados",
   },
   reasons: {
@@ -255,7 +255,7 @@ const es: Translation = {
     },
     say: { alt: "Altitud {v} metros", batt: "Batería {v} por ciento", timer: "{v} minutos" },
     radioOp: { arm: "armado", disarm: "desarmado", mode: "cambio de modo", kill: "parada" },
-    disarmCause: { 1: "Desarmado: sin despegue en 10 s", 2: "Desarmado: aterrizado", 3: "Desarmado: enlace con la app perdido", 4: "Desarmado: enlace de radio perdido", 5: "Desarmado: motores parados", 6: "Desarmado: lanzamiento a mano cancelado" },
+    disarmCause: { 1: "Desarmado: sin despegue en 10 s", 2: "Desarmado: aterrizado", 3: "Desarmado: enlace con la app perdido", 4: "Desarmado: enlace de radio perdido", 5: "Desarmado: motores parados", 6: "Desarmado: lanzamiento a mano cancelado", 7: "Desarmado: IMU perdida" },
     launchAbort: { 1: "10 s en la mano", 2: "enlace perdido", 3: "no recuperado, aterrizando", 4: "estimación de actitud perdida", 5: "lanzamiento demasiado débil, motores parados" },
     flipAbort: { 1: "giro demasiado lento", 2: "stick movido", 3: "enlace perdido", 4: "giroscopio saturado", 5: "no nivelado a tiempo, aterrizando", 6: "estimación de actitud perdida, aterrizando" },
   },

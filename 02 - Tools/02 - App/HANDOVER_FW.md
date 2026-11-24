@@ -935,7 +935,7 @@ calibrated).
 | code | level | name | arg | when |
 |---|---|---|---|---|
 | 1 | INFO | ARMED | – | arm accepted |
-| 2 | INFO | DISARMED | cause: 0 command, 1 no take-off in 10 s, 2 landed (`autoDisarm`), 3 app silent on the ground, 4 radio failsafe, 5 KILL, 6 hand launch cancelled (`PV2_DISARM_*`, firmware 0.16.3; 0 before it) | any disarm |
+| 2 | INFO | DISARMED | cause: 0 command, 1 no take-off in 10 s, 2 landed (`autoDisarm`), 3 app silent on the ground, 4 radio failsafe, 5 KILL, 6 hand launch cancelled, 7 IMU lost (0.16.9) (`PV2_DISARM_*`, firmware 0.16.3; 0 before it) | any disarm |
 | 3 | INFO | TAKEOFF_STARTED | target cm | |
 | 4 | INFO | LANDED | – | touchdown |
 | 5 | INFO | MODE_CHANGED | mode | |
@@ -963,6 +963,8 @@ calibrated).
 | 42 | WARN | MOTOR_HOT | motor | > 80 °C |
 | 43 | WARN | RADIO_OVERRIDE | – | ELRS takes control |
 | 44 | WARN | HOVER_THRUST | hover thrust × 1000 | the in-flight hover estimate left 0.35…0.75 (wrong `hoverThr`, lost propeller, damaged motor); once per flight — firmware 0.7.0 |
+| 45 | ERROR | IMU_LOST | outages since boot | no gyro sample for 50 ms: the IMU or its I2C bus stopped. The firmware recovers the bus and re-initialises the sensor every 250 ms; armed, the rate-loop watchdog has already cut the motors; disarmed and still lost after 5 s, the MCU resets (IWDG) — firmware 0.16.9, #106 |
+| 46 | INFO | IMU_RECOVERED | outage ms | samples flowing again for 100 ms after a recovery; the estimator restarts (keep the drone still ~2 s) — firmware 0.16.9 |
 | 50 | INFO | CALIB_DONE | type | after CAL_SAVE |
 | 51 | ERROR | CALIB_FAILED | type | |
 | 60 | INFO | PARAMS_SAVED | – | |
