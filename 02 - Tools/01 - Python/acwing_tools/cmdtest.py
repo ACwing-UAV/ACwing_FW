@@ -1,4 +1,4 @@
-"""Protocol v2 commands from the PC, over USB or BLE: ``acwing-tools cmd_test``.
+"""Protocol v2 commands from the PC, over USB or BLE: ``acwing-tools cmd``.
 
 A bench tool for the checks that the app cannot do (#37, #74):
 
@@ -6,7 +6,7 @@ A bench tool for the checks that the app cannot do (#37, #74):
   and repetitions; prints the ACK (result, reason) and the answers.
 * ``listen`` prints ACK, EVENT, PARAM, CALIB and CHECKS frames for a while
   (for example while the app works on the other link).
-* ``suite``  a ready-made sequence with an expected result per step:
+* ``test_suite`` a ready-made sequence with an expected result per step:
 
   ==============  ==========================================================
   ``repeat``      the same command twice with the same ``seq``: one effect,

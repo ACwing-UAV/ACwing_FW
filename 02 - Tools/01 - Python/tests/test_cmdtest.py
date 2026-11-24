@@ -1,4 +1,4 @@
-"""cmd_test: command encoding, ACK matching, the suites against a fake drone that follows the firmware rules
+"""acwing-tools cmd: command encoding, ACK matching, the suites against a fake drone that follows the firmware rules
 (ACK cache per link, USB ground-link rules, INVALID for an empty payload, UNSUPPORTED for an unknown op)."""
 import struct
 
@@ -170,7 +170,7 @@ def test_suite_bad_accepts_a_refusal_before_the_payload_check():
 
 def test_cli_needs_a_link(capsys):
     from acwing_tools.__main__ import main
-    assert main(["cmd_test", "send", "arm"]) == 2
+    assert main(["cmd", "send", "arm"]) == 2
     assert "--port" in capsys.readouterr().err
 
 
@@ -179,3 +179,9 @@ def test_describe():
     assert ct.describe(f) == "ACK    arm seq 5: REJECTED USB_CONNECTED"
     f = parse_telemetry(encode_frame(ct.FT["param"], struct.pack("<HfBHH", 70, 2.0, 0, 0, 1)))[0][0]
     assert ct.describe(f) == "PARAM  70 logMode = 2"
+
+
+def test_cli_test_suite_name(capsys):
+    from acwing_tools.__main__ import build_parser
+    a = build_parser().parse_args(["cmd", "test_suite", "usb", "--port", "COM7"])
+    assert a.action == "test_suite" and a.what == ["usb"] and a.port == "COM7"
