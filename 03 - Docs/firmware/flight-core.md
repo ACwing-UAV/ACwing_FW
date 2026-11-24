@@ -210,3 +210,10 @@ accelerometer first), then send TAKEOFF:
 
 Without any altitude sensor, `g_fc_dbg_in_air` (Live Expressions) still forces
 "in the air" for the failsafe tests.
+
+To run the rules for a missing altitude estimate on the NUCLEO, whose
+barometer cannot be switched off, set `g_fc_dbg_no_alt` = 1 **before arming**
+(FW 0.16.10). The core then treats the vertical estimate as not valid:
+in air from the collective (> 0.8 × hover for 0.3 s), no 10 s auto-disarm,
+open-loop HOLD and LAND (ramp to 0.85 × hover, touchdown after 20 s).
+Host test: `test_dbg_no_alt`.

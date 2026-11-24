@@ -907,6 +907,32 @@ static void ctrl_steps(int n960, const float q[4], const float gyro[3])
         ctrl_rate_in_t r; memcpy(r.gyro, gyro, sizeof r.gyro); r.dt = 1.0f / 960.0f; r.step = (uint32_t)k; ctrl_rate_step(&r);
     }
 }
+/* #28 item 4 on the bench: a baro that is there but "not valid" (g_fc_dbg_no_alt) gives the rules of no estimate */
+static void test_dbg_no_alt(void)
+{
+    const uint8_t arm[2] = { 0xA5, 0x5A };
+    fc_state_t s; fc_setpoint_t sp;
+    fc_vert_t v; memset(&v, 0, sizeof v); v.valid = 1u;      /* the estimator still runs: h = 0, vz = 0 */
+    fc_setup(PV2_S_IMU | PV2_S_BARO);
+    g_fc_dbg_no_alt = 1u;
+    now = 200000;
+    run_plant(NULL, &v, 100, -1000);
+    fc_res_t r = post(PV2_OP_ARM, 1, arm, 2, &v);
+    CHECK(r.result == PV2_ACK_OK, "dbg_no_alt: arm");
+    run_plant(NULL, &v, 12000, 200);
+    fc_snapshot(&s);
+    CHECK(s.armed && s.in_air && s.air_by_thrust, "dbg_no_alt: in air from the collective, no 10 s auto-disarm");
+    float thr_land_end = -1; uint32_t t_dis = 0; const uint32_t t0 = now;
+    for (uint32_t k = 0; k < 30000 / 4; ++k) {
+        now += 4; fc_service(now, 1, &v);
+        fc_snapshot(&s); fc_setpoint(&sp);
+        if (now - t0 == 3000 + 5000) thr_land_end = sp.thrust;
+        if (!s.armed && !t_dis) t_dis = now;
+    }
+    CHECK(fabsf(thr_land_end - FC_LAND_OL_K * 0.42f) < 0.01f, "dbg_no_alt: open-loop LAND (%.3f)", thr_land_end);
+    CHECK(t_dis && t_dis - t0 > 2900 + FC_LAND_OL_MS, "dbg_no_alt: touchdown after the open-loop LAND (%u ms)", (unsigned)(t_dis - t0));
+    g_fc_dbg_no_alt = 0u;
+}
 
 static void test_ctrl_loop(void)
 {
@@ -1747,6 +1773,7 @@ int main(void)
     test_app_link_failsafe();
     test_manual_collective();
     test_no_alt_estimate();
+    test_dbg_no_alt();
     test_ctrl_loop();
     test_radio();
     test_radio_switches();

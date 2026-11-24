@@ -21,6 +21,7 @@
 #define DEG2RAD 0.017453292519943295f
 
 volatile uint8_t g_fc_dbg_in_air;
+volatile uint8_t g_fc_dbg_no_alt;
 
 SPSC_DEFINE(s_cmdq, fc_cmd_t,   8u);
 SPSC_DEFINE(s_resq, fc_res_t,   8u);
@@ -118,7 +119,7 @@ void fc_init(const fc_config_t *cfg)
     memset(&s_radio, 0, sizeof s_radio); s_radio_took = 0u; s_exec_radio = 0u;
     s_test_motor = 0u;
     s_checks_ready = s_batt_fail = s_calibrating = 0u;
-    g_fc_dbg_in_air = 0u;
+    g_fc_dbg_in_air = 0u; g_fc_dbg_no_alt = 0u;
     s_have_v = 0u; s_dbg_forced = 0u; s_landed = 0u; s_geofence = s_geofence_ev = 0u;
     s_touch_ms = s_flow_bad_ms = 0u;
     s_desc_ms = s_sink_ms = 0u;
@@ -1209,6 +1210,7 @@ void fc_service(uint32_t now, uint8_t est_running, const fc_vert_t *v)
     const uint32_t dt = s_have_last ? (now - s_last_ms) : 0u;
     s_last_ms = now; s_have_last = 1u;
     if (v) { s_v = *v; s_have_v = 1u; } else { s_have_v = 0u; s_v.valid = 0u; s_v.flow_q = 0xFFu; }
+    if (g_fc_dbg_no_alt) s_v.valid = 0u;     /* bench: the altitude estimate is "not valid" (#28 item 4) */
 
     update_sticks(now);
 

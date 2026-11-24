@@ -205,5 +205,10 @@ uint8_t fc_is_core_op(uint8_t op);                /**< ops executed by the core 
  * and the board can be "flown" by hand (lift it: lift-off; put it down during
  * LAND: touchdown). */
 extern volatile uint8_t g_fc_dbg_in_air;
+/** g_fc_dbg_no_alt: 1 marks the vertical estimate as not valid, as with a baro
+ *  that has failed (§7.5): in air from the collective, open-loop HOLD/LAND.
+ *  The board is a NUCLEO with the baro soldered on, so this is the only way
+ *  to run these rules on the bench (#28). Set it before arming. */
+extern volatile uint8_t g_fc_dbg_no_alt;
 
 #endif /* FC_CORE_H */
