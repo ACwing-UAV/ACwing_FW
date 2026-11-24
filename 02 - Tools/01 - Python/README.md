@@ -116,6 +116,9 @@ argument is taken as an option.
 | `mag-check LOG.mat [--hard-iron H]` | Is the current calibration still valid? Sphere fit of the logged field and rotation consistency with the gyro; prints the corrected `MAG_HARD_IRON` if needed. |
 | `fit-hard-iron LOG.mat [--no-plot]` | Sphere fit of the hard-iron offset, with a 3D plot. |
 | `info FILE` | Summary of a `.bin` (frames per type, last STATUS diagnosis) or a `.mat` log. |
+| `cmd_test send NAME [ARGS] --port P \| --ble [NAME] [--seq N] [--repeat K]` | Sends one protocol v2 command from the PC and prints its ACK (result, reason) and the answers (PARAM, EVENT, CALIB). Names: `arm`, `disarm`, `takeoff 1.5`, `kill`, `mode 2`, `param-get logMode`, `param-set logMode 2`, `cal-start gyro`, `cal-abort`, `motor-test 1 10 500`, `request caps`, `stream-rates 2 0 0 0 0`, `rc T Y P R`… or `raw OP HEX…` for any bytes. `--seq` fixes the sequence number, `--repeat` sends it K times with the same seq. |
+| `cmd_test listen --port P \| --ble [NAME] [--seconds 10] [--checks]` | Prints the ACK, EVENT, PARAM and CALIB frames as they arrive, for example while the app works on the other link. |
+| `cmd_test suite repeat\|bad\|rates\|usb --port P \| --ble [NAME]` | Ready-made bench checks, PASS/FAIL per step: `repeat` (same seq twice → one effect, two identical ACKs), `bad` (every op with an empty payload → INVALID, unknown op → UNSUPPORTED), `rates` (STREAM_RATES FLIGHT 2 Hz, then back to 10 Hz after reconnecting), `usb` (ground-link rules of ADR 0009: parameters and calibrations allowed, ARM/KILL/MOTOR_TEST/TAKEOFF refused with NOT_OVER_USB). Over BLE disconnect the app first: the board takes one central. |
 
 ## Typical workflows
 
@@ -174,6 +177,15 @@ The comparison prints the same report as `compareEmbeddedVsMatlab.m`:
 
 It then shows three figures: Euler angles, continuous quaternion, and
 difference/bias.
+
+**Commands from the PC** (bench checks #37 and #74; [protocol v2](../../03%20-%20Docs/firmware/protocol-v2.md)):
+
+```bash
+acwing-tools cmd_test suite usb --port COM7          # the USB ground-link rules
+acwing-tools cmd_test send param-set logMode 2 --port COM7
+acwing-tools cmd_test send arm --ble --repeat 2 --seq 9   # one arm, two identical ACKs
+acwing-tools cmd_test suite bad --ble                # app disconnected first
+```
 
 ## Python API
 
