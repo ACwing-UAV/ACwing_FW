@@ -79,3 +79,38 @@ def test_mag_check_detects_stale_hard_iron(tmp_path):
     assert np.allclose(out.residualOffset, hi_true - fw, atol=0.5)
     assert np.allclose(out.newHardIron, hi_true, atol=0.5)
     assert abs(out.B - np.hypot(20, 40)) < 0.5
+
+
+class _LiveBacklog:
+    """A live port with a backlog waiting while the viewer opens its window (#74/16): the backlog has a
+    seq gap (driver buffer overflow); discard() drops it, then the stream goes on without gaps."""
+
+    def __init__(self, data: bytes, cut: int):
+        self.data, self.cut, self.pos, self.eof, self.discarded = data, cut, 0, False, 0
+
+    def read(self) -> bytes:
+        if self.pos >= len(self.data):
+            self.eof = True
+            return b""
+        chunk = self.data[self.pos:self.pos + 777]
+        self.pos += len(chunk)
+        return chunk
+
+    def close(self):
+        pass
+
+    def discard(self):
+        self.discarded += 1
+        self.pos = self.cut
+
+
+def test_viewer_drops_the_startup_backlog(tmp_path):
+    sim = write_stream(str(tmp_path / "sim.bin"), duration=4.0)
+    data = open(sim, "rb").read()
+    half = len(data) // 2
+    gap = data[:half // 2] + data[half // 2 + 5000:]          # frames lost inside the backlog
+    src = _LiveBacklog(gap, cut=half)
+    v = LiveViewer(src, log_dir=str(tmp_path), stop_at_eof=True, show=False)
+    L = v.run()
+    assert src.discarded == 1
+    assert v.n_lost == 0 and 0 < L.seq.size < 960
