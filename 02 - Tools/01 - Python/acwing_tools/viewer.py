@@ -246,6 +246,13 @@ class LiveViewer:
 
         print(f"Log: {self.log_file}\nRaw capture: {self.bin_file}")
         self._build_figure()
+        # Opening the window takes ~2 s while the port already streams (DTR set at open): the backlog
+        # overflowed the driver buffer (false "lost" frames) and was processed late (lag ~ -2 s, rate
+        # low). Start from what arrives now (#74/16).
+        discard = getattr(self.source, "discard", None)
+        if discard is not None:
+            discard()
+        self.t_start = time.monotonic()
         reader = threading.Thread(target=self._reader, daemon=True)
         reader.start()
         t_save = time.monotonic()

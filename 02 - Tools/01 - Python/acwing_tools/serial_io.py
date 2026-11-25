@@ -36,6 +36,10 @@ class SerialSource:
         n = self.ser.in_waiting
         return self.ser.read(n if n > 0 else 1)
 
+    def discard(self):
+        """Drops what arrived while the caller was busy (the viewer opening its window)."""
+        self.ser.reset_input_buffer()
+
     def close(self):
         try:
             self.ser.close()
